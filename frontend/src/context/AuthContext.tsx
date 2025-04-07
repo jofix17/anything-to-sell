@@ -52,6 +52,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           error: null,
         });
       } catch (error) {
+        console.error('Error loading user:', error);
         // Clear localStorage on error (token might be invalid)
         localStorage.removeItem('token');
         localStorage.removeItem('user');

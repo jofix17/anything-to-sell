@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import productService from '../../services/productService';
-import { Category } from '../../types';
+import React, { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import productService from "../../services/productService";
+import { Category } from "../../types";
 
 interface ProductImage {
   id: string;
@@ -20,54 +20,60 @@ const VendorEditProductPage: React.FC = () => {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
-  
+
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    salePrice: '',
-    categoryId: '',
-    tags: '',
-    inventory: '',
-    isActive: true
+    name: "",
+    description: "",
+    price: "",
+    salePrice: "",
+    categoryId: "",
+    tags: "",
+    inventory: "",
+    isActive: true,
   });
 
   // Fetch product data and categories on component mount
   useEffect(() => {
     const fetchProductAndCategories = async () => {
       if (!id) return;
-      
+
       try {
         setIsLoading(true);
-        
+
         // Fetch product data
         const product = await productService.getProductById(id);
-        
+
         // Fetch categories
         const categoriesData = await productService.getCategories();
-        
+
         // Set form data
         setFormData({
           name: product.name,
           description: product.description,
           price: product.price.toString(),
-          salePrice: product.salePrice ? product.salePrice.toString() : '',
-          categoryId: product.categoryId.toString(),
-          tags: product.tags?.join(', ') || '',
+          salePrice: product.salePrice ? product.salePrice.toString() : "",
+          categoryId: product.category.id,
+          tags: product.tags?.join(", ") || "",
           inventory: product.inventory.toString(),
-          isActive: product.isActive
+          isActive: product.isActive,
         });
-        
+
         // Set existing images
         if (product.images && product.images.length > 0) {
-          setExistingImages(product.images);
+          setExistingImages(
+            product.images.map((image) => ({
+              id: image.id || "",
+              imageUrl: image.imageUrl,
+              isPrimary: image.isPrimary || false,
+            }))
+          );
         }
-        
+
         setCategories(categoriesData);
       } catch (error) {
-        setError('Failed to load product data');
-        console.error('Error fetching product data:', error);
+        setError("Failed to load product data");
+        console.error("Error fetching product data:", error);
       } finally {
         setIsLoading(false);
       }
@@ -77,13 +83,17 @@ const VendorEditProductPage: React.FC = () => {
   }, [id]);
 
   // Handle form input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
-    
-    setFormData(prev => ({
+
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -91,36 +101,38 @@ const VendorEditProductPage: React.FC = () => {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      
+
       // Create preview URLs for selected images
-      const newImagePreviewUrls = filesArray.map(file => URL.createObjectURL(file));
-      
-      setImageFiles(prev => [...prev, ...filesArray]);
-      setImagePreviewUrls(prev => [...prev, ...newImagePreviewUrls]);
+      const newImagePreviewUrls = filesArray.map((file) =>
+        URL.createObjectURL(file)
+      );
+
+      setImageFiles((prev) => [...prev, ...filesArray]);
+      setImagePreviewUrls((prev) => [...prev, ...newImagePreviewUrls]);
     }
   };
 
   // Remove new image from selection
   const removeNewImage = (index: number) => {
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
-    
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+
     // Revoke object URL to avoid memory leaks
     URL.revokeObjectURL(imagePreviewUrls[index]);
-    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
+    setImagePreviewUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Remove existing image
   const removeExistingImage = async (imageId: string) => {
     if (!id) return;
-    
-    if (window.confirm('Are you sure you want to remove this image?')) {
+
+    if (window.confirm("Are you sure you want to remove this image?")) {
       try {
         setIsLoading(true);
         await productService.deleteProductImage(id, imageId);
-        setExistingImages(prev => prev.filter(img => img.id !== imageId));
+        setExistingImages((prev) => prev.filter((img) => img.id !== imageId));
       } catch (error) {
-        setError('Failed to remove image');
-        console.error('Error removing image:', error);
+        setError("Failed to remove image");
+        console.error("Error removing image:", error);
       } finally {
         setIsLoading(false);
       }
@@ -136,117 +148,137 @@ const VendorEditProductPage: React.FC = () => {
       await productService.setPrimaryImage(id, imageId);
 
       // Update local state
-      setExistingImages(prev =>
-        prev.map(img => ({
+      setExistingImages((prev) =>
+        prev.map((img) => ({
           ...img,
-          isPrimary: img.id === imageId
+          isPrimary: img.id === imageId,
         }))
       );
     } catch (error) {
-      setError('Failed to set image as primary');
-      console.error('Error setting image as primary:', error);
+      setError("Failed to set image as primary");
+      console.error("Error setting image as primary:", error);
     }
   };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!id) return;
-    
+
     try {
       setIsSaving(true);
       setError(null);
-      
+
       // Validate form data
       if (!formData.name.trim()) {
-        setError('Product name is required');
+        setError("Product name is required");
         return;
       }
-      
+
       if (!formData.description.trim()) {
-        setError('Product description is required');
+        setError("Product description is required");
         return;
       }
-      
-      if (!formData.price.trim() || isNaN(parseFloat(formData.price)) || parseFloat(formData.price) <= 0) {
-        setError('Please enter a valid price');
+
+      if (
+        !formData.price.trim() ||
+        isNaN(parseFloat(formData.price)) ||
+        parseFloat(formData.price) <= 0
+      ) {
+        setError("Please enter a valid price");
         return;
       }
-      
-      if (formData.salePrice.trim() && (isNaN(parseFloat(formData.salePrice)) || parseFloat(formData.salePrice) <= 0)) {
-        setError('Please enter a valid sale price');
+
+      if (
+        formData.salePrice.trim() &&
+        (isNaN(parseFloat(formData.salePrice)) ||
+          parseFloat(formData.salePrice) <= 0)
+      ) {
+        setError("Please enter a valid sale price");
         return;
       }
-      
+
       if (!formData.categoryId) {
-        setError('Please select a category');
+        setError("Please select a category");
         return;
       }
-      
-      if (!formData.inventory.trim() || isNaN(parseInt(formData.inventory)) || parseInt(formData.inventory) < 0) {
-        setError('Please enter a valid inventory quantity');
+
+      if (
+        !formData.inventory.trim() ||
+        isNaN(parseInt(formData.inventory)) ||
+        parseInt(formData.inventory) < 0
+      ) {
+        setError("Please enter a valid inventory quantity");
         return;
       }
-      
+
       // Update product
       const productData = {
         name: formData.name,
         description: formData.description,
         price: parseFloat(formData.price),
-        salePrice: formData.salePrice ? parseFloat(formData.salePrice) : undefined,
+        salePrice: formData.salePrice
+          ? parseFloat(formData.salePrice)
+          : undefined,
         categoryId: parseInt(formData.categoryId),
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+        tags: formData.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag),
         inventory: parseInt(formData.inventory),
-        isActive: formData.isActive
+        isActive: formData.isActive,
       };
-      
+
       await productService.updateProduct(id, productData);
-      
+
       // Upload new images if any
       if (imageFiles.length > 0) {
-        const hasPrimaryImage = existingImages.some(img => img.isPrimary);
-        
+        const hasPrimaryImage = existingImages.some((img) => img.isPrimary);
+
         for (let i = 0; i < imageFiles.length; i++) {
           const file = imageFiles[i];
           const isPrimary = !hasPrimaryImage && i === 0; // First image is primary if no primary exists
-          
-          await productService.uploadProductImage(
-            id,
-            file,
-            isPrimary,
-          );
+
+          await productService.uploadProductImage(id, file, isPrimary);
         }
       }
-      
+
       // Show success message
-      setSuccessMessage('Product updated successfully!');
-      
+      setSuccessMessage("Product updated successfully!");
+
       // Clear new images
-      imagePreviewUrls.forEach(url => URL.revokeObjectURL(url));
+      imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
       setImageFiles([]);
       setImagePreviewUrls([]);
-      
+
       // Reload the product data
       const updatedProduct = await productService.getProductById(id);
       setFormData({
         name: updatedProduct.name,
         description: updatedProduct.description,
         price: updatedProduct.price.toString(),
-        salePrice: updatedProduct.salePrice ? updatedProduct.salePrice.toString() : '',
-        categoryId: updatedProduct.categoryId.toString(),
-        tags: updatedProduct.tags?.join(', ') || '',
+        salePrice: updatedProduct.salePrice
+          ? updatedProduct.salePrice.toString()
+          : "",
+        categoryId: updatedProduct.category.id,
+        tags: updatedProduct.tags?.join(", ") || "",
         inventory: updatedProduct.inventory.toString(),
-        isActive: updatedProduct.isActive
+        isActive: updatedProduct.isActive,
       });
-      
+
       if (updatedProduct.images && updatedProduct.images.length > 0) {
-        setExistingImages(updatedProduct.images);
+        setExistingImages(
+          updatedProduct.images.map((image) => ({
+            id: image.id || "",
+            imageUrl: image.imageUrl,
+            isPrimary: image.isPrimary || false,
+          }))
+        );
       }
-      
     } catch (error) {
-      setError('Failed to update product');
-      console.error('Error updating product:', error);
+      setError("Failed to update product");
+      console.error("Error updating product:", error);
     } finally {
       setIsSaving(false);
     }
@@ -268,34 +300,37 @@ const VendorEditProductPage: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Edit Product</h1>
         <button
-          onClick={() => navigate('/vendor/products')}
+          onClick={() => navigate("/vendor/products")}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition duration-200"
         >
           Back to Products
         </button>
       </div>
-      
+
       {/* Success Message */}
       {successMessage && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-6">
           {successMessage}
         </div>
       )}
-      
+
       {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
           {error}
         </div>
       )}
-      
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Left Column */}
             <div className="space-y-6">
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Product Name*
                 </label>
                 <input
@@ -309,9 +344,12 @@ const VendorEditProductPage: React.FC = () => {
                   placeholder="Enter product name"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Description*
                 </label>
                 <textarea
@@ -325,10 +363,13 @@ const VendorEditProductPage: React.FC = () => {
                   placeholder="Enter product description"
                 ></textarea>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="price"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Price* ($)
                   </label>
                   <input
@@ -345,7 +386,10 @@ const VendorEditProductPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label htmlFor="salePrice" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="salePrice"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Sale Price ($)
                   </label>
                   <input
@@ -361,9 +405,12 @@ const VendorEditProductPage: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
               <div>
-                <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="categoryId"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Category*
                 </label>
                 <select
@@ -375,16 +422,19 @@ const VendorEditProductPage: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
                 >
                   <option value="">Select Category</option>
-                  {categories.map(category => (
+                  {categories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
                     </option>
                   ))}
                 </select>
               </div>
-              
+
               <div>
-                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="tags"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Tags (comma separated)
                 </label>
                 <input
@@ -397,9 +447,12 @@ const VendorEditProductPage: React.FC = () => {
                   placeholder="e.g. summer, discount, new"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="inventory" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="inventory"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Inventory*
                 </label>
                 <input
@@ -413,7 +466,7 @@ const VendorEditProductPage: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
                 />
               </div>
-              
+
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -423,20 +476,25 @@ const VendorEditProductPage: React.FC = () => {
                   onChange={handleInputChange}
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
-                <label htmlFor="isActive" className="ml-2 block text-sm text-gray-700">
+                <label
+                  htmlFor="isActive"
+                  className="ml-2 block text-sm text-gray-700"
+                >
                   Product is active and visible to customers
                 </label>
               </div>
             </div>
-            
+
             {/* Right Column - Image Upload */}
             <div>
               {/* Existing Images */}
               {existingImages.length > 0 && (
                 <div className="mb-6">
-                  <h4 className="block text-sm font-medium text-gray-700 mb-2">Current Images</h4>
+                  <h4 className="block text-sm font-medium text-gray-700 mb-2">
+                    Current Images
+                  </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {existingImages.map(image => (
+                    {existingImages.map((image) => (
                       <div key={image.id} className="relative group">
                         <div className="w-full aspect-w-1 aspect-h-1 bg-gray-200 rounded-md overflow-hidden">
                           <img
@@ -453,8 +511,18 @@ const VendorEditProductPage: React.FC = () => {
                               className="bg-indigo-500 text-white rounded-full p-1 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                               title="Set as primary"
                             >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M5 13l4 4L19 7"
+                                />
                               </svg>
                             </button>
                           )}
@@ -464,8 +532,18 @@ const VendorEditProductPage: React.FC = () => {
                             className="bg-red-500 text-white rounded-full p-1 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                             title="Remove image"
                           >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M6 18L18 6M6 6l12 12"
+                              />
                             </svg>
                           </button>
                         </div>
@@ -479,7 +557,7 @@ const VendorEditProductPage: React.FC = () => {
                   </div>
                 </div>
               )}
-              
+
               {/* Upload New Images */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -519,15 +597,19 @@ const VendorEditProductPage: React.FC = () => {
                       </label>
                       <p className="pl-1">or drag and drop</p>
                     </div>
-                    <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
+                    <p className="text-xs text-gray-500">
+                      PNG, JPG, GIF up to 5MB
+                    </p>
                   </div>
                 </div>
               </div>
-              
+
               {/* New Image Previews */}
               {imagePreviewUrls.length > 0 && (
                 <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">New Images to Upload</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                    New Images to Upload
+                  </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {imagePreviewUrls.map((previewUrl, index) => (
                       <div key={index} className="relative group">
@@ -543,8 +625,18 @@ const VendorEditProductPage: React.FC = () => {
                           onClick={() => removeNewImage(index)}
                           className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M6 18L18 6M6 6l12 12"
+                            />
                           </svg>
                         </button>
                       </div>
@@ -554,14 +646,14 @@ const VendorEditProductPage: React.FC = () => {
               )}
             </div>
           </div>
-          
+
           <div className="mt-8 flex justify-end">
             <button
               type="submit"
               disabled={isSaving}
               className="px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-200 disabled:opacity-50"
             >
-              {isSaving ? 'Saving Changes...' : 'Save Changes'}
+              {isSaving ? "Saving Changes..." : "Save Changes"}
             </button>
           </div>
         </form>

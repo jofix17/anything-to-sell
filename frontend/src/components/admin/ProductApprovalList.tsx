@@ -1,33 +1,25 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import Button from '../common/Button';
-
-
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  vendor: {
-    id: string;
-    name: string;
-  };
-  price: number;
-  submittedDate: string;
-  image: string;
-}
+import React from "react";
+import { Link } from "react-router-dom";
+import Button from "../common/Button";
+import { Product } from "../../types";
 
 interface ProductApprovalsListProps {
-  products: Product[];
+  products: Pick<
+    Product,
+    "id" | "name" | "price" | "createdAt" | "category" | "vendor" | "images"
+  >[];
 }
 
-const ProductApprovalsList: React.FC<ProductApprovalsListProps> = ({ products }) => {
+const ProductApprovalsList: React.FC<ProductApprovalsListProps> = ({
+  products,
+}) => {
   // Function to format date
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
     }).format(date);
   };
 
@@ -52,7 +44,10 @@ const ProductApprovalsList: React.FC<ProductApprovalsListProps> = ({ products })
           <div className="flex items-start">
             <div className="flex-shrink-0 mr-4">
               <img
-                src={product.image}
+                src={
+                  product.images[0]?.imageUrl ||
+                  "https://via.placeholder.com/150"
+                }
                 alt={product.name}
                 className="w-16 h-16 object-cover rounded-md"
               />
@@ -60,19 +55,25 @@ const ProductApprovalsList: React.FC<ProductApprovalsListProps> = ({ products })
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-start">
                 <div>
-                  <Link to={`/admin/products/${product.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                  <Link
+                    to={`/admin/products/${product.id}`}
+                    className="text-sm font-medium text-gray-900 hover:text-blue-600"
+                  >
                     {product.name}
                   </Link>
                   <div className="mt-1 flex flex-wrap items-center text-xs text-gray-500 gap-x-2">
-                    <span>{product.category}</span>
+                    <span>{product.category.name}</span>
                     <span>•</span>
                     <span>${product.price.toFixed(2)}</span>
                     <span>•</span>
-                    <span>Submitted: {formatDate(product.submittedDate)}</span>
+                    <span>Submitted: {formatDate(product.createdAt)}</span>
                   </div>
                   <div className="mt-1 text-xs">
                     <span className="text-gray-500">Vendor: </span>
-                    <Link to={`/admin/users/${product.vendor.id}`} className="text-blue-600 hover:text-blue-800">
+                    <Link
+                      to={`/admin/users/${product.vendor.id}`}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
                       {product.vendor.name}
                     </Link>
                   </div>

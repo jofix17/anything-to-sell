@@ -1,5 +1,7 @@
 // User types
-export type UserRole = 'admin' | 'vendor' | 'buyer';
+export type UserRole = "admin" | "vendor" | "buyer";
+export type DateRange = "7days" | "30days" | "90days" | "year";
+export type UserStatus = "active" | "inactive" | "suspended";
 
 export interface User {
   id: string;
@@ -13,6 +15,8 @@ export interface User {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  lastLoginAt?: string;
+  status: UserStatus;
 }
 
 export interface AuthState {
@@ -23,19 +27,28 @@ export interface AuthState {
   error: string | null;
 }
 
-// Product types
 export interface Category {
   id: string;
   name: string;
   description?: string;
   slug: string;
-  parentId?: string;
+  parentId: string | null;
   imageUrl?: string;
   createdAt: string;
   updatedAt: string;
+  children?: Category[];
 }
 
-export type ProductStatus = 'active' | 'inactive' | 'pending' | 'rejected';
+export interface CategoryCreateData {
+  name: string;
+  description?: string;
+  parentId: string | null;
+  imageFile?: File;
+}
+
+// Product types
+export type ProductStatus = "active" | "inactive" | "pending" | "rejected";
+export type ProductSortType = "price_asc" | "price_desc" | "newest" | "popular";
 
 export interface Product {
   id: string;
@@ -44,29 +57,39 @@ export interface Product {
   description: string;
   price: number;
   salePrice?: number;
-  categoryId: string;
-  category?: Category;
-  vendorId: string;
-  vendor?: User;
+  category: Category;
+  vendor: User;
   images: ProductImage[];
   tags: string[];
   isActive: boolean;
   isApproved: boolean;
   inventory: number;
+  updatedAt: string;
+  createdAt: string;
+  status: ProductStatus;
+  rejectionReason?: string;
+  reviewSummary?: ReviewSummary;
+  salesAnalytics?: SalesAnalytics;
+}
+
+export interface ReviewSummary {
   rating: number;
   reviewCount: number;
-  createdAt: string;
-  updatedAt: string;
-  status: ProductStatus
+  reviews: Review[];
+}
+
+export interface SalesAnalytics {
+  quantitySold: number;
+  totalRevenue: number;
 }
 
 export interface ProductImage {
-  id: string;
-  productId: string;
+  id?: string;
+  productId?: string;
   imageUrl: string;
-  isPrimary: boolean;
-  createdAt: string;
-  updatedAt: string;
+  isPrimary?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Review {
@@ -116,8 +139,13 @@ export interface Cart {
   taxAmount: number;
 }
 
-export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-export type OrderPaymentStatus = 'pending' | 'paid' | 'failed';
+export type OrderStatus =
+  | "pending"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
+export type OrderPaymentStatus = "pending" | "paid" | "failed";
 export interface Order {
   id: string;
   orderNumber: string;
@@ -173,7 +201,7 @@ export interface Message {
   sender?: User;
   receiverId: string;
   receiver?: User;
-  content: string; 
+  content: string;
   isRead: boolean;
   createdAt: string;
 }
@@ -186,7 +214,7 @@ export interface Conversation {
   unreadCount: number;
   updatedAt: string;
   subject: string;
-  status: 'open' | 'closed' | 'archived';
+  status: "open" | "closed" | "archived";
 }
 
 // Event types
@@ -198,7 +226,7 @@ export interface DiscountEvent {
   startDate: string;
   endDate: string;
   isActive: boolean;
-  appliesTo: 'all' | 'category' | 'products';
+  appliesTo: "all" | "category" | "products";
   categoryIds?: number[];
   productIds?: number[];
   createdAt: string;
@@ -228,7 +256,7 @@ export interface InventoryUpdateData {
 export interface SalesReportParams {
   startDate?: string;
   endDate?: string;
-  groupBy?: 'day' | 'week' | 'month';
+  groupBy?: "day" | "week" | "month";
 }
 
 // Add missing types for DiscountEventData
@@ -239,8 +267,8 @@ export interface DiscountEventData {
   startDate: string;
   endDate: string;
   isActive: boolean;
-  appliesTo: 'all' | 'category' | 'products';
-  categoryIds?: number[];
+  appliesTo: "all" | "category" | "products";
+  categoryIds?: string[];
   productIds?: string[];
 }
 
@@ -291,7 +319,7 @@ export interface VendorDashboardStats {
     revenue: number;
     orders: number;
   }[];
-  topProducts:Product[];
+  topProducts: Partial<Product>[];
   recentOrders: Order[];
 }
 
@@ -309,6 +337,12 @@ export interface AdminDashboardStats {
     status: string;
     count: number;
   }[];
-  recentUsers: User[];
-  pendingProducts: Product[];
+  recentUsers: Pick<
+    User,
+    "id" | "name" | "email" | "role" | "status" | "avatarUrl" | "createdAt"
+  >[];
+  pendingProducts: Pick<
+    Product,
+    "id" | "name" | "price" | "createdAt" | "category" | "vendor" | "images"
+  >[];
 }

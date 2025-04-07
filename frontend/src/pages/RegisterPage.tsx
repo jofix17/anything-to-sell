@@ -117,6 +117,7 @@ const RegisterPage: React.FC = () => {
       // If successful, useEffect will handle redirect
     } catch (error) {
       // Error notifications handled by the useEffect above
+      console.error('Registration error:', error);
       setIsSubmitting(false);
     }
   };

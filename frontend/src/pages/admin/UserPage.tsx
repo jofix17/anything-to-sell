@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import adminService from '../../services/adminService';
-import { User, PaginatedResponse } from '../../types/index'
+import { User } from '../../types/index';
 import { Formik, Form, Field } from 'formik';
 
-interface UsersPageProps {}
 
-const UsersPage: React.FC<UsersPageProps> = () => {
+
+const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,8 +58,8 @@ const UsersPage: React.FC<UsersPageProps> = () => {
         const response = await adminService.getUsers(params);
         
         setUsers(response.data);
-        setTotalUsers(response.meta.total);
-        setTotalPages(Math.ceil(response.meta.total / usersPerPage));
+        setTotalUsers(response.total);
+        setTotalPages(Math.ceil(response.total / usersPerPage));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load users');
       } finally {
@@ -126,7 +126,7 @@ const UsersPage: React.FC<UsersPageProps> = () => {
     }
   };
 
-  const handleActivateUser = async (userId: number) => {
+  const handleActivateUser = async (userId: string) => {
     try {
       setActionLoading(true);
       await adminService.activateUser(userId);
@@ -396,7 +396,7 @@ const UsersPage: React.FC<UsersPageProps> = () => {
                       {formatDate(user.createdAt)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      {user.lastLogin ? formatDate(user.lastLogin) : 'Never'}
+                      {user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'}
                     </td>
                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                       <div className="flex space-x-3 justify-end">

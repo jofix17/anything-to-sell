@@ -10,7 +10,6 @@ const VendorAddProductPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
   
   // Form state

@@ -101,6 +101,7 @@ class AuthService {
     try {
       return JSON.parse(userStr) as User;
     } catch (e) {
+      console.error('Error parsing user from local storage:', e);
       return null;
     }
   }

@@ -93,6 +93,7 @@ const VendorOrdersPage: React.FC = () => {
     try {
       return format(new Date(dateString), 'MMM dd, yyyy h:mm a');
     } catch (error) {
+      console.error('Error formatting date:', error);
       return dateString;
     }
   };

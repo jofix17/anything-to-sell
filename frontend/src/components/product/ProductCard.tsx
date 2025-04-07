@@ -107,7 +107,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Category */}
         {product.category && (
           <Link 
-            to={`/products?category=${product.categoryId}`}
+            to={`/products?category=${product.category.id}`}
             className="text-xs text-gray-500 hover:text-primary-600 mb-1 block"
           >
             {product.category.name}

@@ -18,10 +18,11 @@ const AdminUserDetailPage: React.FC = () => {
       try {
         setLoading(true);
         if (id) {
-          const userData = await adminService.getUserById(parseInt(id));
+          const userData = await adminService.getUserById(id);
           setUser(userData);
         }
       } catch (err) {
+        console.error(err);
         setError('Failed to load user details. Please try again.');
         toast.error('Failed to load user details');
       } finally {
@@ -36,11 +37,12 @@ const AdminUserDetailPage: React.FC = () => {
     try {
       setLoading(true);
       if (id && user) {
-        const updatedUser = await adminService.activateUser(parseInt(id));
+        const updatedUser = await adminService.activateUser(id);
         setUser(updatedUser);
         toast.success('User activated successfully');
       }
     } catch (err) {
+      console.error(err);
       toast.error('Failed to activate user');
     } finally {
       setLoading(false);
@@ -51,13 +53,14 @@ const AdminUserDetailPage: React.FC = () => {
     try {
       setLoading(true);
       if (id && user && suspendReason.trim()) {
-        const updatedUser = await adminService.suspendUser(parseInt(id), suspendReason);
+        const updatedUser = await adminService.suspendUser(id, suspendReason);
         setUser(updatedUser);
         setShowSuspendModal(false);
         setSuspendReason('');
         toast.success('User suspended successfully');
       }
     } catch (err) {
+      console.error(err);
       toast.error('Failed to suspend user');
     } finally {
       setLoading(false);
@@ -68,11 +71,12 @@ const AdminUserDetailPage: React.FC = () => {
     try {
       setLoading(true);
       if (id && user) {
-        const updatedUser = await adminService.updateUser(parseInt(id), userData);
+        const updatedUser = await adminService.updateUser(id, userData);
         setUser(updatedUser);
         toast.success('User updated successfully');
       }
     } catch (err) {
+      console.error(err);
       toast.error('Failed to update user');
     } finally {
       setLoading(false);

@@ -1,26 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify';
-import adminService from '../../services/adminService';
-import { DiscountEvent } from '../../types';
+import React, { useState, useEffect } from "react";
+import { toast } from "react-toastify";
+import adminService from "../../services/adminService";
+import { DiscountEvent } from "../../types";
+
+type FilterAppliedTo = "all" | "category" | "products";
 
 const AdminDiscountsPage: React.FC = () => {
   // State for discounts data
   const [discountEvents, setDiscountEvents] = useState<DiscountEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  
+
   // State for form modal
   const [showModal, setShowModal] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [editId, setEditId] = useState<string>('');
-  
+  const [editId, setEditId] = useState<string>("");
+
   // Form state
-  const [name, setName] = useState<string>('');
-  const [description, setDescription] = useState<string>('');
+  const [name, setName] = useState<string>("");
+  const [description, setDescription] = useState<string>("");
   const [discountPercentage, setDiscountPercentage] = useState<number>(10);
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [isActive, setIsActive] = useState<boolean>(true);
-  const [appliesTo, setAppliesTo] = useState<'all' | 'category' | 'products'>('all');
+  const [appliesTo, setAppliesTo] = useState<FilterAppliedTo>("all");
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
@@ -35,7 +37,8 @@ const AdminDiscountsPage: React.FC = () => {
       const events = await adminService.getDiscountEvents();
       setDiscountEvents(events);
     } catch (error) {
-      toast.error('Failed to load discount events');
+      console.error(error);
+      toast.error("Failed to load discount events");
     } finally {
       setLoading(false);
     }
@@ -49,23 +52,27 @@ const AdminDiscountsPage: React.FC = () => {
       setName(discount.name);
       setDescription(discount.description);
       setDiscountPercentage(discount.discountPercentage);
-      setStartDate(discount.startDate.split('T')[0]);
-      setEndDate(discount.endDate.split('T')[0]);
+      setStartDate(discount.startDate.split("T")[0]);
+      setEndDate(discount.endDate.split("T")[0]);
       setIsActive(discount.isActive);
       setAppliesTo(discount.appliesTo);
-      setSelectedCategoryIds(discount.categoryIds?.map(id => id.toString()) || []);
-      setSelectedProductIds(discount.productIds?.map(id => id.toString()) || []);
+      setSelectedCategoryIds(
+        discount.categoryIds?.map((id) => id.toString()) || []
+      );
+      setSelectedProductIds(
+        discount.productIds?.map((id) => id.toString()) || []
+      );
     } else {
       // Create mode
       setIsEditing(false);
-      setEditId('');
-      setName('');
-      setDescription('');
+      setEditId("");
+      setName("");
+      setDescription("");
       setDiscountPercentage(10);
-      setStartDate('');
-      setEndDate('');
+      setStartDate("");
+      setEndDate("");
       setIsActive(true);
-      setAppliesTo('all');
+      setAppliesTo("all");
       setSelectedCategoryIds([]);
       setSelectedProductIds([]);
     }
@@ -80,22 +87,22 @@ const AdminDiscountsPage: React.FC = () => {
     try {
       // Basic validation
       if (!name.trim()) {
-        toast.error('Please enter a discount name');
+        toast.error("Please enter a discount name");
         return;
       }
-      
+
       if (discountPercentage <= 0 || discountPercentage > 100) {
-        toast.error('Discount percentage must be between 1 and 100');
+        toast.error("Discount percentage must be between 1 and 100");
         return;
       }
-      
+
       if (!startDate || !endDate) {
-        toast.error('Please select start and end dates');
+        toast.error("Please select start and end dates");
         return;
       }
-      
+
       setLoading(true);
-      
+
       const payload = {
         name,
         description,
@@ -104,36 +111,38 @@ const AdminDiscountsPage: React.FC = () => {
         endDate,
         isActive,
         appliesTo,
-        categoryIds: appliesTo === 'category' ? selectedCategoryIds.map(id => Number(id)) : undefined,
-        productIds: appliesTo === 'products' ? selectedProductIds.map(id => Number(id)) : undefined
+        categoryIds: selectedCategoryIds,
+        productIds: selectedProductIds,
       };
-      
+
       if (isEditing && editId) {
-        await adminService.updateDiscountEvent(parseInt(editId), payload);
-        toast.success('Discount updated successfully');
+        await adminService.updateDiscountEvent(editId, payload);
+        toast.success("Discount updated successfully");
       } else {
         await adminService.createDiscountEvent(payload);
-        toast.success('Discount created successfully');
+        toast.success("Discount created successfully");
       }
-      
+
       setShowModal(false);
       fetchDiscountEvents();
     } catch (error) {
-      toast.error('Failed to save discount');
+      console.error(error);
+      toast.error("Failed to save discount");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteDiscount = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this discount?')) {
+    if (window.confirm("Are you sure you want to delete this discount?")) {
       try {
         setLoading(true);
-        await adminService.deleteDiscountEvent(parseInt(id));
-        toast.success('Discount deleted successfully');
+        await adminService.deleteDiscountEvent(id);
+        toast.success("Discount deleted successfully");
         fetchDiscountEvents();
       } catch (error) {
-        toast.error('Failed to delete discount');
+        console.error(error);
+        toast.error("Failed to delete discount");
       } finally {
         setLoading(false);
       }
@@ -144,15 +153,16 @@ const AdminDiscountsPage: React.FC = () => {
     try {
       setLoading(true);
       if (event.isActive) {
-        await adminService.deactivateDiscountEvent(parseInt(event.id));
-        toast.success('Discount deactivated');
+        await adminService.deactivateDiscountEvent(event.id);
+        toast.success("Discount deactivated");
       } else {
-        await adminService.activateDiscountEvent(parseInt(event.id));
-        toast.success('Discount activated');
+        await adminService.activateDiscountEvent(event.id);
+        toast.success("Discount activated");
       }
       fetchDiscountEvents();
     } catch (error) {
-      toast.error('Failed to update discount status');
+      console.error(error);
+      toast.error("Failed to update discount status");
     } finally {
       setLoading(false);
     }
@@ -220,25 +230,38 @@ const AdminDiscountsPage: React.FC = () => {
                 {discountEvents.map((event) => (
                   <tr key={event.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{event.name}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-xs">{event.description}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{event.discountPercentage}% Off</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900 capitalize">{event.appliesTo}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        {formatDate(event.startDate)} - {formatDate(event.endDate)}
+                      <div className="text-sm font-medium text-gray-900">
+                        {event.name}
+                      </div>
+                      <div className="text-sm text-gray-500 truncate max-w-xs">
+                        {event.description}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        event.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {event.isActive ? 'Active' : 'Inactive'}
+                      <div className="text-sm font-medium text-gray-900">
+                        {event.discountPercentage}% Off
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900 capitalize">
+                        {event.appliesTo}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {formatDate(event.startDate)} -{" "}
+                        {formatDate(event.endDate)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 py-1 text-xs rounded-full ${
+                          event.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {event.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -250,11 +273,13 @@ const AdminDiscountsPage: React.FC = () => {
                       </button>
                       <button
                         onClick={() => handleToggleActive(event)}
-                        className={event.isActive 
-                          ? "text-orange-600 hover:text-orange-900 mr-4" 
-                          : "text-green-600 hover:text-green-900 mr-4"}
+                        className={
+                          event.isActive
+                            ? "text-orange-600 hover:text-orange-900 mr-4"
+                            : "text-green-600 hover:text-green-900 mr-4"
+                        }
                       >
-                        {event.isActive ? 'Deactivate' : 'Activate'}
+                        {event.isActive ? "Deactivate" : "Activate"}
                       </button>
                       <button
                         onClick={() => handleDeleteDiscount(event.id)}
@@ -276,9 +301,9 @@ const AdminDiscountsPage: React.FC = () => {
         <div className="fixed inset-0 z-10 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white rounded-lg w-full max-w-md mx-auto p-6">
             <h2 className="text-xl font-semibold mb-4">
-              {isEditing ? 'Edit Discount' : 'Create New Discount'}
+              {isEditing ? "Edit Discount" : "Create New Discount"}
             </h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -293,7 +318,7 @@ const AdminDiscountsPage: React.FC = () => {
                   required
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Description
@@ -306,7 +331,7 @@ const AdminDiscountsPage: React.FC = () => {
                   rows={2}
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Discount Percentage (%)*
@@ -316,12 +341,14 @@ const AdminDiscountsPage: React.FC = () => {
                   min="1"
                   max="100"
                   value={discountPercentage}
-                  onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                  onChange={(e) =>
+                    setDiscountPercentage(Number(e.target.value))
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   required
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -348,7 +375,7 @@ const AdminDiscountsPage: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -357,18 +384,21 @@ const AdminDiscountsPage: React.FC = () => {
                   onChange={(e) => setIsActive(e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label htmlFor="isActive" className="ml-2 block text-sm text-gray-700">
+                <label
+                  htmlFor="isActive"
+                  className="ml-2 block text-sm text-gray-700"
+                >
                   Active
                 </label>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Applies To*
                 </label>
                 <select
                   value={appliesTo}
-                  onChange={(e) => setAppliesTo(e.target.value as any)}
+                  onChange={(e) => setAppliesTo(e.target.value as FilterAppliedTo)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="all">All Products</option>
@@ -376,39 +406,47 @@ const AdminDiscountsPage: React.FC = () => {
                   <option value="products">Specific Products</option>
                 </select>
               </div>
-              
+
               {/* We're simplifying category and product selection for now */}
-              {appliesTo === 'category' && (
+              {appliesTo === "category" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Category IDs (comma-separated)
                   </label>
                   <input
                     type="text"
-                    value={selectedCategoryIds.join(',')}
-                    onChange={(e) => setSelectedCategoryIds(e.target.value.split(',').map(item => item.trim()))}
+                    value={selectedCategoryIds.join(",")}
+                    onChange={(e) =>
+                      setSelectedCategoryIds(
+                        e.target.value.split(",").map((item) => item.trim())
+                      )
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="1,2,3"
                   />
                 </div>
               )}
-              
-              {appliesTo === 'products' && (
+
+              {appliesTo === "products" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Product IDs (comma-separated)
                   </label>
                   <input
                     type="text"
-                    value={selectedProductIds.join(',')}
-                    onChange={(e) => setSelectedProductIds(e.target.value.split(',').map(item => item.trim()))}
+                    value={selectedProductIds.join(",")}
+                    onChange={(e) =>
+                      setSelectedProductIds(
+                        e.target.value.split(",").map((item) => item.trim())
+                      )
+                    }
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="1,2,3"
                   />
                 </div>
               )}
             </div>
-            
+
             <div className="mt-6 flex justify-end space-x-3">
               <button
                 onClick={handleCloseModal}
@@ -421,7 +459,7 @@ const AdminDiscountsPage: React.FC = () => {
                 disabled={loading}
                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
               >
-                {loading ? 'Saving...' : isEditing ? 'Update' : 'Create'}
+                {loading ? "Saving..." : isEditing ? "Update" : "Create"}
               </button>
             </div>
           </div>

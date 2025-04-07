@@ -1,4 +1,8 @@
-import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
+import axios, {
+  AxiosInstance,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from "axios";
 
 // Create the API base URL configuration
 const API_BASE_URL =
@@ -55,7 +59,7 @@ class ApiService {
   }
 
   // Generic GET request
-  public async get<T>(url: string, params?: any): Promise<T> {
+  public async get<T, P = {}>(url: string, params?: P): Promise<T> {
     try {
       const response = await this.api.get<T>(url, { params });
       return response.data;

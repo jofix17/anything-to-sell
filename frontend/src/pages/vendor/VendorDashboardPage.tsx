@@ -7,14 +7,14 @@ import OrdersList from '../../components/vendor/OrderList';
 import SalesChart from '../../components/vendor/SalesChart';
 import TopProducts from '../../components/vendor/TopProducts';
 import Button from '../../components/common/Button';
-import { VendorDashboardStats } from '../../types';
-import { mockDashboardData } from '../../mocks/mockDashboardData';
+import { DateRange, VendorDashboardStats } from '../../types';
+import { mockVendorDashboardData } from '../../mocks/mockDashboardData';
 
 const VendorDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<VendorDashboardStats | null>(null);
-  const [dateRange, setDateRange] = useState<'7days' | '30days' | '90days' | 'year'>('30days');
+  const [dateRange, setDateRange] = useState<DateRange>('30days');
 
   // Fetch dashboard data
   useEffect(() => {
@@ -23,7 +23,7 @@ const VendorDashboardPage: React.FC = () => {
         setLoading(true);
         // Simulate API call with timeout
         setTimeout(() => {
-          setDashboardData(mockDashboardData);
+          setDashboardData(mockVendorDashboardData);
           setLoading(false);
         }, 1000);
       } catch (err) {
@@ -67,7 +67,7 @@ const VendorDashboardPage: React.FC = () => {
         <div className="mt-4 md:mt-0 flex items-center space-x-2">
           <select
             value={dateRange}
-            onChange={(e) => setDateRange(e.target.value as any)}
+            onChange={(e) => setDateRange(e.target.value as DateRange)}
             className="p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="7days">Last 7 Days</option>

@@ -77,6 +77,7 @@ const OrdersPage: React.FC = () => {
     try {
       return format(new Date(dateString), 'MMM dd, yyyy');
     } catch (error) {
+      console.error('Error formatting date:', error);
       return dateString;
     }
   };

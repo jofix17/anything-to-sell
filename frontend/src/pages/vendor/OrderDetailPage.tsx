@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import vendorService from '../../services/vendorService';
-import { Order, OrderStatus } from '../../types';
+import { Address, Order, OrderStatus } from '../../types';
 import { format } from 'date-fns';
 
 const VendorOrderDetailPage: React.FC = () => {
@@ -64,12 +64,13 @@ const VendorOrderDetailPage: React.FC = () => {
     try {
       return format(new Date(dateString), 'MMM dd, yyyy h:mm a');
     } catch (error) {
+      console.error('Error formatting date:', error);
       return dateString;
     }
   };
 
   // Format address helper
-  const formatAddress = (address: any) => {
+  const formatAddress = (address: Address) => {
     if (!address) return 'N/A';
     
     return (

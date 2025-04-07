@@ -10,7 +10,7 @@ import {
 } from '@heroicons/react/24/outline';
 import ProductList from '../components/product/ProductList';
 import Skeleton from '../components/common/Skeleton';
-import { Product, Category } from '../types';
+import { Product, Category, ProductSortType } from '../types';
 import productService from '../services/productService';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../components/layout/MainLayout';
@@ -31,7 +31,7 @@ const ProductsPage: React.FC = () => {
   
   // Filter state
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
-  const [priceRanges, setPriceRanges] = useState<Array<{ min: number; max: number; label: string }>>([
+  const [priceRanges,] = useState<Array<{ min: number; max: number; label: string }>>([
     { min: 0, max: 50, label: 'Under $50' },
     { min: 50, max: 100, label: '$50 - $100' },
     { min: 100, max: 200, label: '$100 - $200' },
@@ -48,7 +48,7 @@ const ProductsPage: React.FC = () => {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [perPage, setPerPage] = useState<number>(12);
+  const [perPage,] = useState<number>(12);
   
   // Sorting
   const sortOptions = [
@@ -99,7 +99,7 @@ const ProductsPage: React.FC = () => {
       categoryId: categoryId ? parseInt(categoryId) : undefined,
       minPrice: minPrice ? parseFloat(minPrice) : undefined,
       maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-      sort: sort as any || undefined,
+      sort: sort as ProductSortType || undefined,
       onSale: onSale === 'true' ? true : undefined,
       inStock: inStock === 'true' ? true : undefined,
     });
@@ -149,7 +149,7 @@ const ProductsPage: React.FC = () => {
     categoryId?: number;
     minPrice?: number;
     maxPrice?: number;
-    sort?: 'price_asc' | 'price_desc' | 'newest' | 'popular';
+    sort?: ProductSortType;
     onSale?: boolean;
     inStock?: boolean;
   }) => {
@@ -257,6 +257,7 @@ const ProductsPage: React.FC = () => {
         showNotification('Product added to wishlist', 'success');
       }
     } catch (error) {
+      console.error('Error updating wishlist:', error);
       showNotification('Failed to update wishlist', 'error');
     }
   };
