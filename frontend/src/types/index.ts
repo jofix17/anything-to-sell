@@ -19,6 +19,19 @@ export interface User {
   status: UserStatus;
 }
 
+export interface UserCreateInput {
+  name: string;
+  email: string;
+  password: string;
+  role?: string;
+}
+
+export interface UserUpdateInput {
+  name?: string;
+  email?: string;
+  role?: string;
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;
@@ -346,3 +359,5 @@ export interface AdminDashboardStats {
     "id" | "name" | "price" | "createdAt" | "category" | "vendor" | "images"
   >[];
 }
+
+
