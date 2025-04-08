@@ -6,28 +6,11 @@ import {
   ApiResponse,
   PaginatedResponse,
   ProductCreateData,
+  ProductFilterParams,
+  ReviewCreateData
 } from "../types";
 import { useApiQuery, useApiMutation, prefetchQuery, usePaginatedQuery } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
-
-interface ProductFilterParams {
-  categoryId?: number;
-  vendorId?: number;
-  minPrice?: number;
-  maxPrice?: number;
-  query?: string;
-  onSale?: boolean;
-  inStock?: boolean;
-  sortBy?: "price_asc" | "price_desc" | "newest" | "popular";
-  page?: number;
-  perPage?: number;
-}
-
-interface ReviewCreateData {
-  productId: string;
-  rating: number;
-  comment: string;
-}
 
 // Traditional API service methods
 class ProductService {
@@ -286,6 +269,30 @@ export const useUpdateReview = (id: string, options = {}) => {
 export const useDeleteReview = (options = {}) => {
   return useApiMutation(
     (id: string) => productService.deleteReview(id),
+    options
+  );
+};
+
+export const useUploadProductImage = (productId: string, options = {}) => {
+  return useApiMutation(
+    ({ file, isPrimary = false }: { file: File; isPrimary?: boolean }) => 
+      productService.uploadProductImage(productId, file, isPrimary),
+    options
+  );
+};
+
+export const useDeleteProductImage = (options = {}) => {
+  return useApiMutation(
+    ({ productId, imageId }: { productId: string; imageId: string }) => 
+      productService.deleteProductImage(productId, imageId),
+    options
+  );
+};
+
+export const useSetPrimaryImage = (options = {}) => {
+  return useApiMutation(
+    ({ productId, imageId }: { productId: string; imageId: string }) => 
+      productService.setPrimaryImage(productId, imageId),
     options
   );
 };

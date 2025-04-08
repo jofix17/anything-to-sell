@@ -1,7 +1,11 @@
 import apiService from './api';
 import { Message, Conversation, ApiResponse, PaginatedResponse } from '../types';
 import { io, Socket } from 'socket.io-client';
+import { useApiQuery, useApiMutation, usePaginatedQuery, invalidateQueries } from '../hooks/useQueryHooks';
+import { QueryKeys } from '../utils/queryKeys';
+import { useEffect } from 'react';
 
+// Traditional API service methods
 class ChatService {
   private socket: Socket | null = null;
   private messageListeners: Map<string, ((message: Message) => void)[]> = new Map();
@@ -48,6 +52,9 @@ class ChatService {
       const conversationId = message.id.toString();
       const listeners = this.messageListeners.get(conversationId) || [];
       listeners.forEach(listener => listener(message));
+      
+      // Also invalidate the related queries to trigger a refetch
+      invalidateQueries(QueryKeys.support.messages(conversationId));
     });
     
     this.socket.on('error', (error: any) => {
@@ -87,15 +94,13 @@ class ChatService {
   }
   
   // Get all conversations for the current user
-  async getConversations(): Promise<Conversation[]> {
-    const response = await apiService.get<ApiResponse<Conversation[]>>('/conversations');
-    return response.data;
+  async getConversations(): Promise<ApiResponse<Conversation[]>> {
+    return await apiService.get<ApiResponse<Conversation[]>>('/conversations');
   }
   
   // Get or create a conversation with another user
-  async getOrCreateConversation(userId: number): Promise<Conversation> {
-    const response = await apiService.post<ApiResponse<Conversation>>('/conversations', { userId });
-    return response.data;
+  async getOrCreateConversation(userId: number): Promise<ApiResponse<Conversation>> {
+    return await apiService.post<ApiResponse<Conversation>>('/conversations', { userId });
   }
   
   // Get messages for a conversation
@@ -107,38 +112,168 @@ class ChatService {
   }
   
   // Send a message
-  async sendMessage(conversationId: string, content: string): Promise<Message> {
-    const response = await apiService.post<ApiResponse<Message>>(`/conversations/${conversationId}/messages`, {
+  async sendMessage(conversationId: string, content: string): Promise<ApiResponse<Message>> {
+    return await apiService.post<ApiResponse<Message>>(`/conversations/${conversationId}/messages`, {
       content
     });
-    return response.data;
   }
   
   // Mark messages as read
-  async markAsRead(conversationId: string): Promise<void> {
-    await apiService.patch<ApiResponse<null>>(`/conversations/${conversationId}/read`);
+  async markAsRead(conversationId: string): Promise<ApiResponse<null>> {
+    return await apiService.patch<ApiResponse<null>>(`/conversations/${conversationId}/read`);
   }
   
   // Support chat for vendors and admin
-  async getSupportConversations(status?: 'open' | 'closed'): Promise<Conversation[]> {
-    const response = await apiService.get<ApiResponse<Conversation[]>>('/support/conversations', { status });
-    return response.data;
+  async getSupportConversations(status?: 'open' | 'closed'): Promise<ApiResponse<Conversation[]>> {
+    return await apiService.get<ApiResponse<Conversation[]>>('/support/conversations', { status });
   }
   
   // Create a support conversation (for buyers)
-  async createSupportConversation(subject: string, message: string): Promise<Conversation> {
-    const response = await apiService.post<ApiResponse<Conversation>>('/support/conversations', {
+  async createSupportConversation(subject: string, message: string): Promise<ApiResponse<Conversation>> {
+    return await apiService.post<ApiResponse<Conversation>>('/support/conversations', {
       subject,
       message
     });
-    return response.data;
   }
   
   // Close a support conversation
-  async closeSupportConversation(conversationId: string): Promise<void> {
-    await apiService.patch<ApiResponse<null>>(`/support/conversations/${conversationId}/close`);
+  async closeSupportConversation(conversationId: string): Promise<ApiResponse<null>> {
+    return await apiService.patch<ApiResponse<null>>(`/support/conversations/${conversationId}/close`);
   }
 }
 
+// Create the standard service instance
 const chatService = new ChatService();
+
+// React Query hooks
+
+// Custom hook for managing socket connection
+export const useChatSocket = () => {
+  useEffect(() => {
+    chatService.connectSocket();
+    
+    return () => {
+      chatService.disconnectSocket();
+    };
+  }, []);
+  
+  return {
+    joinConversation: chatService.joinConversation.bind(chatService),
+    leaveConversation: chatService.leaveConversation.bind(chatService),
+    addMessageListener: chatService.addMessageListener.bind(chatService),
+    removeMessageListener: chatService.removeMessageListener.bind(chatService),
+  };
+};
+
+// Hook for getting all conversations
+export const useConversations = (options = {}) => {
+  return useApiQuery(
+    ['conversations'],
+    () => chatService.getConversations(),
+    options
+  );
+};
+
+// Hook for getting or creating a conversation
+export const useGetOrCreateConversation = (options = {}) => {
+  return useApiMutation(
+    (userId: number) => chatService.getOrCreateConversation(userId),
+    options
+  );
+};
+
+// Hook for getting messages in a conversation
+export const useConversationMessages = (
+  conversationId: string, 
+  page = 1, 
+  perPage = 20, 
+  options = {}
+) => {
+  return usePaginatedQuery(
+    QueryKeys.support.messages(conversationId),
+    () => chatService.getMessages(conversationId, page, perPage),
+    {
+      ...options,
+      enabled: !!conversationId, // Only run query if conversationId is provided
+    }
+  );
+};
+
+// Hook for sending a message
+export const useSendMessage = (options = {}) => {
+  return useApiMutation(
+    ({ conversationId, content }: { conversationId: string; content: string }) => 
+      chatService.sendMessage(conversationId, content),
+    options
+  );
+};
+
+// Hook for marking messages as read
+export const useMarkMessagesAsRead = (options = {}) => {
+  return useApiMutation(
+    (conversationId: string) => chatService.markAsRead(conversationId),
+    options
+  );
+};
+
+// Hook for support conversations
+export const useSupportConversations = (status?: 'open' | 'closed', options = {}) => {
+  return useApiQuery(
+    QueryKeys.support.conversations(status),
+    () => chatService.getSupportConversations(status),
+    options
+  );
+};
+
+// Hook for creating a support conversation
+export const useCreateSupportConversation = (options = {}) => {
+  return useApiMutation(
+    ({ subject, message }: { subject: string; message: string }) => 
+      chatService.createSupportConversation(subject, message),
+    options
+  );
+};
+
+// Hook for closing a support conversation
+export const useCloseSupportConversation = (options = {}) => {
+  return useApiMutation(
+    (conversationId: string) => chatService.closeSupportConversation(conversationId),
+    options
+  );
+};
+
+// Custom hook to automatically join a conversation and handle listeners
+export const useConversation = (conversationId: string) => {
+  const { joinConversation, leaveConversation } = useChatSocket();
+  
+  useEffect(() => {
+    if (conversationId) {
+      joinConversation(conversationId);
+      
+      return () => {
+        leaveConversation(conversationId);
+      };
+    }
+  }, [conversationId, joinConversation, leaveConversation]);
+  
+  const messagesQuery = useConversationMessages(conversationId);
+  const sendMessageMutation = useSendMessage({
+    onSuccess: () => {
+      // Automatically refetch messages when we send a new one
+      invalidateQueries(QueryKeys.support.messages(conversationId));
+    },
+  });
+  const markAsReadMutation = useMarkMessagesAsRead();
+  
+  return {
+    messages: messagesQuery.data,
+    isLoading: messagesQuery.isLoading,
+    error: messagesQuery.error,
+    sendMessage: (content: string) => sendMessageMutation.mutate({ conversationId, content }),
+    isSending: sendMessageMutation.isPending,
+    markAsRead: () => markAsReadMutation.mutate(conversationId),
+  };
+};
+
+// Export the original service for cases where direct API calls are needed
 export default chatService;

@@ -1,7 +1,21 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Cart } from '../types';
-import cartService from '../services/cartService';
-import { useAuth } from './AuthContext';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { Cart, ApiResponse } from "../types";
+import {
+  useCart as useCartQuery,
+  useAddToCart,
+  useUpdateCartItem,
+  useRemoveCartItem,
+  useClearCart,
+} from "../services/cartService";
+import { useAuth } from "./AuthContext";
+import { invalidateQueries } from "../hooks/useQueryHooks";
+import { QueryKeys } from "../utils/queryKeys";
 
 interface CartContextType {
   cart: Cart | null;
@@ -16,7 +30,9 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const CartProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [cartState, setCartState] = useState<{
     cart: Cart | null;
     isLoading: boolean;
@@ -29,12 +45,48 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const { isAuthenticated } = useAuth();
 
-  // Load cart when user is authenticated
+  // Use React Query hook to fetch cart data
+  const {
+    data: cartData,
+    isLoading: isCartLoading,
+    error: cartError,
+    refetch,
+  } = useCartQuery({
+    enabled: isAuthenticated, // Only fetch cart if user is authenticated
+    onSuccess: (response: ApiResponse<Cart>) => {
+      setCartState((prevState) => ({
+        ...prevState,
+        cart: response.data,
+        isLoading: false,
+        error: null,
+      }));
+    },
+    onError: (error: unknown) => {
+      setCartState((prevState) => ({
+        ...prevState,
+        isLoading: false,
+        error: error instanceof Error ? error.message : "Failed to load cart",
+      }));
+    },
+  });
+
+  // Set up mutation hooks
+  const addToCartMutation = useAddToCart();
+  const updateCartItemMutation = useUpdateCartItem();
+  const removeCartItemMutation = useRemoveCartItem();
+  const clearCartMutation = useClearCart();
+
+  // Update cart loading state
   useEffect(() => {
-    if (isAuthenticated) {
-      refreshCart();
-    } else {
-      // Clear cart when user logs out
+    setCartState((prevState) => ({
+      ...prevState,
+      isLoading: isCartLoading,
+    }));
+  }, [isCartLoading]);
+
+  // Clear cart when user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
       setCartState({
         cart: null,
         isLoading: false,
@@ -48,24 +100,19 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!isAuthenticated) return;
 
     try {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const cart = await cartService.getCart();
-
-      setCartState({
-        cart,
-        isLoading: false,
-        error: null,
-      });
+      await refetch();
     } catch (error) {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load cart',
+        error:
+          error instanceof Error ? error.message : "Failed to refresh cart",
       }));
     }
   };
@@ -73,27 +120,31 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Add item to cart
   const addToCart = async (productId: string, quantity: number) => {
     try {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const updatedCart = await cartService.addToCart({
+      const result = await addToCartMutation.mutateAsync({
         productId,
         quantity,
       });
 
       setCartState({
-        cart: updatedCart,
+        cart: result.data,
         isLoading: false,
         error: null,
       });
+
+      // Invalidate cart query to ensure consistency
+      invalidateQueries(QueryKeys.cart.current);
     } catch (error) {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to add item to cart',
+        error:
+          error instanceof Error ? error.message : "Failed to add item to cart",
       }));
       throw error;
     }
@@ -102,27 +153,31 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Update cart item quantity
   const updateCartItem = async (cartItemId: string, quantity: number) => {
     try {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const updatedCart = await cartService.updateCartItem({
+      const result = await updateCartItemMutation.mutateAsync({
         cartItemId,
         quantity,
       });
 
       setCartState({
-        cart: updatedCart,
+        cart: result.data,
         isLoading: false,
         error: null,
       });
+
+      // Invalidate cart query to ensure consistency
+      invalidateQueries(QueryKeys.cart.current);
     } catch (error) {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to update cart item',
+        error:
+          error instanceof Error ? error.message : "Failed to update cart item",
       }));
       throw error;
     }
@@ -131,24 +186,30 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Remove item from cart
   const removeCartItem = async (cartItemId: string) => {
     try {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const updatedCart = await cartService.removeCartItem(cartItemId);
+      const result = await removeCartItemMutation.mutateAsync(cartItemId);
 
       setCartState({
-        cart: updatedCart,
+        cart: result.data,
         isLoading: false,
         error: null,
       });
+
+      // Invalidate cart query to ensure consistency
+      invalidateQueries(QueryKeys.cart.current);
     } catch (error) {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to remove item from cart',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to remove item from cart",
       }));
       throw error;
     }
@@ -157,24 +218,27 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Clear entire cart
   const clearCart = async () => {
     try {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      await cartService.clearCart();
+      await clearCartMutation.mutateAsync({});
 
       setCartState({
         cart: null,
         isLoading: false,
         error: null,
       });
+
+      // Invalidate cart query to ensure consistency
+      invalidateQueries(QueryKeys.cart.current);
     } catch (error) {
-      setCartState(prevState => ({
+      setCartState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to clear cart',
+        error: error instanceof Error ? error.message : "Failed to clear cart",
       }));
       throw error;
     }
@@ -200,7 +264,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 export const useCart = (): CartContextType => {
   const context = useContext(CartContext);
   if (context === undefined) {
-    throw new Error('useCart must be used within a CartProvider');
+    throw new Error("useCart must be used within a CartProvider");
   }
   return context;
 };

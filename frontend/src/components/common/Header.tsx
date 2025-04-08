@@ -1,28 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { 
-  ShoppingCartIcon, 
-  UserIcon, 
-  HeartIcon, 
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  ShoppingCartIcon,
+  UserIcon,
+  HeartIcon,
   Bars3Icon as MenuIcon,
   MagnifyingGlassIcon as SearchIcon,
   ChevronDownIcon,
   XMarkIcon as XIcon,
-} from '@heroicons/react/24/outline';
-import { useAuth } from '../../context/AuthContext';
-import { useCart } from '../../context/CartContext';
-import productService from '../../services/productService';
-import { Category } from '../../types';
+} from "@heroicons/react/24/outline";
+import { useAuth } from "../../context/AuthContext";
+import { useCart } from "../../context/CartContext";
+import productService from "../../services/productService";
+import { Category } from "../../types";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
   isMobileMenuOpen: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen }) => {
+const Header: React.FC<HeaderProps> = ({
+  onMobileMenuToggle,
+  isMobileMenuOpen,
+}) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -36,8 +39,8 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
       setIsScrolled(window.scrollY > 10);
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Fetch categories
@@ -45,9 +48,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
     const fetchCategories = async () => {
       try {
         const categoryData = await productService.getCategories();
-        setCategories(categoryData);
+        setCategories(categoryData.data);
       } catch (error) {
-        console.error('Failed to fetch categories:', error);
+        console.error("Failed to fetch categories:", error);
       }
     };
 
@@ -60,7 +63,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
     if (searchQuery.trim()) {
       navigate(`/products?query=${encodeURIComponent(searchQuery)}`);
       setIsSearchOpen(false);
-      setSearchQuery('');
+      setSearchQuery("");
     }
   };
 
@@ -68,9 +71,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/');
+      navigate("/");
     } catch (error) {
-      console.error('Logout failed:', error);
+      console.error("Logout failed:", error);
     }
   };
 
@@ -78,8 +81,8 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
     <header
       className={`fixed w-full z-50 transition-all duration-300 ${
         isScrolled || isMobileMenuOpen || isSearchOpen
-          ? 'bg-white shadow-md py-2'
-          : 'bg-transparent py-4'
+          ? "bg-white shadow-md py-2"
+          : "bg-transparent py-4"
       }`}
     >
       <div className="container mx-auto px-4">
@@ -98,11 +101,12 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
 
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link
-              to="/"
-              className="flex items-center"
-            >
-              <span className={`font-bold text-xl ${isScrolled ? 'text-gray-900' : 'text-primary-600'}`}>
+            <Link to="/" className="flex items-center">
+              <span
+                className={`font-bold text-xl ${
+                  isScrolled ? "text-gray-900" : "text-primary-600"
+                }`}
+              >
                 Marketplace
               </span>
             </Link>
@@ -113,30 +117,38 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
             <Link
               to="/"
               className={`text-sm font-semibold ${
-                isScrolled ? 'text-gray-700 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                isScrolled
+                  ? "text-gray-700 hover:text-gray-900"
+                  : "text-gray-800 hover:text-primary-600"
               }`}
             >
               Home
             </Link>
-            
+
             {/* Categories dropdown */}
             <div className="relative">
               <button
                 className={`flex items-center text-sm font-semibold ${
-                  isScrolled ? 'text-gray-700 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                  isScrolled
+                    ? "text-gray-700 hover:text-gray-900"
+                    : "text-gray-800 hover:text-primary-600"
                 }`}
-                onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+                onClick={() =>
+                  setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
+                }
               >
                 Categories
                 <ChevronDownIcon className="w-4 h-4 ml-1" />
               </button>
-              
+
               {isCategoryDropdownOpen && (
                 <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-md shadow-lg py-2 z-50">
                   {categories.length === 0 ? (
-                    <div className="px-4 py-2 text-sm text-gray-500">Loading categories...</div>
+                    <div className="px-4 py-2 text-sm text-gray-500">
+                      Loading categories...
+                    </div>
                   ) : (
-                    categories.map(category => (
+                    categories.map((category) => (
                       <Link
                         key={category.id}
                         to={`/products?category=${category.id}`}
@@ -163,25 +175,31 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
             <Link
               to="/products"
               className={`text-sm font-semibold ${
-                isScrolled ? 'text-gray-700 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                isScrolled
+                  ? "text-gray-700 hover:text-gray-900"
+                  : "text-gray-800 hover:text-primary-600"
               }`}
             >
               Shop
             </Link>
-            
+
             <Link
               to="/about"
               className={`text-sm font-semibold ${
-                isScrolled ? 'text-gray-700 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                isScrolled
+                  ? "text-gray-700 hover:text-gray-900"
+                  : "text-gray-800 hover:text-primary-600"
               }`}
             >
               About
             </Link>
-            
+
             <Link
               to="/contact"
               className={`text-sm font-semibold ${
-                isScrolled ? 'text-gray-700 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                isScrolled
+                  ? "text-gray-700 hover:text-gray-900"
+                  : "text-gray-800 hover:text-primary-600"
               }`}
             >
               Contact
@@ -194,7 +212,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
             <button
               onClick={() => setIsSearchOpen(!isSearchOpen)}
               className={`p-2 rounded-md ${
-                isScrolled ? 'text-gray-600 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                isScrolled
+                  ? "text-gray-600 hover:text-gray-900"
+                  : "text-gray-800 hover:text-primary-600"
               } hover:bg-gray-100`}
             >
               <SearchIcon className="w-5 h-5" />
@@ -205,7 +225,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
               <Link
                 to="/wishlist"
                 className={`p-2 rounded-md ${
-                  isScrolled ? 'text-gray-600 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                  isScrolled
+                    ? "text-gray-600 hover:text-gray-900"
+                    : "text-gray-800 hover:text-primary-600"
                 } hover:bg-gray-100`}
               >
                 <HeartIcon className="w-5 h-5" />
@@ -216,13 +238,15 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
             <Link
               to="/cart"
               className={`p-2 rounded-md ${
-                isScrolled ? 'text-gray-600 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                isScrolled
+                  ? "text-gray-600 hover:text-gray-900"
+                  : "text-gray-800 hover:text-primary-600"
               } hover:bg-gray-100 relative`}
             >
               <ShoppingCartIcon className="w-5 h-5" />
               {cart && cart.totalItems > 0 && (
                 <span className="absolute -top-1 -right-1 bg-primary-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {cart.totalItems > 9 ? '9+' : cart.totalItems}
+                  {cart.totalItems > 9 ? "9+" : cart.totalItems}
                 </span>
               )}
             </Link>
@@ -233,20 +257,26 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                   className={`flex items-center space-x-1 p-2 rounded-md ${
-                    isScrolled ? 'text-gray-600 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                    isScrolled
+                      ? "text-gray-600 hover:text-gray-900"
+                      : "text-gray-800 hover:text-primary-600"
                   } hover:bg-gray-100`}
                 >
-                  <span className="hidden sm:block text-sm font-medium">{user?.firstName}</span>
+                  <span className="hidden sm:block text-sm font-medium">
+                    {user?.firstName}
+                  </span>
                   <UserIcon className="w-5 h-5" />
                 </button>
-                
+
                 {isUserDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
                     <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">{user?.firstName} {user?.lastName}</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {user?.firstName} {user?.lastName}
+                      </p>
                       <p className="text-xs text-gray-500">{user?.email}</p>
                     </div>
-                    
+
                     {/* Profile link */}
                     <Link
                       to="/profile"
@@ -255,7 +285,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
                     >
                       Profile
                     </Link>
-                    
+
                     {/* Orders link */}
                     <Link
                       to="/orders"
@@ -264,9 +294,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
                     >
                       Orders
                     </Link>
-                    
+
                     {/* Admin dashboard link for admins */}
-                    {user?.role === 'admin' && (
+                    {user?.role === "admin" && (
                       <Link
                         to="/admin/dashboard"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -275,9 +305,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
                         Admin Dashboard
                       </Link>
                     )}
-                    
+
                     {/* Vendor dashboard link for vendors */}
-                    {user?.role === 'vendor' && (
+                    {user?.role === "vendor" && (
                       <Link
                         to="/vendor/dashboard"
                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -286,7 +316,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
                         Vendor Dashboard
                       </Link>
                     )}
-                    
+
                     {/* Logout button */}
                     <button
                       onClick={() => {
@@ -304,10 +334,14 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle, isMobileMenuOpen })
               <Link
                 to="/login"
                 className={`p-2 rounded-md ${
-                  isScrolled ? 'text-gray-600 hover:text-gray-900' : 'text-gray-800 hover:text-primary-600'
+                  isScrolled
+                    ? "text-gray-600 hover:text-gray-900"
+                    : "text-gray-800 hover:text-primary-600"
                 } hover:bg-gray-100 flex items-center space-x-1`}
               >
-                <span className="hidden sm:block text-sm font-medium">Login</span>
+                <span className="hidden sm:block text-sm font-medium">
+                  Login
+                </span>
                 <UserIcon className="w-5 h-5" />
               </Link>
             )}

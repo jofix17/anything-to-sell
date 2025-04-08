@@ -1,29 +1,33 @@
 import apiService from './api';
-import { Product, Order, ApiResponse, PaginatedResponse, VendorStoreData, InventoryUpdateData, SalesReportParams, OrderStatus } from '../types';
+import {
+  Product,
+  Order,
+  ApiResponse,
+  PaginatedResponse,
+  VendorStoreData,
+  InventoryUpdateData,
+  SalesReportParams,
+  OrderStatus,
+  StoreDetails,
+  VendorDashboardStats,
+  VendorOrderParams,
+  SalesReport,
+  ProductPerformance,
+  PaymentHistoryParams,
+  PaymentHistoryItem,
+  PaymentDetails
+} from '../types';
+import { useApiQuery, useApiMutation, usePaginatedQuery } from '../hooks/useQueryHooks';
+import { QueryKeys } from '../utils/queryKeys';
 
+// Traditional API service methods
 class VendorService {
   // Store management
-  async getStoreDetails(): Promise<{
-    id: string;
-    name: string;
-    description: string;
-    logoUrl: string;
-    bannerUrl: string;
-    contactEmail: string;
-    contactPhone: string;
-    address: string;
-    city: string;
-    state: string;
-    country: string;
-    postalCode: string;
-    createdAt: string;
-    updatedAt: string;
-  }> {
-    const response = await apiService.get<ApiResponse<any>>('/vendor/store');
-    return response.data;
+  async getStoreDetails(): Promise<ApiResponse<StoreDetails>> {
+    return await apiService.get<ApiResponse<StoreDetails>>('/vendor/store');
   }
   
-  async updateStore(storeData: Partial<VendorStoreData>): Promise<any> {
+  async updateStore(storeData: Partial<VendorStoreData>): Promise<ApiResponse<StoreDetails>> {
     const formData = new FormData();
     
     Object.entries(storeData).forEach(([key, value]) => {
@@ -36,8 +40,7 @@ class VendorService {
       }
     });
     
-    const response = await apiService.put<ApiResponse<any>>('/vendor/store', formData);
-    return response.data;
+    return await apiService.put<ApiResponse<StoreDetails>>('/vendor/store', formData);
   }
   
   // Inventory management
@@ -51,103 +54,172 @@ class VendorService {
     return await apiService.get<PaginatedResponse<Product>>('/vendor/products', params);
   }
   
-  async updateInventory(updates: InventoryUpdateData[]): Promise<void> {
-    await apiService.patch<ApiResponse<null>>('/vendor/inventory/batch', { updates });
+  async updateInventory(updates: InventoryUpdateData[]): Promise<ApiResponse<null>> {
+    return await apiService.patch<ApiResponse<null>>('/vendor/inventory/batch', { updates });
   }
   
-  async updateProductStatus(productId: string, isActive: boolean): Promise<Product> {
-    const response = await apiService.patch<ApiResponse<Product>>(`/vendor/products/${productId}/status`, {
+  async updateProductStatus(productId: string, isActive: boolean): Promise<ApiResponse<Product>> {
+    return await apiService.patch<ApiResponse<Product>>(`/vendor/products/${productId}/status`, {
       isActive
     });
-    return response.data;
   }
   
   // Order management
-  async getVendorOrders(params: {
-    page?: number;
-    perPage?: number;
-    status?: OrderStatus
-    startDate?: string;
-    endDate?: string;
-  } = {}): Promise<PaginatedResponse<Order>> {
+  async getVendorOrders(params: VendorOrderParams = {}): Promise<PaginatedResponse<Order>> {
     return await apiService.get<PaginatedResponse<Order>>('/vendor/orders', params);
   }
   
-  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
-    const response = await apiService.patch<ApiResponse<Order>>(`/vendor/orders/${orderId}/status`, { status });
-    return response.data;
+  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<ApiResponse<Order>> {
+    return await apiService.patch<ApiResponse<Order>>(`/vendor/orders/${orderId}/status`, { status });
   }
   
-  async getOrderById(orderId: string): Promise<Order> {
-    const response = await apiService.get<ApiResponse<Order>>(`/vendor/orders/${orderId}`);
-    return response.data;
+  async getOrderById(orderId: string): Promise<ApiResponse<Order>> {
+    return await apiService.get<ApiResponse<Order>>(`/vendor/orders/${orderId}`);
   }
   
   // Analytics and reporting
-  async getDashboardStats(): Promise<{
-    totalProducts: number;
-    totalOrders: number;
-    totalRevenue: number;
-    pendingOrders: number;
-    recentOrders: Order[];
-    topProducts: { product: Product; totalSold: number }[];
-  }> {
-    const response = await apiService.get<ApiResponse<any>>('/vendor/dashboard/stats');
-    return response.data;
+  async getDashboardStats(): Promise<ApiResponse<VendorDashboardStats>> {
+    return await apiService.get<ApiResponse<VendorDashboardStats>>('/vendor/dashboard/stats');
   }
   
-  async getSalesReport(params: SalesReportParams = {}): Promise<{
-    totalSales: number;
-    totalRevenue: number;
-    salesByPeriod: { period: string; sales: number; revenue: number }[];
-    salesByCategory: { category: string; sales: number; revenue: number }[];
-  }> {
-    const response = await apiService.get<ApiResponse<any>>('/vendor/reports/sales', params);
-    return response.data;
+  async getSalesReport(params: SalesReportParams = {}): Promise<ApiResponse<SalesReport>> {
+    return await apiService.get<ApiResponse<SalesReport>>('/vendor/reports/sales', params);
   }
   
-  async getProductPerformance(productId: string): Promise<{
-    totalSales: number;
-    totalRevenue: number;
-    salesByPeriod: { period: string; sales: number; revenue: number }[];
-    averageRating: number;
-    views: number;
-    conversionRate: number;
-  }> {
-    const response = await apiService.get<ApiResponse<any>>(`/vendor/reports/products/${productId}/performance`);
-    return response.data;
+  async getProductPerformance(productId: string): Promise<ApiResponse<ProductPerformance>> {
+    return await apiService.get<ApiResponse<ProductPerformance>>(`/vendor/reports/products/${productId}/performance`);
   }
   
   // Payment management
-  async getPaymentHistory(params: {
-    page?: number;
-    perPage?: number;
-    startDate?: string;
-    endDate?: string;
-  } = {}): Promise<PaginatedResponse<{
-    id: string;
-    amount: number;
-    status: 'pending' | 'paid' | 'failed';
-    createdAt: string;
-  }>
-  > {
-    return await apiService.get<PaginatedResponse<any>>('/vendor/payments', params);
+  async getPaymentHistory(params: PaymentHistoryParams = {}): Promise<PaginatedResponse<PaymentHistoryItem>> {
+    return await apiService.get<PaginatedResponse<PaymentHistoryItem>>('/vendor/payments', params);
   }
   
-  async getPaymentDetails(paymentId: string): Promise<{
-    id: string;
-    amount: number;
-    fee: number;
-    netAmount: number;
-    orders: { id: string; amount: number }[];
-    status: 'pending' | 'paid' | 'failed';
-    paidAt: string;
-    createdAt: string;
-  }> {
-    const response = await apiService.get<ApiResponse<any>>(`/vendor/payments/${paymentId}`);
-    return response.data;
+  async getPaymentDetails(paymentId: string): Promise<ApiResponse<PaymentDetails>> {
+    return await apiService.get<ApiResponse<PaymentDetails>>(`/vendor/payments/${paymentId}`);
   }
 }
 
+// Create the standard service instance
 const vendorService = new VendorService();
+
+// React Query hooks
+export const useVendorStoreDetails = (options = {}) => {
+  return useApiQuery(
+    QueryKeys.vendor.store,
+    () => vendorService.getStoreDetails(),
+    options
+  );
+};
+
+export const useUpdateStore = (options = {}) => {
+  return useApiMutation(
+    (storeData: Partial<VendorStoreData>) => vendorService.updateStore(storeData),
+    options
+  );
+};
+
+export const useVendorProducts = (params: {
+  page?: number;
+  perPage?: number;
+  status?: 'active' | 'inactive' | 'pending' | 'rejected';
+  categoryId?: string;
+  query?: string;
+} = {}, options = {}) => {
+  return usePaginatedQuery(
+    QueryKeys.vendor.products(params),
+    () => vendorService.getVendorProducts(params),
+    options
+  );
+};
+
+export const useUpdateInventory = (options = {}) => {
+  return useApiMutation(
+    (updates: InventoryUpdateData[]) => vendorService.updateInventory(updates),
+    options
+  );
+};
+
+export const useUpdateProductStatus = (options = {}) => {
+  return useApiMutation(
+    ({ productId, isActive }: { productId: string; isActive: boolean }) => 
+      vendorService.updateProductStatus(productId, isActive),
+    options
+  );
+};
+
+export const useVendorOrders = (params: VendorOrderParams = {}, options = {}) => {
+  return usePaginatedQuery(
+    QueryKeys.vendor.orders(params),
+    () => vendorService.getVendorOrders(params),
+    options
+  );
+};
+
+export const useUpdateOrderStatus = (options = {}) => {
+  return useApiMutation(
+    ({ orderId, status }: { orderId: string; status: OrderStatus }) => 
+      vendorService.updateOrderStatus(orderId, status),
+    options
+  );
+};
+
+export const useVendorOrderDetail = (orderId: string, options = {}) => {
+  return useApiQuery(
+    [...QueryKeys.vendor.orders({}), 'detail', orderId],
+    () => vendorService.getOrderById(orderId),
+    {
+      ...options,
+      enabled: !!orderId, // Only run query if orderId is provided
+    }
+  );
+};
+
+export const useVendorDashboardStats = (options = {}) => {
+  return useApiQuery(
+    QueryKeys.vendor.dashboard,
+    () => vendorService.getDashboardStats(),
+    options
+  );
+};
+
+export const useVendorSalesReport = (params: SalesReportParams = {}, options = {}) => {
+  return useApiQuery(
+    QueryKeys.vendor.salesReport(params),
+    () => vendorService.getSalesReport(params),
+    options
+  );
+};
+
+export const useProductPerformance = (productId: string, options = {}) => {
+  return useApiQuery(
+    [...QueryKeys.vendor.products({}), 'performance', productId],
+    () => vendorService.getProductPerformance(productId),
+    {
+      ...options,
+      enabled: !!productId, // Only run query if productId is provided
+    }
+  );
+};
+
+export const usePaymentHistory = (params: PaymentHistoryParams = {}, options = {}) => {
+  return usePaginatedQuery(
+    [...QueryKeys.vendor.orders({}), 'payments', params],
+    () => vendorService.getPaymentHistory(params),
+    options
+  );
+};
+
+export const usePaymentDetails = (paymentId: string, options = {}) => {
+  return useApiQuery(
+    [...QueryKeys.vendor.orders({}), 'payments', 'detail', paymentId],
+    () => vendorService.getPaymentDetails(paymentId),
+    {
+      ...options,
+      enabled: !!paymentId, // Only run query if paymentId is provided
+    }
+  );
+};
+
+// Export the original service for cases where direct API calls are needed
 export default vendorService;

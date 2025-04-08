@@ -1,27 +1,11 @@
 import apiService from './api';
-import { User, ApiResponse } from '../types';
+import { User, ApiResponse, LoginCredentials, RegisterData, AuthResponse, PasswordChangeData, PasswordResetData } from '../types';
+import { useApiQuery, useApiMutation } from '../hooks/useQueryHooks';
+import { QueryKeys } from '../utils/queryKeys';
 
-interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-interface RegisterData {
-  email: string;
-  password: string;
-  passwordConfirmation: string;
-  firstName: string;
-  lastName: string;
-  role: 'buyer' | 'vendor';
-}
-
-interface AuthResponse {
-  user: User;
-  token: string;
-}
-
+// Traditional API service methods
 class AuthService {
-  async login(credentials: LoginCredentials): Promise<AuthResponse> {
+  async login(credentials: LoginCredentials): Promise<ApiResponse<AuthResponse>> {
     const response = await apiService.post<ApiResponse<AuthResponse>>('/auth/login', credentials);
     
     // Store token and user in local storage
@@ -30,10 +14,10 @@ class AuthService {
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     
-    return response.data;
+    return response;
   }
   
-  async register(userData: RegisterData): Promise<AuthResponse> {
+  async register(userData: RegisterData): Promise<ApiResponse<AuthResponse>> {
     const response = await apiService.post<ApiResponse<AuthResponse>>('/auth/register', userData);
     
     // Store token and user in local storage
@@ -42,27 +26,29 @@ class AuthService {
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     
-    return response.data;
+    return response;
   }
   
-  async logout(): Promise<void> {
+  async logout(): Promise<ApiResponse<null>> {
     try {
-      await apiService.post<ApiResponse<null>>('/auth/logout');
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
+      const response = await apiService.post<ApiResponse<null>>('/auth/logout');
       // Always clear local storage regardless of API response
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      return response;
+    } catch (error) {
+      // Always clear local storage regardless of API response
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      throw error;
     }
   }
   
-  async getCurrentUser(): Promise<User> {
-    const response = await apiService.get<ApiResponse<User>>('/auth/me');
-    return response.data;
+  async getCurrentUser(): Promise<ApiResponse<User>> {
+    return await apiService.get<ApiResponse<User>>('/auth/me');
   }
   
-  async updateProfile(userData: Partial<User>): Promise<User> {
+  async updateProfile(userData: Partial<User>): Promise<ApiResponse<User>> {
     const response = await apiService.put<ApiResponse<User>>('/auth/profile', userData);
     
     // Update the stored user data
@@ -72,23 +58,23 @@ class AuthService {
       localStorage.setItem('user', JSON.stringify(updatedUser));
     }
     
-    return response.data;
+    return response;
   }
   
-  async changePassword(data: { currentPassword: string; newPassword: string; passwordConfirmation: string }): Promise<void> {
-    await apiService.post<ApiResponse<null>>('/auth/change-password', data);
+  async changePassword(data: PasswordChangeData): Promise<ApiResponse<null>> {
+    return await apiService.post<ApiResponse<null>>('/auth/change-password', data);
   }
   
-  async requestPasswordReset(email: string): Promise<void> {
-    await apiService.post<ApiResponse<null>>('/auth/forgot-password', { email });
+  async requestPasswordReset(email: string): Promise<ApiResponse<null>> {
+    return await apiService.post<ApiResponse<null>>('/auth/forgot-password', { email });
   }
   
-  async resetPassword(data: { token: string; password: string; passwordConfirmation: string }): Promise<void> {
-    await apiService.post<ApiResponse<null>>('/auth/reset-password', data);
+  async resetPassword(data: PasswordResetData): Promise<ApiResponse<null>> {
+    return await apiService.post<ApiResponse<null>>('/auth/reset-password', data);
   }
   
-  async verifyEmail(token: string): Promise<void> {
-    await apiService.post<ApiResponse<null>>(`/auth/verify-email/${token}`);
+  async verifyEmail(token: string): Promise<ApiResponse<null>> {
+    return await apiService.post<ApiResponse<null>>(`/auth/verify-email/${token}`);
   }
   
   isAuthenticated(): boolean {
@@ -112,5 +98,120 @@ class AuthService {
   }
 }
 
+// Create the standard service instance
 const authService = new AuthService();
+
+// React Query hooks
+export const useCurrentUser = (options = {}) => {
+  return useApiQuery(
+    QueryKeys.auth.currentUser,
+    () => authService.getCurrentUser(),
+    {
+      ...options,
+      enabled: authService.isAuthenticated(), // Only fetch if authenticated
+    }
+  );
+};
+
+export const useLogin = (options = {}) => {
+  return useApiMutation(
+    (credentials: LoginCredentials) => authService.login(credentials),
+    {
+      ...options,
+      onError: (error: unknown) => {
+        console.error('Login error:', error);
+        if (options && 'onError' in options && typeof options.onError === 'function') {
+          options.onError(error);
+        }
+      },
+    }
+  );
+};
+
+export const useRegister = (options = {}) => {
+  return useApiMutation(
+    (userData: RegisterData) => authService.register(userData),
+    {
+      ...options,
+      onError: (error: unknown) => {
+        console.error('Registration error:', error);
+        if (options && 'onError' in options && typeof options.onError === 'function') {
+          options.onError(error);
+        }
+      },
+    }
+  );
+};
+
+export const useLogout = (options = {}) => {
+  return useApiMutation(
+    () => authService.logout(),
+    {
+      ...options,
+      onSuccess: (data: ApiResponse<null>) => {
+        console.log('Logout successful:', data.message);
+        if (options && 'onSuccess' in options && typeof options.onSuccess === 'function') {
+          options.onSuccess(data, {});
+        }
+      },
+      onError: (error: unknown) => {
+        console.error('Logout error:', error);
+        if (options && 'onError' in options && typeof options.onError === 'function') {
+          options.onError(error);
+        }
+      },
+    }
+  );
+};
+
+export const useUpdateProfile = (options = {}) => {
+  return useApiMutation(
+    (userData: Partial<User>) => authService.updateProfile(userData),
+    {
+      ...options,
+      onSuccess: (data: ApiResponse<User>) => {
+        console.log('Profile updated:', data.data);
+        if (options && 'onSuccess' in options && typeof options.onSuccess === 'function') {
+          options.onSuccess(data, {});
+        }
+      },
+      onError: (error: unknown) => {
+        console.error('Profile update error:', error);
+        if (options && 'onError' in options && typeof options.onError === 'function') {
+          options.onError(error);
+        }
+      },
+    }
+  );
+};
+
+export const useChangePassword = (options = {}) => {
+  return useApiMutation(
+    (data: PasswordChangeData) => authService.changePassword(data),
+    options
+  );
+};
+
+export const useRequestPasswordReset = (options = {}) => {
+  return useApiMutation(
+    (email: string) => authService.requestPasswordReset(email),
+    options
+  );
+};
+
+export const useResetPassword = (options = {}) => {
+  return useApiMutation(
+    (data: PasswordResetData) => authService.resetPassword(data),
+    options
+  );
+};
+
+export const useVerifyEmail = (options = {}) => {
+  return useApiMutation(
+    (token: string) => authService.verifyEmail(token),
+    options
+  );
+};
+
+// Export the original service for cases where direct API calls are needed
 export default authService;

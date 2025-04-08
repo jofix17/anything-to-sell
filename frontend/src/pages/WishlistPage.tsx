@@ -1,36 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import wishlistService, { WishlistItem } from '../services/wishlistService';
+import { useWishlist, useRemoveFromWishlist } from '../services/wishlistService';
 
 const WishlistPage: React.FC = () => {
   const { addToCart } = useCart();
-  const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [addingToCart, setAddingToCart] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    const fetchWishlist = async () => {
-      try {
-        setIsLoading(true);
-        
-        const response = await wishlistService.getWishlist();
-        setWishlistItems(response);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load wishlist.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchWishlist();
-  }, []);
+  // Use React Query hooks for wishlist
+  const { 
+    data: wishlistResponse,
+    isLoading,
+    error
+  } = useWishlist();
+  
+  const wishlistItems = wishlistResponse?.data || [];
+  
+  // Use mutation hook for removing from wishlist
+  const removeFromWishlistMutation = useRemoveFromWishlist();
 
   const handleRemoveFromWishlist = async (wishlistItemId: string) => {
     try {
-      await wishlistService.removeFromWishlist(wishlistItemId);
-      setWishlistItems(wishlistItems.filter(item => item.id !== wishlistItemId));
+      await removeFromWishlistMutation.mutateAsync(wishlistItemId);
     } catch (err) {
       console.error('Failed to remove item from wishlist:', err);
     }
@@ -70,7 +61,7 @@ const WishlistPage: React.FC = () => {
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Error</h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>{error}</p>
+                <p>{error instanceof Error ? error.message : 'Failed to load wishlist.'}</p>
               </div>
             </div>
           </div>
@@ -175,9 +166,10 @@ const WishlistPage: React.FC = () => {
                 </button>
                 <button
                   onClick={() => handleRemoveFromWishlist(item.id)}
-                  className="flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  disabled={removeFromWishlistMutation.isPending && removeFromWishlistMutation.variables === item.id}
+                  className="flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
                 >
-                  Remove from Wishlist
+                  {removeFromWishlistMutation.isPending && removeFromWishlistMutation.variables === item.id ? 'Removing...' : 'Remove from Wishlist'}
                 </button>
               </div>
             </div>

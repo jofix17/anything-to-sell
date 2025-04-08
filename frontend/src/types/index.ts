@@ -40,6 +40,39 @@ export interface AuthState {
   error: string | null;
 }
 
+// Auth service interfaces
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  password: string;
+  passwordConfirmation: string;
+  firstName: string;
+  lastName: string;
+  role: 'buyer' | 'vendor';
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
+}
+
+export interface PasswordChangeData {
+  currentPassword: string;
+  newPassword: string;
+  passwordConfirmation: string;
+}
+
+export interface PasswordResetData {
+  token: string;
+  password: string;
+  passwordConfirmation: string;
+}
+
+// Category types
 export interface Category {
   id: string;
   name: string;
@@ -116,6 +149,26 @@ export interface Review {
   updatedAt: string;
 }
 
+export interface ProductFilterParams {
+  categoryId?: number;
+  vendorId?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  query?: string;
+  onSale?: boolean;
+  inStock?: boolean;
+  sortBy?: ProductSortType;
+  page?: number;
+  perPage?: number;
+}
+
+export interface ReviewCreateData {
+  productId: string;
+  rating: number;
+  comment: string;
+}
+
+// Store settings
 export interface StoreSettings {
   id: string;
   name: string;
@@ -152,6 +205,22 @@ export interface Cart {
   taxAmount: number;
 }
 
+export interface AddToCartData {
+  productId: string;
+  quantity: number;
+}
+
+export interface UpdateCartItemData {
+  cartItemId: string;
+  quantity: number;
+}
+
+export interface CreateOrderData {
+  shippingAddressId: string;
+  billingAddressId: string;
+  paymentMethodId: string;
+}
+
 export type OrderStatus =
   | "pending"
   | "processing"
@@ -159,6 +228,7 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 export type OrderPaymentStatus = "pending" | "paid" | "failed";
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -246,7 +316,19 @@ export interface DiscountEvent {
   updatedAt: string;
 }
 
-// Add missing types for VendorStoreData, InventoryUpdateData, etc.
+export interface DiscountEventData {
+  name: string;
+  description: string;
+  discountPercentage: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  appliesTo: "all" | "category" | "products";
+  categoryIds?: string[];
+  productIds?: string[];
+}
+
+// Vendor types
 export interface VendorStoreData {
   name: string;
   description: string;
@@ -272,52 +354,87 @@ export interface SalesReportParams {
   groupBy?: "day" | "week" | "month";
 }
 
-// Add missing types for DiscountEventData
-export interface DiscountEventData {
+export interface StoreDetails {
+  id: string;
   name: string;
   description: string;
-  discountPercentage: number;
-  startDate: string;
-  endDate: string;
-  isActive: boolean;
-  appliesTo: "all" | "category" | "products";
-  categoryIds?: string[];
-  productIds?: string[];
-}
-
-// API response types
-export interface ApiResponse<T> {
-  data: T;
-  message: string;
-  success: boolean;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  perPage: number;
-  totalPages: number;
-}
-
-export interface WishlistItem {
-  id: string;
-  productId: string;
-  userId: string;
+  logoUrl: string;
+  bannerUrl: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  postalCode: string;
   createdAt: string;
   updatedAt: string;
-  product: Product;
 }
 
-export interface ProductCreateData {
-  name: string;
-  description: string;
-  price: number;
-  salePrice?: number;
-  categoryId: number;
-  tags?: string[];
-  inventory: number;
-  isActive: boolean;
+export interface VendorOrderParams {
+  page?: number;
+  perPage?: number;
+  status?: OrderStatus;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface SalesReport {
+  totalSales: number;
+  totalRevenue: number;
+  salesByPeriod: { period: string; sales: number; revenue: number }[];
+  salesByCategory: { category: string; sales: number; revenue: number }[];
+}
+
+export interface ProductPerformance {
+  totalSales: number;
+  totalRevenue: number;
+  salesByPeriod: { period: string; sales: number; revenue: number }[];
+  averageRating: number;
+  views: number;
+  conversionRate: number;
+}
+
+export interface PaymentHistoryParams {
+  page?: number;
+  perPage?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface PaymentHistoryItem {
+  id: string;
+  amount: number;
+  status: 'pending' | 'paid' | 'failed';
+  createdAt: string;
+}
+
+export interface PaymentDetails {
+  id: string;
+  amount: number;
+  fee: number;
+  netAmount: number;
+  orders: { id: string; amount: number }[];
+  status: 'pending' | 'paid' | 'failed';
+  paidAt: string;
+  createdAt: string;
+}
+
+// Admin types
+export interface UserFilterParams {
+  role?: UserRole;
+  isActive?: boolean;
+  query?: string;
+  page?: number;
+  perPage?: number;
+}
+
+export interface ProductApprovalParams {
+  status?: "pending" | "approved" | "rejected";
+  vendorId?: number;
+  categoryId?: number;
+  page?: number;
+  perPage?: number;
 }
 
 export interface VendorDashboardStats {
@@ -360,4 +477,38 @@ export interface AdminDashboardStats {
   >[];
 }
 
+// Wishlist types
+export interface WishlistItem {
+  id: string;
+  productId: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  product: Product;
+}
 
+export interface ProductCreateData {
+  name: string;
+  description: string;
+  price: number;
+  salePrice?: number;
+  categoryId: number;
+  tags?: string[];
+  inventory: number;
+  isActive: boolean;
+}
+
+// API response types
+export interface ApiResponse<T> {
+  data: T;
+  message: string;
+  success: boolean;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+}

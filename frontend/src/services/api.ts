@@ -6,7 +6,7 @@ import axios, {
 
 // Create the API base URL configuration
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:3001/api/v1";
+  import.meta.env.REACT_APP_API_URL || "http://localhost:3001/api/v1";
 
 // Create a class for handling API requests
 class ApiService {

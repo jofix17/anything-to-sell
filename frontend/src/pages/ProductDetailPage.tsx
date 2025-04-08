@@ -1,120 +1,65 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import StarRating from "../components/common/StarRating";
 import ProductImageGallery from "../components/product/ProductImageGallery";
-
 import ProductReviews from "../components/product/ProductReviews";
 import QuantitySelector from "../components/common/QuantitySelector";
 import Button from "../components/common/Button";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { toast } from "react-toastify";
 import RelatedProducts from "../components/product/RelatedProducts";
-
-// Product interface
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  discountedPrice?: number;
-  images: string[];
-  category: string;
-  subcategory?: string;
-  vendor: {
-    id: string;
-    name: string;
-    rating: number;
-  };
-  rating: number;
-  reviewCount: number;
-  stockQuantity: number;
-  specifications: {
-    [key: string]: string;
-  };
-  tags: string[];
-  isFeatured: boolean;
-  inWishlist?: boolean;
-}
+import { useProductDetail } from "../services/productService";
+import {
+  useToggleWishlist,
+  useIsProductInWishlist,
+} from "../services/wishlistService";
+import { ApiResponse, WishlistItem } from "../types";
 
 const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { addToCart } = useCart();
 
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<
     "description" | "specifications" | "reviews"
   >("description");
-  const [inWishlist, setInWishlist] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchProductDetails = async () => {
-      try {
-        setLoading(true);
-        // In a real app, this would be an API call
-        // const response = await api.get(`/products/${id}`);
-        // setProduct(response.data);
+  // Fetch product data using React Query
+  const {
+    data: productResponse,
+    isLoading,
+    error,
+  } = useProductDetail(id || "", {
+    enabled: !!id,
+  });
 
-        // For now, simulate API call with timeout
-        setTimeout(() => {
-          const mockProduct: Product = {
-            id: id || "1",
-            name: "Premium Wireless Headphones",
-            description:
-              "Experience immersive sound with our premium wireless headphones. Featuring active noise cancellation, 30-hour battery life, and comfortable over-ear design for extended listening sessions.",
-            price: 299.99,
-            discountedPrice: 249.99,
-            images: [
-              "https://via.placeholder.com/600x400?text=Headphones+Main",
-              "https://via.placeholder.com/600x400?text=Headphones+Side",
-              "https://via.placeholder.com/600x400?text=Headphones+Folded",
-              "https://via.placeholder.com/600x400?text=Headphones+Case",
-            ],
-            category: "Electronics",
-            subcategory: "Audio",
-            vendor: {
-              id: "v123",
-              name: "AudioTech Pro",
-              rating: 4.8,
-            },
-            rating: 4.7,
-            reviewCount: 128,
-            stockQuantity: 42,
-            specifications: {
-              "Driver Size": "40mm",
-              "Frequency Response": "20Hz-20kHz",
-              "Bluetooth Version": "5.2",
-              "Battery Life": "30 hours",
-              Weight: "280g",
-              "Color Options": "Black, White, Navy Blue",
-              Warranty: "2 years",
-            },
-            tags: ["wireless", "noise-cancelling", "bluetooth", "over-ear"],
-            isFeatured: true,
-            inWishlist: user ? Math.random() > 0.5 : false,
-          };
+  // Check if product is in wishlist
+  const { data: wishlistResponse } = useIsProductInWishlist(id || "", {
+    enabled: !!id && isAuthenticated,
+  });
 
-          setProduct(mockProduct);
-          setInWishlist(mockProduct.inWishlist || false);
-          setLoading(false);
-        }, 800);
-      } catch (err) {
-        setError("Failed to load product details. Please try again later.");
-        setLoading(false);
-        console.error("Error fetching product:", err);
-      }
-    };
+  const inWishlist = wishlistResponse?.data?.exists || false;
 
-    if (id) {
-      fetchProductDetails();
-    }
-  }, [id, user]);
+  // Setup wishlist toggle mutation
+  const toggleWishlistMutation = useToggleWishlist({
+    onSuccess: (
+      response: ApiResponse<{ added: boolean; item?: WishlistItem }>
+    ) => {
+      const added = response.data.added;
+      toast.success(
+        added ? "Added to your wishlist" : "Removed from your wishlist"
+      );
+    },
+    onError: () => {
+      toast.error("Failed to update wishlist. Please try again.");
+    },
+  });
+
+  const product = productResponse?.data;
 
   const handleQuantityChange = (newQuantity: number) => {
     setQuantity(newQuantity);
@@ -132,33 +77,19 @@ const ProductDetailPage: React.FC = () => {
     navigate("/checkout");
   };
 
-  const toggleWishlist = async () => {
+  const handleToggleWishlist = async () => {
     if (!isAuthenticated) {
       toast.info("Please log in to add items to your wishlist");
       navigate("/login");
       return;
     }
 
-    // In a real app, this would be an API call
-    // try {
-    //   if (inWishlist) {
-    //     await api.delete(`/wishlist/${product?.id}`);
-    //   } else {
-    //     await api.post('/wishlist', { productId: product?.id });
-    //   }
-    //   setInWishlist(!inWishlist);
-    // } catch (err) {
-    //   toast.error('Failed to update wishlist. Please try again.');
-    // }
-
-    // For now, just toggle the state
-    setInWishlist(!inWishlist);
-    toast.success(
-      inWishlist ? "Removed from your wishlist" : "Added to your wishlist"
-    );
+    if (product) {
+      toggleWishlistMutation.mutate(product.id);
+    }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner size="large" />
@@ -170,7 +101,7 @@ const ProductDetailPage: React.FC = () => {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
         <h2 className="text-2xl font-bold text-red-600 mb-4">
-          {error || "Product not found"}
+          {error instanceof Error ? error.message : "Product not found"}
         </h2>
         <p className="mb-6">
           The product you're looking for might have been removed or is
@@ -186,12 +117,21 @@ const ProductDetailPage: React.FC = () => {
     );
   }
 
-  const isInStock = product.stockQuantity > 0;
-  const discount = product.discountedPrice
-    ? Math.round(
-        ((product.price - product.discountedPrice) / product.price) * 100
-      )
+  // Parse product data according to our actual Product interface
+  const isInStock = product.inventory > 0;
+  const discount = product.salePrice
+    ? Math.round(((product.price - product.salePrice) / product.price) * 100)
     : 0;
+
+  // Extract primary image and other images for the gallery
+  const primaryImage =
+    product.images.find((img) => img.isPrimary)?.imageUrl ||
+    (product.images.length > 0 ? product.images[0].imageUrl : "");
+  const productImages = product.images.map((img) => img.imageUrl);
+
+  // Get rating and review count from reviewSummary
+  const rating = product.reviewSummary?.rating || 0;
+  const reviewCount = product.reviewSummary?.reviewCount || 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -212,22 +152,11 @@ const ProductDetailPage: React.FC = () => {
           </li>
           <li className="flex items-center">
             <Link
-              to={`/products?category=${product.category}`}
+              to={`/products?category=${product.category.id}`}
               className="text-gray-500 hover:text-blue-600"
             >
-              {product.category}
+              {product.category.name}
             </Link>
-            {product.subcategory && (
-              <>
-                <span className="mx-2 text-gray-500">/</span>
-                <Link
-                  to={`/products?category=${product.category}&subcategory=${product.subcategory}`}
-                  className="text-gray-500 hover:text-blue-600"
-                >
-                  {product.subcategory}
-                </Link>
-              </>
-            )}
             <span className="mx-2 text-gray-500">/</span>
           </li>
           <li className="text-gray-700 font-medium truncate">{product.name}</li>
@@ -239,7 +168,7 @@ const ProductDetailPage: React.FC = () => {
         {/* Product Images */}
         <div className="lg:w-1/2">
           <ProductImageGallery
-            images={product.images}
+            images={productImages}
             productName={product.name}
           />
         </div>
@@ -252,28 +181,21 @@ const ProductDetailPage: React.FC = () => {
               className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 mb-2"
             >
               {product.vendor.name}
-              <StarRating
-                rating={product.vendor.rating}
-                size="small"
-                showLabel={false}
-              />
             </Link>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               {product.name}
             </h1>
 
             <div className="flex items-center gap-2 mb-4">
-              <StarRating rating={product.rating} size="medium" />
-              <span className="text-gray-600">
-                ({product.reviewCount} reviews)
-              </span>
+              <StarRating rating={rating} size="medium" />
+              <span className="text-gray-600">({reviewCount} reviews)</span>
             </div>
 
             <div className="mb-4">
-              {product.discountedPrice ? (
+              {product.salePrice ? (
                 <div className="flex items-center gap-3">
                   <span className="text-3xl font-bold text-gray-900">
-                    ${product.discountedPrice.toFixed(2)}
+                    ${product.salePrice.toFixed(2)}
                   </span>
                   <span className="text-xl text-gray-500 line-through">
                     ${product.price.toFixed(2)}
@@ -301,7 +223,7 @@ const ProductDetailPage: React.FC = () => {
               </span>
               {isInStock && (
                 <span className="text-gray-600 text-sm">
-                  {product.stockQuantity} items available
+                  {product.inventory} items available
                 </span>
               )}
             </div>
@@ -316,7 +238,7 @@ const ProductDetailPage: React.FC = () => {
                     <QuantitySelector
                       quantity={quantity}
                       onChange={handleQuantityChange}
-                      max={product.stockQuantity}
+                      max={product.inventory}
                     />
                   </div>
                 )}
@@ -341,13 +263,14 @@ const ProductDetailPage: React.FC = () => {
                     Buy Now
                   </Button>
                   <Button
-                    onClick={toggleWishlist}
+                    onClick={handleToggleWishlist}
                     variant="outline"
                     size="large"
                     className="w-12 flex-shrink-0"
                     aria-label={
                       inWishlist ? "Remove from wishlist" : "Add to wishlist"
                     }
+                    disabled={toggleWishlistMutation.isPending}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -473,7 +396,7 @@ const ProductDetailPage: React.FC = () => {
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
               }`}
             >
-              Reviews ({product.reviewCount})
+              Reviews ({reviewCount})
             </button>
           </nav>
         </div>
@@ -482,13 +405,6 @@ const ProductDetailPage: React.FC = () => {
           {activeTab === "description" && (
             <div className="prose max-w-none">
               <p className="mb-4">{product.description}</p>
-              <p>
-                Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam
-                auctor, nisl eget ultricies lacinia, nisl nisl aliquet nisl,
-                eget aliquet nisl nisl eget nisl. Nullam auctor, nisl eget
-                ultricies lacinia, nisl nisl aliquet nisl, eget aliquet nisl
-                nisl eget nisl.
-              </p>
               <h3 className="text-lg font-semibold mt-6 mb-3">Features:</h3>
               <ul className="list-disc pl-5 space-y-2">
                 <li>Active noise cancellation for immersive sound</li>
@@ -507,18 +423,50 @@ const ProductDetailPage: React.FC = () => {
             <div className="overflow-hidden">
               <table className="min-w-full divide-y divide-gray-200">
                 <tbody className="divide-y divide-gray-200">
-                  {Object.entries(product.specifications).map(
-                    ([key, value]) => (
-                      <tr key={key}>
-                        <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                          {key}
-                        </td>
-                        <td className="py-4 px-4 text-sm text-gray-700">
-                          {value}
-                        </td>
-                      </tr>
-                    )
-                  )}
+                  <tr>
+                    <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      SKU
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700">
+                      {product.sku}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      Category
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700">
+                      {product.category.name}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      Brand
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700">
+                      {product.vendor.name}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      Weight
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700">280g</td>
+                  </tr>
+                  <tr>
+                    <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      Dimensions
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700">
+                      7.5 x 6.1 x 3.2 inches
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-4 px-4 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      Warranty
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700">2 years</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -527,8 +475,8 @@ const ProductDetailPage: React.FC = () => {
           {activeTab === "reviews" && (
             <ProductReviews
               productId={product.id}
-              rating={product.rating}
-              reviewCount={product.reviewCount}
+              rating={rating}
+              reviewCount={reviewCount}
             />
           )}
         </div>
@@ -541,7 +489,7 @@ const ProductDetailPage: React.FC = () => {
         </h2>
         <RelatedProducts
           currentProductId={product.id}
-          category={product.category}
+          category={product.category.id}
           tags={product.tags}
         />
       </div>

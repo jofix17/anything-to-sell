@@ -1,13 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import cartService from '../services/cartService';
-import { Order } from '../types';
+import { useOrders, useCancelOrder } from '../services/cartService';
 import { format } from 'date-fns';
 
 const OrdersPage: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const location = useLocation();
   
@@ -15,35 +11,30 @@ const OrdersPage: React.FC = () => {
   const successMessage = location.state?.success;
   const successOrderId = location.state?.orderId;
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
-
-  const fetchOrders = async () => {
-    try {
-      setIsLoading(true);
-      const response = await cartService.getOrders();
-      setOrders(response);
-    } catch (error) {
-      setError('Failed to load orders. Please try again later.');
-      console.error('Error fetching orders:', error);
-    } finally {
-      setIsLoading(false);
+  // Use React Query hook for orders
+  const { 
+    data: ordersResponse, 
+    isLoading, 
+    error: ordersError 
+  } = useOrders();
+  
+  // Get orders from response
+  const orders = ordersResponse?.data || [];
+  
+  // Use mutation hook for cancelling orders
+  const cancelOrderMutation = useCancelOrder({
+    onSuccess: () => {
+      // The useOrders hook will automatically refetch since we've set up
+      // the invalidation in useQueryHooks.ts and the service file
     }
-  };
+  });
 
   const handleCancelOrder = async (orderId: string) => {
     if (window.confirm('Are you sure you want to cancel this order?')) {
       try {
-        setIsLoading(true);
-        await cartService.cancelOrder(orderId);
-        // Refresh orders list
-        fetchOrders();
+        await cancelOrderMutation.mutateAsync(orderId);
       } catch (error) {
-        setError('Failed to cancel order. Please try again later.');
         console.error('Error cancelling order:', error);
-      } finally {
-        setIsLoading(false);
       }
     }
   };
@@ -51,12 +42,12 @@ const OrdersPage: React.FC = () => {
   // Filter orders based on status
   const filteredOrders = orders.filter(order => {
     if (filter === 'all') return true;
-    return order.status === filter;
+    return order.status.toLowerCase() === filter.toLowerCase();
   });
 
   // Get status badge style
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
       case 'processing':
@@ -66,6 +57,7 @@ const OrdersPage: React.FC = () => {
       case 'delivered':
         return 'bg-green-100 text-green-800';
       case 'cancelled':
+      case 'canceled':
         return 'bg-red-100 text-red-800';
       default:
         return 'bg-gray-100 text-gray-800';
@@ -101,9 +93,9 @@ const OrdersPage: React.FC = () => {
       )}
       
       {/* Error Message */}
-      {error && (
+      {ordersError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
-          {error}
+          {ordersError instanceof Error ? ordersError.message : 'Failed to load orders. Please try again later.'}
         </div>
       )}
       
@@ -179,12 +171,13 @@ const OrdersPage: React.FC = () => {
                   >
                     View Details
                   </Link>
-                  {(order.status === 'pending' || order.status === 'processing') && (
+                  {(order.status.toLowerCase() === 'pending' || order.status.toLowerCase() === 'processing') && (
                     <button
                       onClick={() => handleCancelOrder(order.id)}
-                      className="px-4 py-2 text-red-600 bg-red-50 rounded-md text-sm font-medium hover:bg-red-100 transition-colors"
+                      disabled={cancelOrderMutation.isPending}
+                      className="px-4 py-2 text-red-600 bg-red-50 rounded-md text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
                     >
-                      Cancel
+                      {cancelOrderMutation.isPending && cancelOrderMutation.variables === order.id ? 'Cancelling...' : 'Cancel'}
                     </button>
                   )}
                 </div>

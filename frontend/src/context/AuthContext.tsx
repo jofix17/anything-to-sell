@@ -1,17 +1,23 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, AuthState } from '../types';
-import authService from '../services/authService';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { User, AuthState, RegisterData, ApiResponse } from "../types";
+import {
+  useCurrentUser,
+  useLogin,
+  useLogout,
+  useRegister,
+  useUpdateProfile,
+} from "../services/authService";
+import { queryClient } from "../context/QueryContext";
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
-  register: (userData: {
-    email: string;
-    password: string;
-    passwordConfirmation: string;
-    firstName: string;
-    lastName: string;
-    role: 'buyer' | 'vendor';
-  }) => Promise<void>;
+  register: (userData: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (userData: Partial<User>) => Promise<void>;
   isAdmin: () => boolean;
@@ -21,65 +27,93 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
-    token: localStorage.getItem('token'),
-    isAuthenticated: false,
+    token: localStorage.getItem("token"),
+    isAuthenticated: !!localStorage.getItem("token"),
     isLoading: true,
     error: null,
   });
 
-  // Load user on initial mount or when token changes
+  // Use the React Query hook for current user
+  const {
+    data,
+    isLoading: isUserLoading,
+    error: userError,
+  } = useCurrentUser({
+    onSuccess: (data: ApiResponse<User>) => {
+      setAuthState((prevState) => ({
+        ...prevState,
+        user: data.data,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      }));
+    },
+    onError: (error: unknown) => {
+      // Clear localStorage on error (token might be invalid)
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      setAuthState({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Authentication failed. Please login again.",
+      });
+    },
+  });
+
+  // Update loading state based on user query
   useEffect(() => {
-    const loadUser = async () => {
-      if (!authState.token) {
-        setAuthState(prevState => ({
-          ...prevState,
-          isLoading: false,
-          isAuthenticated: false,
-        }));
-        return;
-      }
+    if (!authState.token) {
+      setAuthState((prevState) => ({
+        ...prevState,
+        isLoading: false,
+        isAuthenticated: false,
+      }));
+    } else {
+      setAuthState((prevState) => ({
+        ...prevState,
+        isLoading: isUserLoading,
+      }));
+    }
+  }, [isUserLoading, authState.token]);
 
-      try {
-        const user = await authService.getCurrentUser();
-        setAuthState({
-          user,
-          token: authState.token,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null,
-        });
-      } catch (error) {
-        console.error('Error loading user:', error);
-        // Clear localStorage on error (token might be invalid)
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        
-        setAuthState({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isLoading: false,
-          error: 'Authentication failed. Please login again.',
-        });
-      }
-    };
+  // Use the login mutation
+  const loginMutation = useLogin();
 
-    loadUser();
-  }, [authState.token]);
+  // Use the register mutation
+  const registerMutation = useRegister();
 
-  // Login user
+  // Use the logout mutation
+  const logoutMutation = useLogout();
+
+  // Use the update profile mutation
+  const updateProfileMutation = useUpdateProfile();
+
+  // Login function
   const login = async (email: string, password: string) => {
     try {
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const { user, token } = await authService.login({ email, password });
+      const result = await loginMutation.mutateAsync({ email, password });
+
+      // Extract user and token from the result
+      const {
+        data: { user, token },
+      } = result;
 
       setAuthState({
         user,
@@ -89,32 +123,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error: null,
       });
     } catch (error) {
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Login failed',
+        error: error instanceof Error ? error.message : "Login failed",
       }));
       throw error;
     }
   };
 
-  // Register user
-  const register = async (userData: {
-    email: string;
-    password: string;
-    passwordConfirmation: string;
-    firstName: string;
-    lastName: string;
-    role: 'buyer' | 'vendor';
-  }) => {
+  // Register function
+  const register = async (userData: RegisterData) => {
     try {
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const { user, token } = await authService.register(userData);
+      const result = await registerMutation.mutateAsync(userData);
+
+      // Extract user and token from the result
+      const {
+        data: { user, token },
+      } = result;
 
       setAuthState({
         user,
@@ -124,23 +156,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error: null,
       });
     } catch (error) {
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Registration failed',
+        error: error instanceof Error ? error.message : "Registration failed",
       }));
       throw error;
     }
   };
 
-  // Logout user
+  // Logout function
   const logout = async () => {
     try {
-      await authService.logout();
+      // Pass a parameter to mutateAsync to match the expected signature
+      await logoutMutation.mutateAsync({});
+
+      // Clear all queries from the cache on logout
+      queryClient.clear();
+
+      setAuthState({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
     } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      // Always clear state and local storage
+      console.error("Logout error:", error);
+
+      // Still clear state and local storage even if the API call fails
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
       setAuthState({
         user: null,
         token: null,
@@ -151,36 +198,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Update user profile
+  // Update profile function
   const updateProfile = async (userData: Partial<User>) => {
     try {
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
         isLoading: true,
         error: null,
       }));
 
-      const updatedUser = await authService.updateProfile(userData);
+      const result = await updateProfileMutation.mutateAsync(userData);
 
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
-        user: { ...prevState.user!, ...updatedUser },
+        user: { ...prevState.user!, ...result.data },
         isLoading: false,
       }));
     } catch (error) {
-      setAuthState(prevState => ({
+      setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : 'Profile update failed',
+        error: error instanceof Error ? error.message : "Profile update failed",
       }));
       throw error;
     }
   };
 
   // Helper functions to check user roles
-  const isAdmin = () => authState.user?.role === 'admin';
-  const isVendor = () => authState.user?.role === 'vendor';
-  const isBuyer = () => authState.user?.role === 'buyer';
+  const isAdmin = () => authState.user?.role === "admin";
+  const isVendor = () => authState.user?.role === "vendor";
+  const isBuyer = () => authState.user?.role === "buyer";
 
   return (
     <AuthContext.Provider
@@ -204,7 +251,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

@@ -1,37 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useParams, Link } from 'react-router-dom';
-import cartService from '../services/cartService';
-import { Order } from '../types';
+import { useOrderDetail, useCancelOrder } from '../services/cartService';
 
 const OrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [order, setOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [cancelLoading, setCancelLoading] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
+  
+  // Use React Query hooks
+  const { 
+    data: orderResponse, 
+    isLoading, 
+    error 
+  } = useOrderDetail(id || '');
+  
+  const cancelOrderMutation = useCancelOrder();
 
-  useEffect(() => {
-    const fetchOrder = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        
-        if (!id) {
-          throw new Error('Order ID is missing');
-        }
-        
-        const orderData = await cartService.getOrderById(id);
-        setOrder(orderData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load order details.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchOrder();
-  }, [id]);
+  const order = orderResponse?.data || null;
 
   const formatDate = (dateString: string) => {
     const options: Intl.DateTimeFormatOptions = { 
@@ -67,20 +50,15 @@ const OrderDetailPage: React.FC = () => {
 
     // Check if order is already canceled or delivered
     if (['canceled', 'cancelled', 'delivered'].includes(order.status.toLowerCase())) {
-      setCancelError('This order cannot be canceled.');
       return;
     }
 
-    try {
-      setCancelLoading(true);
-      setCancelError(null);
-      
-      const updatedOrder = await cartService.cancelOrder(id);
-      setOrder(updatedOrder);
-    } catch (err) {
-      setCancelError(err instanceof Error ? err.message : 'Failed to cancel order.');
-    } finally {
-      setCancelLoading(false);
+    if (window.confirm('Are you sure you want to cancel this order?')) {
+      try {
+        await cancelOrderMutation.mutateAsync(id);
+      } catch (err) {
+        console.error('Failed to cancel order:', err);
+      }
     }
   };
 
@@ -107,7 +85,7 @@ const OrderDetailPage: React.FC = () => {
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Error</h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>{error || 'Order not found'}</p>
+                <p>{error instanceof Error ? error.message : 'Order not found'}</p>
               </div>
               <div className="mt-4">
                 <Link
@@ -161,17 +139,29 @@ const OrderDetailPage: React.FC = () => {
                 {order.items.map((item) => (
                   <li key={item.id} className="py-6 flex">
                     <div className="flex-shrink-0 w-24 h-24 border border-gray-200 rounded-md overflow-hidden">
-                      <img
-                        src={item.product?.images[0].imageUrl || 'https://via.placeholder.com/150'}
-                        alt={item.product?.name}
-                        className="w-full h-full object-center object-cover"
-                      />
+                      {item.product && item.product.images && item.product.images.length > 0 ? (
+                        <img
+                          src={item.product.images[0].imageUrl}
+                          alt={item.product.name}
+                          className="w-full h-full object-center object-cover"
+                        />
+                      ) : (
+                        <img
+                          src="https://via.placeholder.com/150"
+                          alt={item.product?.name || "Product image"}
+                          className="w-full h-full object-center object-cover"
+                        />
+                      )}
                     </div>
                     <div className="ml-4 flex-1 flex flex-col">
                       <div>
                         <div className="flex justify-between text-base font-medium text-gray-900">
                           <h3>
-                            <Link to={`/products/${item.product?.id}`}>{item.product?.name}</Link>
+                            {item.product ? (
+                              <Link to={`/products/${item.product.id}`}>{item.product.name}</Link>
+                            ) : (
+                              <span>Product no longer available</span>
+                            )}
                           </h3>
                           <p className="ml-4">${item.price.toFixed(2)}</p>
                         </div>
@@ -255,11 +245,11 @@ const OrderDetailPage: React.FC = () => {
                 </div>
                 <div className="flex justify-between py-1">
                   <dt className="text-gray-500">Shipping</dt>
-                  <dd className="text-gray-900">${order.shippingCost?.toFixed(2) || '0.00'}</dd>
+                  <dd className="text-gray-900">${(order.shippingCost || 0).toFixed(2)}</dd>
                 </div>
                 <div className="flex justify-between py-1">
                   <dt className="text-gray-500">Tax</dt>
-                  <dd className="text-gray-900">${order.taxAmount?.toFixed(2) || '0.00'}</dd>
+                  <dd className="text-gray-900">${(order.taxAmount || 0).toFixed(2)}</dd>
                 </div>
                 <div className="flex justify-between py-1 font-medium">
                   <dt className="text-gray-900">Total</dt>
@@ -273,7 +263,7 @@ const OrderDetailPage: React.FC = () => {
         {/* Cancel Order Button */}
         {['pending', 'processing'].includes(order.status.toLowerCase()) && (
           <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-            {cancelError && (
+            {cancelOrderMutation.isError && (
               <div className="mb-4 rounded-md bg-red-50 p-4">
                 <div className="flex">
                   <div className="flex-shrink-0">
@@ -284,7 +274,7 @@ const OrderDetailPage: React.FC = () => {
                   <div className="ml-3">
                     <h3 className="text-sm font-medium text-red-800">Error</h3>
                     <div className="mt-2 text-sm text-red-700">
-                      <p>{cancelError}</p>
+                      <p>{cancelOrderMutation.error instanceof Error ? cancelOrderMutation.error.message : 'Failed to cancel order'}</p>
                     </div>
                   </div>
                 </div>
@@ -292,10 +282,10 @@ const OrderDetailPage: React.FC = () => {
             )}
             <button
               onClick={cancelOrder}
-              disabled={cancelLoading}
+              disabled={cancelOrderMutation.isPending}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:bg-red-400"
             >
-              {cancelLoading ? 'Cancelling...' : 'Cancel Order'}
+              {cancelOrderMutation.isPending ? 'Cancelling...' : 'Cancel Order'}
             </button>
           </div>
         )}

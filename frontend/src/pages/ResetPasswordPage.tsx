@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import authService from '../services/authService';
+import { useResetPassword } from '../services/authService';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 
@@ -17,11 +17,17 @@ const ResetPasswordPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [success, setSuccess] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
+  
   // Extract token from URL query parameters
   const queryParams = new URLSearchParams(location.search);
   const token = queryParams.get('token');
+  
+  // Use React Query mutation hook
+  const resetPasswordMutation = useResetPassword({
+    onSuccess: () => {
+      setSuccess(true);
+    }
+  });
 
   if (!token) {
     return (
@@ -62,15 +68,14 @@ const ResetPasswordPage: React.FC = () => {
     { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }
   ) => {
     try {
-      setErrorMessage(null);
-      await authService.resetPassword({
+      await resetPasswordMutation.mutateAsync({
         token,
         password: values.password,
         passwordConfirmation: values.passwordConfirmation,
       });
-      setSuccess(true);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to reset password');
+      // Error handling is done through the mutation state
+      console.error('Error resetting password:', error);
     } finally {
       setSubmitting(false);
     }
@@ -120,7 +125,7 @@ const ResetPasswordPage: React.FC = () => {
             >
               {({ isSubmitting }) => (
                 <Form className="space-y-6">
-                  {errorMessage && (
+                  {resetPasswordMutation.isError && (
                     <div className="rounded-md bg-red-50 p-4">
                       <div className="flex">
                         <div className="flex-shrink-0">
@@ -131,7 +136,7 @@ const ResetPasswordPage: React.FC = () => {
                         <div className="ml-3">
                           <h3 className="text-sm font-medium text-red-800">Error</h3>
                           <div className="mt-2 text-sm text-red-700">
-                            <p>{errorMessage}</p>
+                            <p>{resetPasswordMutation.error instanceof Error ? resetPasswordMutation.error.message : 'Failed to reset password'}</p>
                           </div>
                         </div>
                       </div>
@@ -173,10 +178,10 @@ const ResetPasswordPage: React.FC = () => {
                   <div>
                     <button
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || resetPasswordMutation.isPending}
                       className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
                     >
-                      {isSubmitting ? 'Resetting password...' : 'Reset password'}
+                      {isSubmitting || resetPasswordMutation.isPending ? 'Resetting password...' : 'Reset password'}
                     </button>
                   </div>
                 </Form>

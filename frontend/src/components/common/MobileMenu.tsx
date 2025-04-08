@@ -32,7 +32,7 @@ const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
     const fetchCategories = async () => {
       try {
         const categoryData = await productService.getCategories();
-        setCategories(categoryData);
+        setCategories(categoryData.data);
       } catch (error) {
         console.error('Failed to fetch categories:', error);
       }
