@@ -46,6 +46,8 @@ export const QueryKeys = {
     dashboard: ['admin', 'dashboard'],
     users: (params: QueryFilters) => ['admin', 'users', params],
     products: (params: QueryFilters) => ['admin', 'products', params],
+    orders: (params: QueryFilters) => ['admin', 'orders', params],
+    vendors: (params: QueryFilters) => ['admin', 'vendors', params],
     discounts: ['admin', 'discounts'],
   },
   support: {

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { toast } from 'react-toastify';
-import adminService from '../../services/adminService';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import apiService from '../../services/api';
 
 const AdminSettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('general');
-  const [loading, setLoading] = useState<boolean>(false);
   
   // General Settings
   const [storeName, setStoreName] = useState<string>('');
@@ -27,21 +27,15 @@ const AdminSettingsPage: React.FC = () => {
   const [smtpUsername, setSmtpUsername] = useState<string>('');
   const [smtpPassword, setSmtpPassword] = useState<string>('');
   const [senderEmail, setSenderEmail] = useState<string>('');
-  
-  useEffect(() => {
-    if (activeTab === 'general') {
-      fetchGeneralSettings();
-    } else if (activeTab === 'payment') {
-      fetchPaymentSettings();
-    } else if (activeTab === 'email') {
-      fetchEmailSettings();
-    }
-  }, [activeTab]);
-  
-  const fetchGeneralSettings = async () => {
-    try {
-      setLoading(true);
-      const response = await adminService.get<any>('/admin/settings/general');
+
+  // Fetch General Settings
+  const { 
+    isLoading: isLoadingGeneral,
+    refetch: refetchGeneral
+  } = useQuery({
+    queryKey: ['admin', 'settings', 'general'],
+    queryFn: async () => {
+      const response = await apiService.get<any>('/admin/settings/general');
       const data = response.data || {};
       
       setStoreName(data.storeName || '');
@@ -49,18 +43,20 @@ const AdminSettingsPage: React.FC = () => {
       setStorePhone(data.storePhone || '');
       setCurrency(data.currency || 'USD');
       setLanguage(data.language || 'en');
-    } catch (error) {
-      console.error('Failed to fetch general settings:', error);
-      toast.error('Failed to load general settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const fetchPaymentSettings = async () => {
-    try {
-      setLoading(true);
-      const response = await adminService.get<any>('/admin/settings/payment');
+      
+      return response;
+    },
+    enabled: activeTab === 'general'
+  });
+
+  // Fetch Payment Settings
+  const { 
+    isLoading: isLoadingPayment,
+    refetch: refetchPayment
+  } = useQuery({
+    queryKey: ['admin', 'settings', 'payment'],
+    queryFn: async () => {
+      const response = await apiService.get<any>('/admin/settings/payment');
       const data = response.data || {};
       
       setStripeEnabled(data.stripeEnabled || false);
@@ -69,18 +65,20 @@ const AdminSettingsPage: React.FC = () => {
       setPaypalEnabled(data.paypalEnabled || false);
       setPaypalClientId(data.paypalClientId || '');
       setCodEnabled(data.codEnabled || true);
-    } catch (error) {
-      console.error('Failed to fetch payment settings:', error);
-      toast.error('Failed to load payment settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const fetchEmailSettings = async () => {
-    try {
-      setLoading(true);
-      const response = await adminService.get<any>('/admin/settings/email');
+      
+      return response;
+    },
+    enabled: activeTab === 'payment'
+  });
+
+  // Fetch Email Settings
+  const { 
+    isLoading: isLoadingEmail,
+    refetch: refetchEmail
+  } = useQuery({
+    queryKey: ['admin', 'settings', 'email'],
+    queryFn: async () => {
+      const response = await apiService.get<any>('/admin/settings/email');
       const data = response.data || {};
       
       setSmtpHost(data.smtpHost || '');
@@ -88,89 +86,117 @@ const AdminSettingsPage: React.FC = () => {
       setSmtpUsername(data.smtpUsername || '');
       setSmtpPassword(data.smtpPassword || '');
       setSenderEmail(data.senderEmail || '');
-    } catch (error) {
-      console.error('Failed to fetch email settings:', error);
-      toast.error('Failed to load email settings');
-    } finally {
-      setLoading(false);
+      
+      return response;
+    },
+    enabled: activeTab === 'email'
+  });
+
+  // Save General Settings Mutation
+  const saveGeneralSettingsMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiService.post('/admin/settings/general', data);
+    },
+    onSuccess: () => {
+      toast.success('General settings saved successfully');
+      refetchGeneral();
+    },
+    onError: (error) => {
+      toast.error('Failed to save general settings');
+      console.error('Failed to save general settings:', error);
     }
-  };
-  
+  });
+
+  // Save Payment Settings Mutation
+  const savePaymentSettingsMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiService.post('/admin/settings/payment', data);
+    },
+    onSuccess: () => {
+      toast.success('Payment settings saved successfully');
+      refetchPayment();
+    },
+    onError: (error) => {
+      toast.error('Failed to save payment settings');
+      console.error('Failed to save payment settings:', error);
+    }
+  });
+
+  // Save Email Settings Mutation
+  const saveEmailSettingsMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiService.post('/admin/settings/email', data);
+    },
+    onSuccess: () => {
+      toast.success('Email settings saved successfully');
+      refetchEmail();
+    },
+    onError: (error) => {
+      toast.error('Failed to save email settings');
+      console.error('Failed to save email settings:', error);
+    }
+  });
+
+  // Send Test Email Mutation
+  const sendTestEmailMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiService.post('/admin/settings/email/test', data);
+    },
+    onSuccess: () => {
+      toast.success('Test email sent successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to send test email');
+      console.error('Failed to send test email:', error);
+    }
+  });
+
   const handleSaveGeneralSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      setLoading(true);
-      await adminService.post('/admin/settings/general', {
-        storeName,
-        storeEmail,
-        storePhone,
-        currency,
-        language
-      });
-      toast.success('General settings saved successfully');
-    } catch (error) {
-      console.error('Failed to save general settings:', error);
-      toast.error('Failed to save general settings');
-    } finally {
-      setLoading(false);
-    }
+    saveGeneralSettingsMutation.mutate({
+      storeName,
+      storeEmail,
+      storePhone,
+      currency,
+      language
+    });
   };
   
   const handleSavePaymentSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      setLoading(true);
-      await adminService.post('/admin/settings/payment', {
-        stripeEnabled,
-        stripePublicKey,
-        stripeSecretKey,
-        paypalEnabled,
-        paypalClientId,
-        codEnabled
-      });
-      toast.success('Payment settings saved successfully');
-    } catch (error) {
-      console.error('Failed to save payment settings:', error);
-      toast.error('Failed to save payment settings');
-    } finally {
-      setLoading(false);
-    }
+    savePaymentSettingsMutation.mutate({
+      stripeEnabled,
+      stripePublicKey,
+      stripeSecretKey,
+      paypalEnabled,
+      paypalClientId,
+      codEnabled
+    });
   };
   
   const handleSaveEmailSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      setLoading(true);
-      await adminService.post('/admin/settings/email', {
-        smtpHost,
-        smtpPort,
-        smtpUsername,
-        smtpPassword,
-        senderEmail
-      });
-      toast.success('Email settings saved successfully');
-    } catch (error) {
-      console.error('Failed to save email settings:', error);
-      toast.error('Failed to save email settings');
-    } finally {
-      setLoading(false);
-    }
+    saveEmailSettingsMutation.mutate({
+      smtpHost,
+      smtpPort,
+      smtpUsername,
+      smtpPassword,
+      senderEmail
+    });
   };
   
   const sendTestEmail = async () => {
-    try {
-      setLoading(true);
-      await adminService.post('/admin/settings/email/test', {
-        recipient: storeEmail
-      });
-      toast.success('Test email sent successfully');
-    } catch (error) {
-      console.error('Failed to send test email:', error);
-      toast.error('Failed to send test email');
-    } finally {
-      setLoading(false);
-    }
+    sendTestEmailMutation.mutate({
+      recipient: storeEmail
+    });
   };
+
+  // Determine if any loading state is active
+  const isLoading = isLoadingGeneral || isLoadingPayment || isLoadingEmail || 
+                   saveGeneralSettingsMutation.isPending || 
+                   savePaymentSettingsMutation.isPending || 
+                   saveEmailSettingsMutation.isPending || 
+                   sendTestEmailMutation.isPending;
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -215,7 +241,7 @@ const AdminSettingsPage: React.FC = () => {
         
         {/* Tab Content */}
         <div className="p-6">
-          {loading ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
             </div>
@@ -317,10 +343,10 @@ const AdminSettingsPage: React.FC = () => {
                     <div className="pt-4 flex justify-end">
                       <button
                         type="submit"
-                        disabled={loading}
+                        disabled={isLoading}
                         className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
                       >
-                        {loading ? 'Saving...' : 'Save Settings'}
+                        {saveGeneralSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
                       </button>
                     </div>
                   </div>
@@ -445,10 +471,10 @@ const AdminSettingsPage: React.FC = () => {
                     <div className="pt-4 flex justify-end">
                       <button
                         type="submit"
-                        disabled={loading}
+                        disabled={isLoading}
                         className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
                       >
-                        {loading ? 'Saving...' : 'Save Settings'}
+                        {savePaymentSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
                       </button>
                     </div>
                   </div>
@@ -539,7 +565,7 @@ const AdminSettingsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={sendTestEmail}
-                        disabled={loading || !smtpHost || !smtpPort || !senderEmail}
+                        disabled={isLoading || !smtpHost || !smtpPort || !senderEmail}
                         className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
                       >
                         Send Test Email
@@ -547,10 +573,10 @@ const AdminSettingsPage: React.FC = () => {
                       
                       <button
                         type="submit"
-                        disabled={loading}
+                        disabled={isLoading}
                         className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
                       >
-                        {loading ? 'Saving...' : 'Save Settings'}
+                        {saveEmailSettingsMutation.isPending ? 'Saving...' : 'Save Settings'}
                       </button>
                     </div>
                   </div>

@@ -46,12 +46,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
   const { isAuthenticated } = useAuth();
 
   // Use React Query hook to fetch cart data
-  const {
-    data: cartData,
-    isLoading: isCartLoading,
-    error: cartError,
-    refetch,
-  } = useCartQuery({
+  const { isLoading: isCartLoading, refetch } = useCartQuery({
     enabled: isAuthenticated, // Only fetch cart if user is authenticated
     onSuccess: (response: ApiResponse<Cart>) => {
       setCartState((prevState) => ({

@@ -39,11 +39,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   });
 
   // Use the React Query hook for current user
-  const {
-    data,
-    isLoading: isUserLoading,
-    error: userError,
-  } = useCurrentUser({
+  const { isLoading: isUserLoading } = useCurrentUser({
     onSuccess: (data: ApiResponse<User>) => {
       setAuthState((prevState) => ({
         ...prevState,

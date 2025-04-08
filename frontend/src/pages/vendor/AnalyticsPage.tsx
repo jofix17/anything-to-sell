@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
-import vendorService from "../../services/vendorService";
+import {
+  useVendorDashboardStats,
+  useVendorSalesReport,
+} from "../../services/vendorService";
 import {
   AreaChart,
   Area,
@@ -16,23 +19,6 @@ import {
   Cell,
   TooltipProps,
 } from "recharts";
-import { Order, Product } from "../../types";
-
-interface SalesData {
-  totalSales: number;
-  totalRevenue: number;
-  salesByPeriod: { period: string; sales: number; revenue: number }[];
-  salesByCategory: { category: string; sales: number; revenue: number }[];
-}
-
-interface DashboardStats {
-  totalProducts: number;
-  totalOrders: number;
-  totalRevenue: number;
-  pendingOrders: number;
-  recentOrders: Order[];
-  topProducts: { product: Product; totalSold: number }[];
-}
 
 const COLORS = [
   "#0088FE",
@@ -45,62 +31,56 @@ const COLORS = [
 ];
 
 const VendorAnalyticsPage: React.FC = () => {
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(
-    null
-  );
-  const [salesData, setSalesData] = useState<SalesData | null>(null);
   const [dateRange, setDateRange] = useState({
     startDate: "",
     endDate: "",
   });
   const [groupBy, setGroupBy] = useState<"day" | "week" | "month">("day");
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch dashboard stats
+  const {
+    data: dashboardStatsResponse,
+    isLoading: isStatsLoading,
+    error: statsError,
+  } = useVendorDashboardStats();
+
+  // Extract dashboard stats
+  const dashboardStats = dashboardStatsResponse?.data || null;
+
+  // Fetch sales data
+  const {
+    data: salesDataResponse,
+    isLoading: isSalesLoading,
+    error: salesError,
+    refetch: refetchSalesData,
+  } = useVendorSalesReport(
+    {
+      startDate: dateRange.startDate || undefined,
+      endDate: dateRange.endDate || undefined,
+      groupBy,
+    },
+    {
+      // Only run this query when filters are applied
+      enabled: true,
+    }
+  );
+
+  // Extract sales data
+  const salesData = salesDataResponse?.data || null;
+
+  // Handle errors from both queries
   useEffect(() => {
-    fetchDashboardStats();
-    fetchSalesData();
-  }, []);
-
-  const fetchDashboardStats = async () => {
-    try {
-      const stats = await vendorService.getDashboardStats();
-      setDashboardStats(stats);
-    } catch (error) {
+    if (statsError) {
       setError("Failed to load dashboard statistics");
-      console.error("Error fetching dashboard stats:", error);
-    }
-  };
-
-  const fetchSalesData = async () => {
-    try {
-      setIsLoading(true);
-
-      const params: {
-        startDate?: string;
-        endDate?: string;
-        groupBy?: "day" | "week" | "month";
-      } = {
-        groupBy,
-      };
-
-      if (dateRange.startDate) {
-        params.startDate = dateRange.startDate;
-      }
-
-      if (dateRange.endDate) {
-        params.endDate = dateRange.endDate;
-      }
-
-      const data = await vendorService.getSalesReport(params);
-      setSalesData(data);
-    } catch (error) {
+      console.error("Error fetching dashboard stats:", statsError);
+    } else if (salesError) {
       setError("Failed to load sales data");
-      console.error("Error fetching sales data:", error);
-    } finally {
-      setIsLoading(false);
+      console.error("Error fetching sales data:", salesError);
+    } else {
+      setError(null);
     }
-  };
+  }, [statsError, salesError]);
 
   const handleDateRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -115,7 +95,7 @@ const VendorAnalyticsPage: React.FC = () => {
   };
 
   const applyFilters = () => {
-    fetchSalesData();
+    refetchSalesData();
   };
 
   // Format currency
@@ -146,6 +126,8 @@ const VendorAnalyticsPage: React.FC = () => {
     }
     return null;
   };
+
+  const isLoading = isStatsLoading || isSalesLoading;
 
   return (
     <div className="px-4 py-6">
@@ -256,7 +238,7 @@ const VendorAnalyticsPage: React.FC = () => {
                       Total Revenue
                     </h2>
                     <p className="text-2xl font-bold text-gray-900">
-                      ${dashboardStats.totalRevenue.toFixed(2)}
+                      ${dashboardStats.totalSales.toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -431,8 +413,8 @@ const VendorAnalyticsPage: React.FC = () => {
                     <PieChart>
                       <Pie
                         data={dashboardStats.topProducts.map((item) => ({
-                          name: item.product.name,
-                          value: item.totalSold,
+                          name: item?.name || "Unknown Product",
+                          value: item.salesAnalytics?.quantitySold,
                         }))}
                         cx="50%"
                         cy="50%"
@@ -445,7 +427,7 @@ const VendorAnalyticsPage: React.FC = () => {
                           `${name} ${(percent * 100).toFixed(0)}%`
                         }
                       >
-                        {dashboardStats.topProducts.map((entry, index) => (
+                        {dashboardStats.topProducts.map((_entry, index) => (
                           <Cell
                             key={`cell-${index}`}
                             fill={COLORS[index % COLORS.length]}

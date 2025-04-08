@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import productService from "../../services/productService";
+import {
+  useCategories,
+  useProductDetail,
+  useUpdateProduct,
+  useUploadProductImage,
+  useDeleteProductImage,
+  useSetPrimaryImage,
+} from "../../services/productService";
 import { Category } from "../../types";
 
 interface ProductImage {
@@ -12,9 +19,6 @@ interface ProductImage {
 const VendorEditProductPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -33,54 +37,100 @@ const VendorEditProductPage: React.FC = () => {
     isActive: true,
   });
 
-  // Fetch product data and categories on component mount
+  // Fetch product details
+  const {
+    data: productResponse,
+    isLoading: productLoading,
+    refetch: refetchProduct,
+  } = useProductDetail(id || "", {
+    enabled: !!id,
+    onError: (error: Error) => {
+      setError(`Failed to load product data: ${error.message}`);
+      console.error("Error fetching product data:", error);
+    },
+  });
+
+  // Fetch categories
+  const { data: categoriesResponse, isLoading: categoriesLoading } =
+    useCategories();
+
+  // Extract data from responses
+  const product = productResponse?.data;
+  const categories: Category[] = categoriesResponse?.data || [];
+
+  // Set up mutations
+  const updateProductMutation = useUpdateProduct(id || "", {
+    onSuccess: () => {
+      setSuccessMessage("Product updated successfully!");
+      refetchProduct();
+
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+    },
+    onError: (error: Error) => {
+      setError(`Failed to update product: ${error.message}`);
+      console.error("Error updating product:", error);
+    },
+  });
+
+  const uploadImageMutation = useUploadProductImage(id || "", {
+    onSuccess: () => {
+      refetchProduct();
+    },
+    onError: (error: Error) => {
+      setError(`Failed to upload image: ${error.message}`);
+      console.error("Error uploading image:", error);
+    },
+  });
+
+  const deleteImageMutation = useDeleteProductImage({
+    onSuccess: () => {
+      refetchProduct();
+    },
+    onError: (error: Error) => {
+      setError(`Failed to delete image: ${error.message}`);
+      console.error("Error deleting image:", error);
+    },
+  });
+
+  const setPrimaryImageMutation = useSetPrimaryImage({
+    onSuccess: () => {
+      refetchProduct();
+    },
+    onError: (error: Error) => {
+      setError(`Failed to set primary image: ${error.message}`);
+      console.error("Error setting primary image:", error);
+    },
+  });
+
+  // Initialize form data when product is loaded
   useEffect(() => {
-    const fetchProductAndCategories = async () => {
-      if (!id) return;
+    if (product) {
+      setFormData({
+        name: product.name,
+        description: product.description,
+        price: product.price.toString(),
+        salePrice: product.salePrice ? product.salePrice.toString() : "",
+        categoryId: product.category.id,
+        tags: product.tags?.join(", ") || "",
+        inventory: product.inventory.toString(),
+        isActive: product.isActive,
+      });
 
-      try {
-        setIsLoading(true);
-
-        // Fetch product data
-        const product = await productService.getProductById(id);
-
-        // Fetch categories
-        const categoriesData = await productService.getCategories();
-
-        // Set form data
-        setFormData({
-          name: product.name,
-          description: product.description,
-          price: product.price.toString(),
-          salePrice: product.salePrice ? product.salePrice.toString() : "",
-          categoryId: product.category.id,
-          tags: product.tags?.join(", ") || "",
-          inventory: product.inventory.toString(),
-          isActive: product.isActive,
-        });
-
-        // Set existing images
-        if (product.images && product.images.length > 0) {
-          setExistingImages(
-            product.images.map((image) => ({
-              id: image.id || "",
-              imageUrl: image.imageUrl,
-              isPrimary: image.isPrimary || false,
-            }))
-          );
-        }
-
-        setCategories(categoriesData);
-      } catch (error) {
-        setError("Failed to load product data");
-        console.error("Error fetching product data:", error);
-      } finally {
-        setIsLoading(false);
+      // Set existing images
+      if (product.images && product.images.length > 0) {
+        setExistingImages(
+          product.images.map((image) => ({
+            id: image.id || "",
+            imageUrl: image.imageUrl,
+            isPrimary: image.isPrimary || false,
+          }))
+        );
       }
-    };
-
-    fetchProductAndCategories();
-  }, [id]);
+    }
+  }, [product]);
 
   // Handle form input changes
   const handleInputChange = (
@@ -126,38 +176,14 @@ const VendorEditProductPage: React.FC = () => {
     if (!id) return;
 
     if (window.confirm("Are you sure you want to remove this image?")) {
-      try {
-        setIsLoading(true);
-        await productService.deleteProductImage(id, imageId);
-        setExistingImages((prev) => prev.filter((img) => img.id !== imageId));
-      } catch (error) {
-        setError("Failed to remove image");
-        console.error("Error removing image:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      deleteImageMutation.mutate({ productId: id, imageId });
     }
   };
 
   // Set image as primary
   const setImageAsPrimary = async (imageId: string) => {
     if (!id) return;
-
-    try {
-      // Call API to set the image as primary
-      await productService.setPrimaryImage(id, imageId);
-
-      // Update local state
-      setExistingImages((prev) =>
-        prev.map((img) => ({
-          ...img,
-          isPrimary: img.id === imageId,
-        }))
-      );
-    } catch (error) {
-      setError("Failed to set image as primary");
-      console.error("Error setting image as primary:", error);
-    }
+    setPrimaryImageMutation.mutate({ productId: id, imageId });
   };
 
   // Handle form submission
@@ -166,10 +192,10 @@ const VendorEditProductPage: React.FC = () => {
 
     if (!id) return;
 
-    try {
-      setIsSaving(true);
-      setError(null);
+    // Reset error
+    setError(null);
 
+    try {
       // Validate form data
       if (!formData.name.trim()) {
         setError("Product name is required");
@@ -230,7 +256,8 @@ const VendorEditProductPage: React.FC = () => {
         isActive: formData.isActive,
       };
 
-      await productService.updateProduct(id, productData);
+      // Use mutation to update product
+      await updateProductMutation.mutateAsync(productData);
 
       // Upload new images if any
       if (imageFiles.length > 0) {
@@ -240,49 +267,29 @@ const VendorEditProductPage: React.FC = () => {
           const file = imageFiles[i];
           const isPrimary = !hasPrimaryImage && i === 0; // First image is primary if no primary exists
 
-          await productService.uploadProductImage(id, file, isPrimary);
+          await uploadImageMutation.mutateAsync({
+            file,
+            isPrimary,
+          });
         }
       }
-
-      // Show success message
-      setSuccessMessage("Product updated successfully!");
 
       // Clear new images
       imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
       setImageFiles([]);
       setImagePreviewUrls([]);
-
-      // Reload the product data
-      const updatedProduct = await productService.getProductById(id);
-      setFormData({
-        name: updatedProduct.name,
-        description: updatedProduct.description,
-        price: updatedProduct.price.toString(),
-        salePrice: updatedProduct.salePrice
-          ? updatedProduct.salePrice.toString()
-          : "",
-        categoryId: updatedProduct.category.id,
-        tags: updatedProduct.tags?.join(", ") || "",
-        inventory: updatedProduct.inventory.toString(),
-        isActive: updatedProduct.isActive,
-      });
-
-      if (updatedProduct.images && updatedProduct.images.length > 0) {
-        setExistingImages(
-          updatedProduct.images.map((image) => ({
-            id: image.id || "",
-            imageUrl: image.imageUrl,
-            isPrimary: image.isPrimary || false,
-          }))
-        );
-      }
     } catch (error) {
-      setError("Failed to update product");
-      console.error("Error updating product:", error);
-    } finally {
-      setIsSaving(false);
+      // Errors are handled in mutation onError callbacks
     }
   };
+
+  // Loading state
+  const isLoading = productLoading || categoriesLoading;
+  const isSaving =
+    updateProductMutation.isPending ||
+    uploadImageMutation.isPending ||
+    deleteImageMutation.isPending ||
+    setPrimaryImageMutation.isPending;
 
   if (isLoading) {
     return (

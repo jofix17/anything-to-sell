@@ -1,81 +1,97 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import vendorService from '../../services/vendorService';
-import productService from '../../services/productService';
+import { useVendorProducts, useUpdateProductStatus, useUpdateInventory } from '../../services/vendorService';
+import { useCategories, useDeleteProduct } from '../../services/productService';
 import { Product, Category, ProductStatus } from '../../types';
 
 const VendorProductsPage: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [isEditingInventory, setIsEditingInventory] = useState(false);
   const [inventoryUpdates, setInventoryUpdates] = useState<{[key: string]: number}>({});
-  const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch products and categories
-  useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-  }, [currentPage, statusFilter, categoryFilter]);
+  // Fetch product categories
+  const { 
+    data: categoriesResponse,
+    error: categoriesError 
+  } = useCategories();
+  
+  // Extract categories from response
+  const categories: Category[] = categoriesResponse?.data || [];
 
-  const fetchProducts = async () => {
-    try {
-      setIsLoading(true);
-      const params: {
-        page: number;
-        perPage: number;
-        status?: ProductStatus
-        categoryId?: string;
-        query?: string;
-      } = {
-        page: currentPage,
-        perPage: 10,
-      };
+  // Prepare query params for products
+  const queryParams = {
+    page: currentPage,
+    perPage: 10,
+    status: statusFilter !== 'all' ? statusFilter as ProductStatus : undefined,
+    categoryId: categoryFilter || undefined,
+    query: searchQuery || undefined
+  };
 
-      if (statusFilter && statusFilter !== 'all') {
-        params.status = statusFilter as ProductStatus;
-      }
-
-      if (categoryFilter !== null) {
-        params.categoryId = categoryFilter; // Ensure categoryFilter is a number
-      }
-
-      if (searchQuery) {
-        params.query = searchQuery;
-      }
-
-      const response = await vendorService.getVendorProducts(params);
-      setProducts(response.data);
-      setTotalPages(response.totalPages);
-    } catch (error) {
+  // Fetch products
+  const { 
+    data: productsResponse, 
+    isLoading, 
+    refetch 
+  } = useVendorProducts(queryParams, {
+    onError: (error: Error) => {
       setError('Failed to load products');
       console.error('Error fetching products:', error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const fetchCategories = async () => {
-    try {
-      const categoriesData = await productService.getCategories();
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
+  // Extract products data from response
+  const products: Product[] = productsResponse?.data || [];
+  const totalPages = productsResponse?.totalPages || 1;
+
+  // Mutation hooks
+  const updateProductStatusMutation = useUpdateProductStatus({
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (error: Error) => {
+      setError('Failed to update product status');
+      console.error('Error updating product status:', error);
     }
-  };
+  });
+
+  const updateInventoryMutation = useUpdateInventory({
+    onSuccess: () => {
+      refetch();
+      setIsEditingInventory(false);
+    },
+    onError: (error: Error) => {
+      setError('Failed to update inventory');
+      console.error('Error updating inventory:', error);
+    }
+  });
+
+  const deleteProductMutation = useDeleteProduct({
+    onSuccess: () => {
+      refetch();
+    },
+    onError: (error: Error) => {
+      setError('Failed to delete product');
+      console.error('Error deleting product:', error);
+    }
+  });
+
+  // Handle categories error
+  useEffect(() => {
+    if (categoriesError) {
+      console.error('Error fetching categories:', categoriesError);
+    }
+  }, [categoriesError]);
 
   // Handle search
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchProducts();
+    refetch();
   };
 
   // Handle pagination
@@ -102,19 +118,10 @@ const VendorProductsPage: React.FC = () => {
 
   // Handle product status toggle
   const handleStatusToggle = async (productId: string, currentStatus: boolean) => {
-    try {
-      await vendorService.updateProductStatus(productId, !currentStatus);
-      setProducts(prevProducts => 
-        prevProducts.map(product => 
-          product.id === productId 
-            ? { ...product, isActive: !currentStatus } 
-            : product
-        )
-      );
-    } catch (error) {
-      setError('Failed to update product status');
-      console.error('Error updating product status:', error);
-    }
+    updateProductStatusMutation.mutate({ 
+      productId, 
+      isActive: !currentStatus 
+    });
   };
 
   // Handle bulk actions
@@ -126,30 +133,24 @@ const VendorProductsPage: React.FC = () => {
     }
 
     try {
-      setIsLoading(true);
-      
       if (action === 'delete') {
-        await Promise.all(selectedProducts.map(id => productService.deleteProduct(id)));
-        setProducts(prevProducts => prevProducts.filter(product => !selectedProducts.includes(product.id)));
+        // Delete products one by one
+        for (const id of selectedProducts) {
+          await deleteProductMutation.mutateAsync(id);
+        }
       } else {
-        await Promise.all(
-          selectedProducts.map(id => vendorService.updateProductStatus(id, action === 'activate'))
-        );
-        setProducts(prevProducts => 
-          prevProducts.map(product => 
-            selectedProducts.includes(product.id) 
-              ? { ...product, isActive: action === 'activate' } 
-              : product
-          )
-        );
+        // Update status for all selected products
+        for (const id of selectedProducts) {
+          await updateProductStatusMutation.mutateAsync({
+            productId: id,
+            isActive: action === 'activate'
+          });
+        }
       }
       
       setSelectedProducts([]);
     } catch (error) {
-      setError(`Failed to ${action} products`);
-      console.error(`Error during bulk ${action}:`, error);
-    } finally {
-      setIsLoading(false);
+      // Errors are handled in the mutation onError callbacks
     }
   };
 
@@ -175,32 +176,14 @@ const VendorProductsPage: React.FC = () => {
   };
 
   const saveInventoryUpdates = async () => {
-    try {
-      setIsSaving(true);
-      const updates = Object.entries(inventoryUpdates).map(([productId, inventory]) => ({
-        productId: productId,
-        inventory
-      }));
-      
-      await vendorService.updateInventory(updates);
-      
-      // Update local product state
-      setProducts(prevProducts => 
-        prevProducts.map(product => ({
-          ...product,
-          inventory: inventoryUpdates[product.id] !== undefined 
-            ? inventoryUpdates[product.id] 
-            : product.inventory
-        }))
-      );
-      
-      setIsEditingInventory(false);
-    } catch (error) {
-      setError('Failed to update inventory');
-      console.error('Error updating inventory:', error);
-    } finally {
-      setIsSaving(false);
-    }
+    // Format the updates for the API
+    const updates = Object.entries(inventoryUpdates).map(([productId, inventory]) => ({
+      productId,
+      inventory
+    }));
+    
+    // Use the mutation to update inventory
+    updateInventoryMutation.mutate(updates);
   };
 
   const cancelInventoryEditing = () => {
@@ -218,7 +201,7 @@ const VendorProductsPage: React.FC = () => {
       return { label: 'In Stock', className: 'bg-green-100 text-green-800' };
     }
   };
-
+  
   return (
     <div className="px-4 py-6">
       <div className="flex justify-between items-center mb-6">
@@ -343,14 +326,14 @@ const VendorProductsPage: React.FC = () => {
           <div className="flex space-x-2">
             <button
               onClick={saveInventoryUpdates}
-              disabled={isSaving}
+              disabled={updateInventoryMutation.isPending}
               className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-50"
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              {updateInventoryMutation.isPending ? 'Saving...' : 'Save Changes'}
             </button>
             <button
               onClick={cancelInventoryEditing}
-              disabled={isSaving}
+              disabled={updateInventoryMutation.isPending}
               className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition disabled:opacity-50"
             >
               Cancel
@@ -361,7 +344,7 @@ const VendorProductsPage: React.FC = () => {
 
       {/* Products Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        {isLoading && products.length === 0 ? (
+        {isLoading ? (
           <div className="text-center py-16">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
             <p className="mt-2 text-gray-500">Loading products...</p>
@@ -428,7 +411,7 @@ const VendorProductsPage: React.FC = () => {
                         <div className="h-10 w-10 flex-shrink-0">
                           <img
                             className="h-10 w-10 rounded-md object-cover"
-                            src={product.images[0].imageUrl || '/api/placeholder/40/40'}
+                            src={product.images[0]?.imageUrl || '/api/placeholder/40/40'}
                             alt={product.name}
                           />
                         </div>
@@ -440,7 +423,7 @@ const VendorProductsPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-900">
-                        {categories.find(cat => cat.id === product.category.id)?.name || 'Unknown'}
+                        {categories.find(cat => cat.id === product.category?.id)?.name || 'Unknown'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -488,6 +471,7 @@ const VendorProductsPage: React.FC = () => {
                               checked={product.isActive}
                               onChange={() => handleStatusToggle(product.id, product.isActive)}
                               className="form-checkbox h-4 w-4 text-indigo-600 transition duration-150 ease-in-out"
+                              disabled={updateProductStatusMutation.isPending}
                             />
                             <span className={`ml-2 text-sm ${product.isActive ? 'text-green-600' : 'text-gray-500'}`}>
                               {product.isActive ? 'Active' : 'Inactive'}
@@ -506,16 +490,10 @@ const VendorProductsPage: React.FC = () => {
                       <button
                         onClick={() => {
                           if (window.confirm('Are you sure you want to delete this product?')) {
-                            productService.deleteProduct(product.id)
-                              .then(() => {
-                                setProducts(prevProducts => prevProducts.filter(p => p.id !== product.id));
-                              })
-                              .catch(error => {
-                                setError('Failed to delete product');
-                                console.error('Error deleting product:', error);
-                              });
+                            deleteProductMutation.mutate(product.id);
                           }
                         }}
+                        disabled={deleteProductMutation.isPending}
                         className="text-red-600 hover:text-red-900"
                       >
                         Delete

@@ -114,8 +114,8 @@ export interface Product {
   createdAt: string;
   status: ProductStatus;
   rejectionReason?: string;
-  reviewSummary?: ReviewSummary;
-  salesAnalytics?: SalesAnalytics;
+  reviewSummary: ReviewSummary;
+  salesAnalytics: SalesAnalytics;
 }
 
 export interface ReviewSummary {
@@ -332,8 +332,8 @@ export interface DiscountEventData {
 export interface VendorStoreData {
   name: string;
   description: string;
-  logoFile?: File;
-  bannerFile?: File;
+  logoFile: File;
+  bannerFile: File;
   contactEmail?: string;
   contactPhone?: string;
   address?: string;

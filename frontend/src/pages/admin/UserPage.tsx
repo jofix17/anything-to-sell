@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import adminService from '../../services/adminService';
-import { User } from '../../types/index';
-import { Formik, Form, Field } from 'formik';
-
-
+import {
+  useAdminUsers,
+  useSuspendUser,
+  useActivateUser
+} from '../../services/adminService';
+import { User } from '../../types';
+import { toast } from 'react-toastify';
 
 const UsersPage: React.FC = () => {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [totalUsers, setTotalUsers] = useState(0);
+  // State for filters and UI
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
   const [filter, setFilter] = useState({
     role: 'all',
     isActive: 'all',
@@ -22,53 +20,43 @@ const UsersPage: React.FC = () => {
   const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
   const [userToSuspend, setUserToSuspend] = useState<User | null>(null);
   const [suspendReason, setSuspendReason] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
-  const [confirmationMessage, setConfirmationMessage] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
-  // Fetch users based on current filters and pagination
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Use React Query hooks
+  const { 
+    data: usersResponse, 
+    isLoading, 
+    error 
+  } = useAdminUsers({
+    page: currentPage,
+    perPage: usersPerPage,
+    role: filter.role !== 'all' ? filter.role as 'admin' | 'vendor' | 'buyer' : undefined,
+    isActive: filter.isActive !== 'all' ? filter.isActive === 'active' : undefined,
+    query: filter.query || undefined
+  });
 
-        const params: {
-          page: number;
-          perPage: number;
-          role?: 'admin' | 'vendor' | 'buyer';
-          isActive?: boolean;
-          query?: string;
-        } = {
-          page: currentPage,
-          perPage: usersPerPage,
-        };
+  const suspendUserMutation = useSuspendUser({
+    onSuccess: () => {
+      toast.success(`User ${userToSuspend?.firstName} ${userToSuspend?.lastName} has been suspended.`);
+      closeSuspendModal();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to suspend user');
+    }
+  });
 
-        if (filter.role !== 'all') {
-          params.role = filter.role as 'admin' | 'vendor' | 'buyer';
-        }
+  const activateUserMutation = useActivateUser({
+    onSuccess: () => {
+      toast.success('User has been activated successfully.');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to activate user');
+    }
+  });
 
-        if (filter.isActive !== 'all') {
-          params.isActive = filter.isActive === 'active';
-        }
-
-        if (filter.query) {
-          params.query = filter.query;
-        }
-
-        const response = await adminService.getUsers(params);
-        
-        setUsers(response.data);
-        setTotalUsers(response.total);
-        setTotalPages(Math.ceil(response.total / usersPerPage));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load users');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUsers();
-  }, [currentPage, usersPerPage, filter]);
+  // Extract data from response
+  const users = usersResponse?.data || [];
+  const totalUsers = usersResponse?.total || 0;
+  const totalPages = usersResponse?.totalPages || 1;
 
   const handleFilterChange = (field: string, value: string) => {
     setFilter(prev => ({
@@ -98,63 +86,23 @@ const UsersPage: React.FC = () => {
 
   const handleSuspendUser = async () => {
     if (!userToSuspend || !suspendReason.trim()) return;
-
-    try {
-      setActionLoading(true);
-      await adminService.suspendUser(userToSuspend.id, suspendReason);
-      
-      // Update the user status in the list
-      setUsers(users.map(user => 
-        user.id === userToSuspend.id 
-          ? { ...user, isActive: false, suspendedReason: suspendReason } 
-          : user
-      ));
-      
-      setConfirmationMessage({
-        message: `User ${userToSuspend.firstName} ${userToSuspend.lastName} has been suspended.`,
-        type: 'success'
-      });
-      
-      closeSuspendModal();
-    } catch (err) {
-      setConfirmationMessage({
-        message: err instanceof Error ? err.message : 'Failed to suspend user',
-        type: 'error'
-      });
-    } finally {
-      setActionLoading(false);
-    }
+    
+    suspendUserMutation.mutate({
+      id: userToSuspend.id,
+      reason: suspendReason
+    });
   };
 
   const handleActivateUser = async (userId: string) => {
-    try {
-      setActionLoading(true);
-      await adminService.activateUser(userId);
-      
-      // Update the user status in the list
-      setUsers(users.map(user => 
-        user.id === userId 
-          ? { ...user, isActive: true, suspendedReason: null } 
-          : user
-      ));
-      
-      setConfirmationMessage({
-        message: 'User has been activated successfully.',
-        type: 'success'
-      });
-    } catch (err) {
-      setConfirmationMessage({
-        message: err instanceof Error ? err.message : 'Failed to activate user',
-        type: 'error'
-      });
-    } finally {
-      setActionLoading(false);
-    }
+    activateUserMutation.mutate(userId);
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
+
+  // Determine if any mutation is in progress
+  const isMutating = suspendUserMutation.isPending || activateUserMutation.isPending;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -167,107 +115,67 @@ const UsersPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Action confirmation message */}
-      {confirmationMessage && (
-        <div className={`mt-6 ${confirmationMessage.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border rounded-md p-4`}>
-          <div className="flex">
-            <div className="flex-shrink-0">
-              {confirmationMessage.type === 'success' ? (
-                <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              )}
-            </div>
-            <div className="ml-3">
-              <p className={`text-sm ${confirmationMessage.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                {confirmationMessage.message}
-              </p>
-              <div className="mt-2">
-                <button
-                  className={`text-sm font-medium ${confirmationMessage.type === 'success' ? 'text-green-700 hover:text-green-600' : 'text-red-700 hover:text-red-600'}`}
-                  onClick={() => setConfirmationMessage(null)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Action confirmation messages are now handled by toast notifications */}
 
       {/* Filter section */}
       <div className="bg-white shadow-sm rounded-lg mt-6 p-4">
-        <Formik
-          initialValues={filter}
-          onSubmit={() => {}}
-          enableReinitialize
-        >
-          {() => (
-            <Form className="grid grid-cols-1 gap-y-4 md:grid-cols-4 gap-x-4">
-              <div>
-                <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                  Role
-                </label>
-                <Field
-                  as="select"
-                  id="role"
-                  name="role"
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  value={filter.role}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleFilterChange('role', e.target.value)}
-                >
-                  <option value="all">All Roles</option>
-                  <option value="admin">Administrators</option>
-                  <option value="vendor">Vendors</option>
-                  <option value="buyer">Buyers</option>
-                </Field>
-              </div>
+        <form className="grid grid-cols-1 gap-y-4 md:grid-cols-4 gap-x-4">
+          <div>
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+              Role
+            </label>
+            <select
+              id="role"
+              name="role"
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+              value={filter.role}
+              onChange={(e) => handleFilterChange('role', e.target.value)}
+            >
+              <option value="all">All Roles</option>
+              <option value="admin">Administrators</option>
+              <option value="vendor">Vendors</option>
+              <option value="buyer">Buyers</option>
+            </select>
+          </div>
 
-              <div>
-                <label htmlFor="isActive" className="block text-sm font-medium text-gray-700">
-                  Status
-                </label>
-                <Field
-                  as="select"
-                  id="isActive"
-                  name="isActive"
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  value={filter.isActive}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleFilterChange('isActive', e.target.value)}
-                >
-                  <option value="all">All Users</option>
-                  <option value="active">Active Only</option>
-                  <option value="suspended">Suspended Only</option>
-                </Field>
-              </div>
+          <div>
+            <label htmlFor="isActive" className="block text-sm font-medium text-gray-700">
+              Status
+            </label>
+            <select
+              id="isActive"
+              name="isActive"
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+              value={filter.isActive}
+              onChange={(e) => handleFilterChange('isActive', e.target.value)}
+            >
+              <option value="all">All Users</option>
+              <option value="active">Active Only</option>
+              <option value="suspended">Suspended Only</option>
+            </select>
+          </div>
 
-              <div className="md:col-span-2">
-                <label htmlFor="search" className="block text-sm font-medium text-gray-700">
-                  Search
-                </label>
-                <div className="mt-1 relative rounded-md shadow-sm">
-                  <input
-                    type="text"
-                    id="search"
-                    className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pr-10 sm:text-sm border-gray-300 rounded-md"
-                    placeholder="Search by name or email"
-                    value={filter.query}
-                    onChange={(e) => handleFilterChange('query', e.target.value)}
-                  />
-                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                </div>
+          <div className="md:col-span-2">
+            <label htmlFor="search" className="block text-sm font-medium text-gray-700">
+              Search
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
+              <input
+                type="text"
+                id="search"
+                className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pr-10 sm:text-sm border-gray-300 rounded-md"
+                placeholder="Search by name or email"
+                value={filter.query}
+                onChange={(e) => handleFilterChange('query', e.target.value)}
+              />
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                </svg>
               </div>
-            </Form>
-          )}
-        </Formik>
+            </div>
+          </div>
+        </form>
       </div>
 
       {/* Error message */}
@@ -282,7 +190,7 @@ const UsersPage: React.FC = () => {
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Error</h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>{error}</p>
+                <p>{error instanceof Error ? error.message : "Failed to load users"}</p>
               </div>
             </div>
           </div>
@@ -291,7 +199,7 @@ const UsersPage: React.FC = () => {
 
       {/* Users table */}
       <div className="mt-6">
-        {loading ? (
+        {isLoading ? (
           <div className="py-20 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600 mx-auto"></div>
             <p className="mt-4 text-sm text-gray-500">Loading users...</p>
@@ -403,7 +311,7 @@ const UsersPage: React.FC = () => {
                         {user.isActive ? (
                           <button
                             onClick={() => openSuspendModal(user)}
-                            disabled={actionLoading}
+                            disabled={isMutating}
                             className="text-red-600 hover:text-red-900 disabled:opacity-50"
                           >
                             Suspend
@@ -411,10 +319,12 @@ const UsersPage: React.FC = () => {
                         ) : (
                           <button
                             onClick={() => handleActivateUser(user.id)}
-                            disabled={actionLoading}
+                            disabled={isMutating}
                             className="text-green-600 hover:text-green-900 disabled:opacity-50"
                           >
-                            Activate
+                            {activateUserMutation.isPending && activateUserMutation.variables === user.id 
+                              ? "Activating..." 
+                              : "Activate"}
                           </button>
                         )}
                         <Link to={`/admin/users/${user.id}`} className="text-indigo-600 hover:text-indigo-900">
@@ -431,7 +341,7 @@ const UsersPage: React.FC = () => {
       </div>
 
       {/* Pagination */}
-      {!loading && users.length > 0 && (
+      {!isLoading && users.length > 0 && (
         <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 mt-4 rounded-md">
           <div className="flex-1 flex justify-between sm:hidden">
             <button
@@ -567,15 +477,15 @@ const UsersPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSuspendUser}
-                  disabled={!suspendReason.trim() || actionLoading}
+                  disabled={!suspendReason.trim() || suspendUserMutation.isPending}
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:bg-red-300"
                 >
-                  {actionLoading ? 'Suspending...' : 'Suspend'}
+                  {suspendUserMutation.isPending ? 'Suspending...' : 'Suspend'}
                 </button>
                 <button
                   type="button"
                   onClick={closeSuspendModal}
-                  disabled={actionLoading}
+                  disabled={suspendUserMutation.isPending}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Cancel

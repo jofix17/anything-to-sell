@@ -1,124 +1,83 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import adminService from "../../services/adminService";
-import productService from "../../services/productService";
-import { Product, Category, Review, User } from "../../types";
+import {
+  useCategories,
+  useProductDetail,
+  useProductReviews,
+} from "../../services/productService";
+import {
+  useApproveProduct,
+  useRejectProduct,
+} from "../../services/adminService";
 import { format } from "date-fns";
+import { toast } from "react-toastify";
 
 const AdminProductDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [product, setProduct] = useState<Product | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [vendor, setVendor] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(false);
 
-  useEffect(() => {
-    if (!id) return;
-    fetchProductDetails();
-    fetchCategories();
-  }, [id]);
+  // Fetch product data using React Query hooks
+  const {
+    data: productResponse,
+    isLoading: isProductLoading,
+    error: productError,
+  } = useProductDetail(id || "");
 
-  const fetchProductDetails = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  const product = productResponse?.data || null;
 
-      // Fetch product data
-      const productData = await productService.getProductById(id!);
-      setProduct(productData);
+  // Fetch categories for reference
+  const { data: categoriesResponse, isLoading: isCategoriesLoading } =
+    useCategories();
 
-      // Fetch product reviews
-      const reviewsData = await productService.getProductReviews(id!);
-      setReviews(reviewsData);
+  // Fetch product reviews
+  const { data: reviewsResponse, isLoading: isReviewsLoading } =
+    useProductReviews(id || "");
 
-      // Fetch vendor details (simplified approach)
-      try {
-        const vendorData = await adminService.getUserById(productData.vendor.id);
-        setVendor(vendorData);
-      } catch (error) {
-        console.error("Error fetching vendor details:", error);
-        // Don't fail the whole request if vendor details can't be fetched
+  // Extract data from responses
+  const categories = categoriesResponse?.data || [];
+  const reviews = reviewsResponse?.data || [];
+
+  // Product approval/rejection mutations
+  const approveProductMutation = useApproveProduct({
+    onSuccess: () => {
+      toast.success("Product has been approved");
+      // Update local state to reflect the change
+      if (product) {
+        product.status = "active";
+        product.isActive = true;
       }
-    } catch (error) {
-      setError("Failed to load product details");
-      console.error("Error fetching product details:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to approve product");
+    },
+  });
 
-  const fetchCategories = async () => {
-    try {
-      const categoriesData = await productService.getCategories();
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-    }
-  };
+  const rejectProductMutation = useRejectProduct({
+    onSuccess: () => {
+      toast.success("Product has been rejected");
+      // Update local state to reflect the change
+      if (product) {
+        product.status = "rejected";
+        product.isActive = false;
+      }
+      setShowRejectModal(false);
+      setRejectReason("");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to reject product");
+    },
+  });
 
   const handleApproveProduct = async () => {
     if (!id || !product) return;
-
-    try {
-      setIsUpdating(true);
-      setError(null);
-
-      await productService.approveProduct(id);
-
-      // Update local state
-      setProduct((prev) =>
-        prev ? { ...prev, status: "active", isActive: true } : null
-      );
-
-      setSuccessMessage("Product has been approved");
-
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 3000);
-    } catch (error) {
-      setError("Failed to approve product");
-      console.error("Error approving product:", error);
-    } finally {
-      setIsUpdating(false);
-    }
+    approveProductMutation.mutate(id);
   };
 
   const handleRejectProduct = async () => {
-    if (!id || !product) return;
-
-    try {
-      setIsUpdating(true);
-      setError(null);
-
-      await productService.rejectProduct(id, rejectReason);
-
-      // Update local state
-      setProduct((prev) =>
-        prev ? { ...prev, status: "rejected", isActive: false } : null
-      );
-
-      setSuccessMessage("Product has been rejected");
-      setShowRejectModal(false);
-      setRejectReason("");
-
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 3000);
-    } catch (error) {
-      setError("Failed to reject product");
-      console.error("Error rejecting product:", error);
-    } finally {
-      setIsUpdating(false);
-    }
+    if (!id || !product || !rejectReason.trim()) return;
+    rejectProductMutation.mutate({ id, reason: rejectReason });
   };
 
   // Format date helper
@@ -138,11 +97,18 @@ const AdminProductDetailPage: React.FC = () => {
   };
 
   // Calculate average rating
-  const calculateAverageRating = (reviews: Review[]) => {
+  const calculateAverageRating = (reviews: any[]) => {
     if (reviews.length === 0) return 0;
     const sum = reviews.reduce((total, review) => total + review.rating, 0);
     return sum / reviews.length;
   };
+
+  // Combined loading state
+  const isLoading = isProductLoading || isCategoriesLoading || isReviewsLoading;
+
+  // Handle mutations loading states
+  const isMutating =
+    approveProductMutation.isPending || rejectProductMutation.isPending;
 
   if (isLoading) {
     return (
@@ -155,7 +121,7 @@ const AdminProductDetailPage: React.FC = () => {
     );
   }
 
-  if (!product) {
+  if (productError || !product) {
     return (
       <div className="px-4 py-6">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -205,20 +171,6 @@ const AdminProductDetailPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Success Message */}
-      {successMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-6">
-          {successMessage}
-        </div>
-      )}
-
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
-          {error}
-        </div>
-      )}
-
       {/* Status Banner */}
       {product.status === "pending" && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -244,17 +196,21 @@ const AdminProductDetailPage: React.FC = () => {
               <div className="mt-3 md:mt-0 md:ml-6 flex space-x-3">
                 <button
                   onClick={handleApproveProduct}
-                  disabled={isUpdating}
+                  disabled={isMutating}
                   className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition duration-200 disabled:opacity-50 text-sm"
                 >
-                  {isUpdating ? "Approving..." : "Approve Product"}
+                  {approveProductMutation.isPending
+                    ? "Approving..."
+                    : "Approve Product"}
                 </button>
                 <button
                   onClick={() => setShowRejectModal(true)}
-                  disabled={isUpdating}
+                  disabled={isMutating}
                   className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 transition duration-200 disabled:opacity-50 text-sm"
                 >
-                  {isUpdating ? "Rejecting..." : "Reject Product"}
+                  {rejectProductMutation.isPending
+                    ? "Rejecting..."
+                    : "Reject Product"}
                 </button>
               </div>
             </div>
@@ -293,10 +249,12 @@ const AdminProductDetailPage: React.FC = () => {
               <div className="mt-3 md:mt-0 md:ml-6">
                 <button
                   onClick={handleApproveProduct}
-                  disabled={isUpdating}
+                  disabled={isMutating}
                   className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition duration-200 disabled:opacity-50 text-sm"
                 >
-                  {isUpdating ? "Approving..." : "Approve Product"}
+                  {approveProductMutation.isPending
+                    ? "Approving..."
+                    : "Approve Product"}
                 </button>
               </div>
             </div>
@@ -311,7 +269,9 @@ const AdminProductDetailPage: React.FC = () => {
             {/* Left Column - Images */}
             <div>
               <div className="bg-gray-100 rounded-lg overflow-hidden h-64 flex items-center justify-center">
-                {product.images[0].imageUrl ? (
+                {product.images &&
+                product.images.length > 0 &&
+                product.images[0].imageUrl ? (
                   <img
                     src={product.images[0].imageUrl}
                     alt={product.name}
@@ -493,29 +453,31 @@ const AdminProductDetailPage: React.FC = () => {
                   Vendor Information
                 </h3>
 
-                {vendor ? (
+                {product.vendor ? (
                   <div>
                     <p className="text-sm font-medium text-gray-900">
-                      {vendor.firstName} {vendor.lastName}
+                      {product.vendor.firstName} {product.vendor.lastName}
                     </p>
-                    <p className="text-sm text-gray-600">{vendor.email}</p>
+                    <p className="text-sm text-gray-600">
+                      {product.vendor.email}
+                    </p>
 
                     <div className="mt-2">
                       <span
                         className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded-full 
                         ${
-                          vendor.isActive
+                          product.vendor.isActive
                             ? "bg-green-100 text-green-800"
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-                        {vendor.isActive ? "Active" : "Suspended"}
+                        {product.vendor.isActive ? "Active" : "Suspended"}
                       </span>
                     </div>
 
                     <div className="mt-4">
                       <a
-                        href={`/admin/users/${vendor.id}`}
+                        href={`/admin/users/${product.vendor.id}`}
                         className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
                       >
                         View Vendor Profile
@@ -624,39 +586,6 @@ const AdminProductDetailPage: React.FC = () => {
                         {review.comment}
                       </div>
                     </div>
-                    <div>
-                      <button
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              "Are you sure you want to delete this review?"
-                            )
-                          ) {
-                            // Implement delete review functionality
-                            productService
-                              .deleteReview(review.id)
-                              .then(() => {
-                                setReviews((prev) =>
-                                  prev.filter((r) => r.id !== review.id)
-                                );
-                                setSuccessMessage(
-                                  "Review deleted successfully"
-                                );
-                                setTimeout(() => {
-                                  setSuccessMessage(null);
-                                }, 3000);
-                              })
-                              .catch((error) => {
-                                setError("Failed to delete review");
-                                console.error("Error deleting review:", error);
-                              });
-                          }
-                        }}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -701,15 +630,20 @@ const AdminProductDetailPage: React.FC = () => {
                   setRejectReason("");
                 }}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition duration-200"
+                disabled={rejectProductMutation.isPending}
               >
                 Cancel
               </button>
               <button
                 onClick={handleRejectProduct}
-                disabled={isUpdating || !rejectReason.trim()}
+                disabled={
+                  rejectProductMutation.isPending || !rejectReason.trim()
+                }
                 className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition duration-200 disabled:opacity-50"
               >
-                {isUpdating ? "Rejecting..." : "Reject Product"}
+                {rejectProductMutation.isPending
+                  ? "Rejecting..."
+                  : "Reject Product"}
               </button>
             </div>
           </div>

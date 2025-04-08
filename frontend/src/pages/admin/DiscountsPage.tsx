@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { toast } from "react-toastify";
-import adminService from "../../services/adminService";
+import {
+  useDiscountEvents,
+  useCreateDiscountEvent,
+  useUpdateDiscountEvent,
+  useDeleteDiscountEvent,
+  useActivateDiscountEvent,
+  useDeactivateDiscountEvent
+} from "../../services/adminService";
 import { DiscountEvent } from "../../types";
 
 type FilterAppliedTo = "all" | "category" | "products";
 
 const AdminDiscountsPage: React.FC = () => {
-  // State for discounts data
-  const [discountEvents, setDiscountEvents] = useState<DiscountEvent[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-
   // State for form modal
   const [showModal, setShowModal] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -26,23 +29,61 @@ const AdminDiscountsPage: React.FC = () => {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
-  // Fetch discounts on component mount
-  useEffect(() => {
-    fetchDiscountEvents();
-  }, []);
+  // Use React Query hooks
+  const { 
+    data: discountEventsResponse, 
+    isLoading, 
+    error
+  } = useDiscountEvents();
 
-  const fetchDiscountEvents = async () => {
-    try {
-      setLoading(true);
-      const events = await adminService.getDiscountEvents();
-      setDiscountEvents(events);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to load discount events");
-    } finally {
-      setLoading(false);
+  const discountEvents = discountEventsResponse?.data || [];
+
+  const createDiscountEventMutation = useCreateDiscountEvent({
+    onSuccess: () => {
+      toast.success("Discount created successfully");
+      setShowModal(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to create discount");
     }
-  };
+  });
+
+  const updateDiscountEventMutation = useUpdateDiscountEvent({
+    onSuccess: () => {
+      toast.success("Discount updated successfully");
+      setShowModal(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update discount");
+    }
+  });
+
+  const deleteDiscountEventMutation = useDeleteDiscountEvent({
+    onSuccess: () => {
+      toast.success("Discount deleted successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to delete discount");
+    }
+  });
+
+  const activateDiscountEventMutation = useActivateDiscountEvent({
+    onSuccess: () => {
+      toast.success("Discount activated");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to activate discount");
+    }
+  });
+
+  const deactivateDiscountEventMutation = useDeactivateDiscountEvent({
+    onSuccess: () => {
+      toast.success("Discount deactivated");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to deactivate discount");
+    }
+  });
 
   const handleOpenModal = (discount?: DiscountEvent) => {
     if (discount) {
@@ -84,93 +125,69 @@ const AdminDiscountsPage: React.FC = () => {
   };
 
   const handleSaveDiscount = async () => {
-    try {
-      // Basic validation
-      if (!name.trim()) {
-        toast.error("Please enter a discount name");
-        return;
-      }
+    // Basic validation
+    if (!name.trim()) {
+      toast.error("Please enter a discount name");
+      return;
+    }
 
-      if (discountPercentage <= 0 || discountPercentage > 100) {
-        toast.error("Discount percentage must be between 1 and 100");
-        return;
-      }
+    if (discountPercentage <= 0 || discountPercentage > 100) {
+      toast.error("Discount percentage must be between 1 and 100");
+      return;
+    }
 
-      if (!startDate || !endDate) {
-        toast.error("Please select start and end dates");
-        return;
-      }
+    if (!startDate || !endDate) {
+      toast.error("Please select start and end dates");
+      return;
+    }
 
-      setLoading(true);
+    const payload = {
+      name,
+      description,
+      discountPercentage,
+      startDate,
+      endDate,
+      isActive,
+      appliesTo,
+      categoryIds: selectedCategoryIds,
+      productIds: selectedProductIds,
+    };
 
-      const payload = {
-        name,
-        description,
-        discountPercentage,
-        startDate,
-        endDate,
-        isActive,
-        appliesTo,
-        categoryIds: selectedCategoryIds,
-        productIds: selectedProductIds,
-      };
-
-      if (isEditing && editId) {
-        await adminService.updateDiscountEvent(editId, payload);
-        toast.success("Discount updated successfully");
-      } else {
-        await adminService.createDiscountEvent(payload);
-        toast.success("Discount created successfully");
-      }
-
-      setShowModal(false);
-      fetchDiscountEvents();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to save discount");
-    } finally {
-      setLoading(false);
+    if (isEditing && editId) {
+      updateDiscountEventMutation.mutate({
+        id: editId,
+        eventData: payload
+      });
+    } else {
+      createDiscountEventMutation.mutate(payload);
     }
   };
 
   const handleDeleteDiscount = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this discount?")) {
-      try {
-        setLoading(true);
-        await adminService.deleteDiscountEvent(id);
-        toast.success("Discount deleted successfully");
-        fetchDiscountEvents();
-      } catch (error) {
-        console.error(error);
-        toast.error("Failed to delete discount");
-      } finally {
-        setLoading(false);
-      }
+      deleteDiscountEventMutation.mutate(id);
     }
   };
 
   const handleToggleActive = async (event: DiscountEvent) => {
-    try {
-      setLoading(true);
-      if (event.isActive) {
-        await adminService.deactivateDiscountEvent(event.id);
-        toast.success("Discount deactivated");
-      } else {
-        await adminService.activateDiscountEvent(event.id);
-        toast.success("Discount activated");
-      }
-      fetchDiscountEvents();
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to update discount status");
-    } finally {
-      setLoading(false);
+    if (event.isActive) {
+      deactivateDiscountEventMutation.mutate(event.id);
+    } else {
+      activateDiscountEventMutation.mutate(event.id);
     }
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
+
+  // Determine if any mutation is in progress
+  const isMutating = 
+    createDiscountEventMutation.isPending || 
+    updateDiscountEventMutation.isPending || 
+    deleteDiscountEventMutation.isPending || 
+    activateDiscountEventMutation.isPending || 
+    deactivateDiscountEventMutation.isPending;
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -179,7 +196,7 @@ const AdminDiscountsPage: React.FC = () => {
         <button
           onClick={() => handleOpenModal()}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          disabled={loading}
+          disabled={isMutating}
         >
           Create New Discount
         </button>
@@ -187,9 +204,13 @@ const AdminDiscountsPage: React.FC = () => {
 
       {/* Discounts Table */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        {loading && discountEvents.length === 0 ? (
+        {isLoading ? (
           <div className="flex justify-center items-center p-8">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : error ? (
+          <div className="text-center p-8 text-red-500">
+            {error instanceof Error ? error.message : "Failed to load discounts"}
           </div>
         ) : discountEvents.length === 0 ? (
           <div className="text-center p-8">
@@ -268,6 +289,7 @@ const AdminDiscountsPage: React.FC = () => {
                       <button
                         onClick={() => handleOpenModal(event)}
                         className="text-blue-600 hover:text-blue-900 mr-4"
+                        disabled={isMutating}
                       >
                         Edit
                       </button>
@@ -278,12 +300,14 @@ const AdminDiscountsPage: React.FC = () => {
                             ? "text-orange-600 hover:text-orange-900 mr-4"
                             : "text-green-600 hover:text-green-900 mr-4"
                         }
+                        disabled={isMutating}
                       >
                         {event.isActive ? "Deactivate" : "Activate"}
                       </button>
                       <button
                         onClick={() => handleDeleteDiscount(event.id)}
                         className="text-red-600 hover:text-red-900"
+                        disabled={isMutating}
                       >
                         Delete
                       </button>
@@ -451,15 +475,20 @@ const AdminDiscountsPage: React.FC = () => {
               <button
                 onClick={handleCloseModal}
                 className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                disabled={isMutating}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveDiscount}
-                disabled={loading}
+                disabled={isMutating}
                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-blue-300"
               >
-                {loading ? "Saving..." : isEditing ? "Update" : "Create"}
+                {createDiscountEventMutation.isPending || updateDiscountEventMutation.isPending
+                  ? "Saving..."
+                  : isEditing
+                  ? "Update"
+                  : "Create"}
               </button>
             </div>
           </div>

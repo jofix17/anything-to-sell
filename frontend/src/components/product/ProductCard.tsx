@@ -1,11 +1,18 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { HeartIcon, ShoppingCartIcon, StarIcon } from '@heroicons/react/24/outline';
-import { HeartIcon as HeartSolidIcon, StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
-import { Product } from '../../types';
-import { useCart } from '../../context/CartContext';
-import { useAuth } from '../../context/AuthContext';
-import { useNotification } from '../../components/layout/MainLayout';
+import React from "react";
+import { Link } from "react-router-dom";
+import {
+  HeartIcon,
+  ShoppingCartIcon,
+  StarIcon,
+} from "@heroicons/react/24/outline";
+import {
+  HeartIcon as HeartSolidIcon,
+  StarIcon as StarSolidIcon,
+} from "@heroicons/react/24/solid";
+import { Product } from "../../types";
+import { useCart } from "../../context/CartContext";
+import { useAuth } from "../../context/AuthContext";
+import { useNotification } from "../../components/layout/MainLayout";
 
 interface ProductCardProps {
   product: Product;
@@ -13,25 +20,27 @@ interface ProductCardProps {
   onToggleWishlist?: (productId: string) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ 
-  product, 
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
   isWishlisted = false,
-  onToggleWishlist 
+  onToggleWishlist,
 }) => {
   const { addToCart } = useCart();
   const { isAuthenticated } = useAuth();
   const { showNotification } = useNotification();
 
   // Calculate discount percentage if product is on sale
-  const discountPercentage = product.salePrice 
-    ? Math.round(((product.price - product.salePrice) / product.price) * 100) 
+  const discountPercentage = product.salePrice
+    ? Math.round(((product.price - product.salePrice) / product.price) * 100)
     : 0;
 
   // Get primary image or fallback
-  const primaryImage = product.images && product.images.length > 0
-    ? product.images.find(img => img.isPrimary)?.imageUrl || product.images[0].imageUrl
-    : '/placeholder-product.jpg';
-  
+  const primaryImage =
+    product.images && product.images.length > 0
+      ? product.images.find((img) => img.isPrimary)?.imageUrl ||
+        product.images[0].imageUrl
+      : "/placeholder-product.jpg";
+
   // Format price with currency
   const formatPrice = (price: number): string => {
     return `$${price.toFixed(2)}`;
@@ -41,17 +50,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!isAuthenticated) {
-      showNotification('Please login to add items to your cart', 'info');
+      showNotification("Please login to add items to your cart", "info");
       return;
     }
 
     try {
       await addToCart(product.id, 1);
-      showNotification(`${product.name} added to cart`, 'success');
+      showNotification(`${product.name} added to cart`, "success");
     } catch (error) {
-      showNotification('Failed to add product to cart', 'error');
+      showNotification("Failed to add product to cart", "error");
     }
   };
 
@@ -59,9 +68,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const handleToggleWishlist = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!isAuthenticated) {
-      showNotification('Please login to add items to your wishlist', 'info');
+      showNotification("Please login to add items to your wishlist", "info");
       return;
     }
 
@@ -78,7 +87,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           {discountPercentage}% OFF
         </div>
       )}
-      
+
       {/* Wishlist button */}
       {onToggleWishlist && (
         <button
@@ -94,7 +103,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
       )}
 
       {/* Product image */}
-      <Link to={`/products/${product.id}`} className="block aspect-square overflow-hidden">
+      <Link
+        to={`/products/${product.id}`}
+        className="block aspect-square overflow-hidden"
+      >
         <img
           src={primaryImage}
           alt={product.name}
@@ -106,14 +118,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
       <div className="p-4">
         {/* Category */}
         {product.category && (
-          <Link 
+          <Link
             to={`/products?category=${product.category.id}`}
             className="text-xs text-gray-500 hover:text-primary-600 mb-1 block"
           >
             {product.category.name}
           </Link>
         )}
-        
+
         {/* Product name */}
         <Link to={`/products/${product.id}`} className="block">
           <h3 className="text-sm font-medium text-gray-900 hover:text-primary-600 transition-colors duration-200 line-clamp-2 h-10">
@@ -126,7 +138,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <div className="flex items-center">
             {[1, 2, 3, 4, 5].map((star) => (
               <span key={star}>
-                {star <= Math.round(product.rating) ? (
+                {star <= Math.round(product.reviewSummary.rating) ? (
                   <StarSolidIcon className="h-4 w-4 text-yellow-400" />
                 ) : (
                   <StarIcon className="h-4 w-4 text-yellow-400" />
@@ -134,13 +146,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
               </span>
             ))}
           </div>
-          <span className="text-xs text-gray-500 ml-1">({product.reviewCount})</span>
+          <span className="text-xs text-gray-500 ml-1">
+            ({product.reviewSummary.reviewCount} reviews)
+          </span>
         </div>
 
         {/* Vendor name if available */}
         {product.vendor && (
           <p className="mt-1 text-xs text-gray-500">
-            by <span className="text-gray-700">{product.vendor.firstName} {product.vendor.lastName}</span>
+            by{" "}
+            <span className="text-gray-700">
+              {product.vendor.firstName} {product.vendor.lastName}
+            </span>
           </p>
         )}
 
@@ -149,11 +166,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <div className="flex items-center space-x-1">
             {product.salePrice ? (
               <>
-                <span className="text-lg font-medium text-primary-600">{formatPrice(product.salePrice)}</span>
-                <span className="text-sm text-gray-500 line-through">{formatPrice(product.price)}</span>
+                <span className="text-lg font-medium text-primary-600">
+                  {formatPrice(product.salePrice)}
+                </span>
+                <span className="text-sm text-gray-500 line-through">
+                  {formatPrice(product.price)}
+                </span>
               </>
             ) : (
-              <span className="text-lg font-medium text-gray-900">{formatPrice(product.price)}</span>
+              <span className="text-lg font-medium text-gray-900">
+                {formatPrice(product.price)}
+              </span>
             )}
           </div>
 
@@ -163,8 +186,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
             disabled={product.inventory <= 0}
             className={`p-2 rounded-full ${
               product.inventory > 0
-                ? 'bg-primary-600 text-white hover:bg-primary-700'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                ? "bg-primary-600 text-white hover:bg-primary-700"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
             } focus:outline-none transition-colors duration-200`}
           >
             <ShoppingCartIcon className="h-5 w-5" />
@@ -176,7 +199,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
           {product.inventory <= 0 ? (
             <p className="text-xs text-red-600">Out of stock</p>
           ) : product.inventory <= 5 ? (
-            <p className="text-xs text-orange-600">Low stock: {product.inventory} left</p>
+            <p className="text-xs text-orange-600">
+              Low stock: {product.inventory} left
+            </p>
           ) : (
             <p className="text-xs text-green-600">In stock</p>
           )}

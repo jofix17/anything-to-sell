@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import * as Yup from "yup";
-import adminService from "../../services/adminService";
-import productService from "../../services/productService";
+import {
+  useCreateCategory,
+  useUpdateCategory,
+  useDeleteCategory
+} from "../../services/adminService";
+import {
+  useCategories
+} from "../../services/productService";
 import { Category, CategoryCreateData } from "../../types";
 
 const CategorySchema = Yup.object().shape({
@@ -12,17 +18,12 @@ const CategorySchema = Yup.object().shape({
 });
 
 const AdminCategoriesPage: React.FC = () => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
-    null
-  );
+  // State for UI
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{
     open: boolean;
     categoryId: string | null;
@@ -35,25 +36,64 @@ const AdminCategoriesPage: React.FC = () => {
     message: string;
   } | null>(null);
 
-  // Fetch categories
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        setLoading(true);
-        const data = await productService.getCategories();
-        setCategories(data);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load categories"
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Use React Query hooks
+  const { 
+    data: categoriesResponse, 
+    isLoading, 
+    error 
+  } = useCategories();
 
-    fetchCategories();
-  }, []);
+  const categories = categoriesResponse?.data || [];
 
+  const createCategoryMutation = useCreateCategory({
+    onSuccess: () => {
+      setNotification({
+        type: "success",
+        message: "Category created successfully",
+      });
+      closeModal();
+    },
+    onError: (error: Error) => {
+      setNotification({
+        type: "error",
+        message: error.message || "Failed to create category",
+      });
+    }
+  });
+
+  const updateCategoryMutation = useUpdateCategory({
+    onSuccess: () => {
+      setNotification({
+        type: "success",
+        message: "Category updated successfully",
+      });
+      closeModal();
+    },
+    onError: (error: Error) => {
+      setNotification({
+        type: "error",
+        message: error.message || "Failed to update category",
+      });
+    }
+  });
+
+  const deleteCategoryMutation = useDeleteCategory({
+    onSuccess: () => {
+      setNotification({
+        type: "success",
+        message: "Category deleted successfully",
+      });
+      closeDeleteConfirm();
+    },
+    onError: (error: Error) => {
+      setNotification({
+        type: "error",
+        message: error.message || "Failed to delete category",
+      });
+    }
+  });
+
+  // UI handlers
   const openCreateModal = () => {
     setSelectedCategory(null);
     setModalMode("create");
@@ -97,122 +137,49 @@ const AdminCategoriesPage: React.FC = () => {
   };
 
   const handleCreateCategory = async (values: Category) => {
-    try {
-      setIsSubmitting(true);
+    const categoryData: CategoryCreateData = {
+      name: values.name,
+      description: values.description,
+      parentId: null,
+    };
 
-      const categoryData: CategoryCreateData = {
-        name: values.name,
-        description: values.description,
-        parentId: null,
-      };
-
-      if (values.parentId) {
-        categoryData.parentId = values.parentId;
-      }
-
-      if (imageFile) {
-        categoryData.imageFile = imageFile;
-      }
-
-      const newCategory = await adminService.createCategory(categoryData);
-
-      // Update the categories list
-      setCategories([...categories, newCategory]);
-
-      setNotification({
-        type: "success",
-        message: "Category created successfully",
-      });
-
-      closeModal();
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message:
-          err instanceof Error ? err.message : "Failed to create category",
-      });
-    } finally {
-      setIsSubmitting(false);
+    if (values.parentId) {
+      categoryData.parentId = values.parentId;
     }
+
+    if (imageFile) {
+      categoryData.imageFile = imageFile;
+    }
+
+    createCategoryMutation.mutate(categoryData);
   };
 
   const handleUpdateCategory = async (values: Category) => {
     if (!selectedCategory) return;
 
-    try {
-      setIsSubmitting(true);
+    const categoryData: CategoryCreateData = {
+      name: values.name,
+      description: values.description,
+      parentId: null,
+    };
 
-      const categoryData: CategoryCreateData = {
-        name: values.name,
-        description: values.description,
-        parentId: null,
-      };
-
-      if (values.parentId !== undefined) {
-        categoryData.parentId = values.parentId ? values.parentId : null;
-      }
-
-      if (imageFile) {
-        categoryData.imageFile = imageFile;
-      }
-
-      const updatedCategory = await adminService.updateCategory(
-        selectedCategory.id,
-        categoryData
-      );
-
-      // Update the categories list
-      setCategories(
-        categories.map((c) =>
-          c.id === updatedCategory.id ? updatedCategory : c
-        )
-      );
-
-      setNotification({
-        type: "success",
-        message: "Category updated successfully",
-      });
-
-      closeModal();
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message:
-          err instanceof Error ? err.message : "Failed to update category",
-      });
-    } finally {
-      setIsSubmitting(false);
+    if (values.parentId !== undefined) {
+      categoryData.parentId = values.parentId ? values.parentId : null;
     }
+
+    if (imageFile) {
+      categoryData.imageFile = imageFile;
+    }
+
+    updateCategoryMutation.mutate({
+      id: selectedCategory.id,
+      categoryData
+    });
   };
 
   const handleDeleteCategory = async () => {
     if (!confirmDelete.categoryId) return;
-
-    try {
-      setIsSubmitting(true);
-
-      await adminService.deleteCategory(confirmDelete.categoryId);
-
-      // Update the categories list
-      setCategories(
-        categories.filter((c) => c.id !== confirmDelete.categoryId)
-      );
-
-      setNotification({
-        type: "success",
-        message: "Category deleted successfully",
-      });
-
-      closeDeleteConfirm();
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message:
-          err instanceof Error ? err.message : "Failed to delete category",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    deleteCategoryMutation.mutate(confirmDelete.categoryId);
   };
 
   // Build a hierarchical tree from flat categories list
@@ -436,13 +403,13 @@ const AdminCategoriesPage: React.FC = () => {
       )}
 
       {/* Loading and error states */}
-      {loading ? (
+      {isLoading ? (
         <div className="mt-6 flex justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
         </div>
       ) : error ? (
         <div className="mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
+          {error instanceof Error ? error.message : "Failed to load categories"}
         </div>
       ) : categories.length === 0 ? (
         <div className="mt-6 text-center py-12 bg-white shadow rounded-lg">
@@ -689,10 +656,14 @@ const AdminCategoriesPage: React.FC = () => {
                     <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                       <button
                         type="submit"
-                        disabled={isSubmitting || formSubmitting}
+                        disabled={
+                          formSubmitting || 
+                          createCategoryMutation.isPending || 
+                          updateCategoryMutation.isPending
+                        }
                         className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:bg-indigo-400"
                       >
-                        {isSubmitting
+                        {createCategoryMutation.isPending || updateCategoryMutation.isPending
                           ? "Saving..."
                           : modalMode === "create"
                           ? "Add Category"
@@ -701,7 +672,7 @@ const AdminCategoriesPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={closeModal}
-                        disabled={isSubmitting}
+                        disabled={createCategoryMutation.isPending || updateCategoryMutation.isPending}
                         className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                       >
                         Cancel
@@ -774,15 +745,15 @@ const AdminCategoriesPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleDeleteCategory}
-                  disabled={isSubmitting}
+                  disabled={deleteCategoryMutation.isPending}
                   className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:bg-red-400"
                 >
-                  {isSubmitting ? "Deleting..." : "Delete"}
+                  {deleteCategoryMutation.isPending ? "Deleting..." : "Delete"}
                 </button>
                 <button
                   type="button"
                   onClick={closeDeleteConfirm}
-                  disabled={isSubmitting}
+                  disabled={deleteCategoryMutation.isPending}
                   className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                 >
                   Cancel

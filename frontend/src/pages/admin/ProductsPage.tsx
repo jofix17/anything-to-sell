@@ -1,17 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import adminService from "../../services/adminService";
-import productService from "../../services/productService";
-import { Product, Category } from "../../types";
+import { toast } from "react-toastify";
+import {
+  useAdminProducts,
+  useApproveProduct,
+  useRejectProduct,
+  usePendingProductsCount,
+  useAdminVendors
+} from "../../services/adminService";
+import { useCategories } from "../../services/productService";
 
 const AdminProductsPage: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [filters, setFilters] = useState({
     status: "all",
     categoryId: "",
@@ -23,112 +23,105 @@ const AdminProductsPage: React.FC = () => {
     pending: false,
   });
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
 
-  useEffect(() => {
-    fetchCategories();
-    fetchVendors();
-    fetchProducts();
-    fetchPendingCount();
-  }, [currentPage]);
+  // Prepare query parameters
+  const getQueryParams = () => {
+    const params: any = {
+      page: currentPage,
+      perPage: 10,
+    };
 
-  const fetchProducts = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const params: {
-        page: number;
-        perPage: number;
-        status?: string;
-        categoryId?: number;
-        vendorId?: number;
-        query?: string;
-        minPrice?: number;
-        maxPrice?: number;
-        onSale?: boolean;
-      } = {
-        page: currentPage,
-        perPage: 10,
-      };
-
-      // Add filters to params
-      if (filters.status && filters.status !== "all") {
-        params.status = filters.status;
-      }
-
-      if (filters.categoryId) {
-        params.categoryId = parseInt(filters.categoryId);
-      }
-
-      if (filters.vendorId) {
-        params.vendorId = parseInt(filters.vendorId);
-      }
-
-      if (filters.search) {
-        params.query = filters.search;
-      }
-
-      if (filters.minPrice) {
-        params.minPrice = parseFloat(filters.minPrice);
-      }
-
-      if (filters.maxPrice) {
-        params.maxPrice = parseFloat(filters.maxPrice);
-      }
-
-      if (filters.onSale) {
-        params.onSale = true;
-      }
-
-      if (filters.pending) {
-        params.status = "pending";
-      }
-
-      const response = await productService.getProducts(params);
-      setProducts(response.data);
-      setTotalPages(response.totalPages);
-    } catch (error) {
-      setError("Failed to load products");
-      console.error("Error fetching products:", error);
-    } finally {
-      setIsLoading(false);
+    if (filters.status && filters.status !== "all") {
+      params.status = filters.status;
     }
+
+    if (filters.categoryId) {
+      params.categoryId = filters.categoryId;
+    }
+
+    if (filters.vendorId) {
+      params.vendorId = filters.vendorId;
+    }
+
+    if (filters.search) {
+      params.query = filters.search;
+    }
+
+    if (filters.minPrice) {
+      params.minPrice = parseFloat(filters.minPrice);
+    }
+
+    if (filters.maxPrice) {
+      params.maxPrice = parseFloat(filters.maxPrice);
+    }
+
+    if (filters.onSale) {
+      params.onSale = true;
+    }
+
+    if (filters.pending) {
+      params.status = "pending";
+    }
+
+    return params;
   };
 
-  const fetchCategories = async () => {
-    try {
-      const categoriesData = await productService.getCategories();
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-    }
-  };
+  // Fetch products using React Query
+  const {
+    data: productsResponse,
+    isLoading: isProductsLoading,
+    error: productsError,
+    refetch: refetchProducts
+  } = useAdminProducts(getQueryParams());
 
-  const fetchVendors = async () => {
-    try {
-      // This is a simplified approach - you might need a specific endpoint for this
-      const vendorsData = await adminService.getUsers({ role: "vendor" });
-      setVendors(
-        vendorsData.data.map((vendor) => ({
-          id: vendor.id,
-          name: `${vendor.firstName} ${vendor.lastName}`,
-        }))
-      );
-    } catch (error) {
-      console.error("Error fetching vendors:", error);
-    }
-  };
+  // Fetch categories with React Query
+  const {
+    data: categoriesResponse,
+    isLoading: isCategoriesLoading
+  } = useCategories();
 
-  const fetchPendingCount = async () => {
-    try {
-      const response = await adminService.getPendingProducts();
-      setPendingCount(response.data.length);
-    } catch (error) {
-      console.error("Error fetching pending products count:", error);
-    }
-  };
+  // Fetch vendors with React Query
+  const {
+    data: vendorsResponse,
+    isLoading: isVendorsLoading
+  } = useAdminVendors();
 
+  // Fetch pending products count with React Query
+  const {
+    data: pendingCountResponse,
+    isLoading: isPendingCountLoading,
+    refetch: refetchPendingCount
+  } = usePendingProductsCount();
+
+  // Mutations for product approval and rejection
+  const approveProductMutation = useApproveProduct({
+    onSuccess: () => {
+      // Success handled for individual approvals
+      // Bulk success handled in the bulk approval function
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to approve product");
+    }
+  });
+
+  const rejectProductMutation = useRejectProduct({
+    onSuccess: () => {
+      // Success handled for individual rejections
+      // Bulk success handled in the bulk rejection function
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to reject product");
+    }
+  });
+
+  // Extract data from query responses
+  const products = productsResponse?.data || [];
+  const totalPages = productsResponse?.totalPages || 1;
+  const categories = categoriesResponse?.data || [];
+  const vendors = vendorsResponse?.data || [];
+  const pendingCount = pendingCountResponse?.data?.total || 0;
+
+  // Handle filter changes
   const handleFilterChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -144,7 +137,7 @@ const AdminProductsPage: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1);
-    fetchProducts();
+    refetchProducts();
   };
 
   const clearFilters = () => {
@@ -159,11 +152,13 @@ const AdminProductsPage: React.FC = () => {
       pending: false,
     });
     setCurrentPage(1);
-    fetchProducts();
+    refetchProducts();
   };
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    if (page > 0 && page <= totalPages) {
+      setCurrentPage(page);
+    }
   };
 
   const toggleProductSelection = (productId: string) => {
@@ -185,43 +180,23 @@ const AdminProductsPage: React.FC = () => {
   // Handle product approval/rejection
   const handleApproveProduct = async (productId: string) => {
     try {
-      await productService.approveProduct(productId);
-
-      // Update the product in the local state
-      setProducts((prevProducts) =>
-        prevProducts.map((product) =>
-          product.id === productId
-            ? { ...product, status: "active", isActive: true }
-            : product
-        )
-      );
-
-      // Decrement pending count
-      setPendingCount((prev) => Math.max(0, prev - 1));
+      await approveProductMutation.mutateAsync(productId);
+      toast.success("Product approved successfully");
+      refetchProducts();
+      refetchPendingCount();
     } catch (error) {
-      setError("Failed to approve product");
-      console.error("Error approving product:", error);
+      // Error is already handled by the mutation's onError
     }
   };
 
   const handleRejectProduct = async (productId: string, reason: string) => {
     try {
-      await productService.rejectProduct(productId, reason);
-
-      // Update the product in the local state
-      setProducts((prevProducts) =>
-        prevProducts.map((product) =>
-          product.id === productId
-            ? { ...product, status: "rejected", isActive: false }
-            : product
-        )
-      );
-
-      // Decrement pending count
-      setPendingCount((prev) => Math.max(0, prev - 1));
+      await rejectProductMutation.mutateAsync({ id: productId, reason });
+      toast.success("Product rejected successfully");
+      refetchProducts();
+      refetchPendingCount();
     } catch (error) {
-      setError("Failed to reject product");
-      console.error("Error rejecting product:", error);
+      // Error is already handled by the mutation's onError
     }
   };
 
@@ -229,75 +204,58 @@ const AdminProductsPage: React.FC = () => {
   const handleBulkApprove = async () => {
     if (selectedProducts.length === 0) return;
 
+    toast.info(`Approving ${selectedProducts.length} products...`);
+    
     try {
-      setIsLoading(true);
+      // Process products one by one to avoid overwhelming the server
+      for (const id of selectedProducts) {
+        await approveProductMutation.mutateAsync(id);
+      }
 
-      // Approve each selected product
-      await Promise.all(
-        selectedProducts.map((id) => productService.approveProduct(id))
-      );
-
-      // Update local state
-      setProducts((prevProducts) =>
-        prevProducts.map((product) =>
-          selectedProducts.includes(product.id)
-            ? { ...product, status: "active", isActive: true }
-            : product
-        )
-      );
-
-      // Decrement pending count
-      setPendingCount((prev) => Math.max(0, prev - selectedProducts.length));
-
+      toast.success(`${selectedProducts.length} products approved successfully`);
       setSelectedProducts([]);
+      refetchProducts();
+      refetchPendingCount();
     } catch (error) {
-      setError("Failed to approve products");
-      console.error("Error during bulk approve:", error);
-    } finally {
-      setIsLoading(false);
+      toast.error("Failed to approve some products");
     }
   };
 
   const handleBulkReject = async () => {
     if (selectedProducts.length === 0) return;
 
+    // Simple reason for bulk rejection
+    const reason = prompt("Please enter a reason for rejecting these products:", "Does not meet guidelines");
+    
+    if (!reason) return;
+
+    toast.info(`Rejecting ${selectedProducts.length} products...`);
+    
     try {
-      setIsLoading(true);
+      // Process products one by one
+      for (const id of selectedProducts) {
+        await rejectProductMutation.mutateAsync({ id, reason });
+      }
 
-      // Simple reason for bulk rejection
-      const reason = "Rejected by admin";
-
-      // Reject each selected product
-      await Promise.all(
-        selectedProducts.map((id) => productService.rejectProduct(id, reason))
-      );
-
-      // Update local state
-      setProducts((prevProducts) =>
-        prevProducts.map((product) =>
-          selectedProducts.includes(product.id)
-            ? { ...product, status: "rejected", isActive: false }
-            : product
-        )
-      );
-
-      // Decrement pending count
-      setPendingCount((prev) => Math.max(0, prev - selectedProducts.length));
-
+      toast.success(`${selectedProducts.length} products rejected successfully`);
       setSelectedProducts([]);
+      refetchProducts();
+      refetchPendingCount();
     } catch (error) {
-      setError("Failed to reject products");
-      console.error("Error during bulk reject:", error);
-    } finally {
-      setIsLoading(false);
+      toast.error("Failed to reject some products");
     }
   };
 
-  // Check if a vendor name exists for a product
+  // Find a vendor's name by ID
   const getVendorName = (vendorId: string) => {
     const vendor = vendors.find((v) => v.id === vendorId);
-    return vendor ? vendor.name : "Unknown Vendor";
+    return vendor ? `${vendor.firstName} ${vendor.lastName}` : "Unknown Vendor";
   };
+
+  // Determine loading and error states
+  const isLoading = isProductsLoading || isCategoriesLoading || isVendorsLoading || isPendingCountLoading;
+  const error = productsError;
+  const isMutating = approveProductMutation.isPending || rejectProductMutation.isPending;
 
   return (
     <div className="px-4 py-6">
@@ -310,7 +268,7 @@ const AdminProductsPage: React.FC = () => {
             onClick={() => {
               setFilters((prev) => ({ ...prev, pending: true }));
               setCurrentPage(1);
-              fetchProducts();
+              refetchProducts();
             }}
             className="px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full hover:bg-yellow-200 transition duration-200 flex items-center"
           >
@@ -335,7 +293,7 @@ const AdminProductsPage: React.FC = () => {
       {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
-          {error}
+          {error instanceof Error ? error.message : "An error occurred"}
         </div>
       )}
 
@@ -420,7 +378,7 @@ const AdminProductsPage: React.FC = () => {
                 <option value="">All Vendors</option>
                 {vendors.map((vendor) => (
                   <option key={vendor.id} value={vendor.id}>
-                    {vendor.name}
+                    {vendor.firstName} {vendor.lastName}
                   </option>
                 ))}
               </select>
@@ -496,15 +454,17 @@ const AdminProductsPage: React.FC = () => {
           <div className="flex space-x-2">
             <button
               onClick={handleBulkApprove}
-              className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
+              disabled={isMutating}
+              className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition disabled:opacity-50"
             >
-              Approve
+              Approve All
             </button>
             <button
               onClick={handleBulkReject}
-              className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
+              disabled={isMutating}
+              className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 transition disabled:opacity-50"
             >
-              Reject
+              Reject All
             </button>
           </div>
         </div>
@@ -592,7 +552,7 @@ const AdminProductsPage: React.FC = () => {
                         <div className="h-10 w-10 flex-shrink-0">
                           <img
                             className="h-10 w-10 rounded-md object-cover"
-                            src={product.images[0].imageUrl || "/api/placeholder/40/40"}
+                            src={product.images[0]?.imageUrl || "/api/placeholder/40/40"}
                             alt={product.name}
                           />
                         </div>
@@ -668,22 +628,33 @@ const AdminProductsPage: React.FC = () => {
                         <>
                           <button
                             onClick={() => handleApproveProduct(product.id)}
-                            className="text-green-600 hover:text-green-900 mr-2"
+                            disabled={isMutating}
+                            className="text-green-600 hover:text-green-900 mr-2 disabled:opacity-50"
                           >
-                            Approve
+                            {approveProductMutation.isPending && 
+                             approveProductMutation.variables === product.id
+                              ? "Approving..."
+                              : "Approve"}
                           </button>
                           <button
                             onClick={() => {
-                              const reason = window.prompt(
+                              const reason = prompt(
                                 "Enter reason for rejection:"
                               );
                               if (reason) {
                                 handleRejectProduct(product.id, reason);
                               }
                             }}
-                            className="text-red-600 hover:text-red-900"
+                            disabled={isMutating}
+                            className="text-red-600 hover:text-red-900 disabled:opacity-50"
                           >
-                            Reject
+                            {rejectProductMutation.isPending && 
+                             typeof rejectProductMutation.variables === 'object' &&
+                             rejectProductMutation.variables !== null &&
+                             'id' in rejectProductMutation.variables &&
+                             rejectProductMutation.variables.id === product.id
+                              ? "Rejecting..."
+                              : "Reject"}
                           </button>
                         </>
                       )}

@@ -1,76 +1,117 @@
-import React, { useState, useEffect, useRef } from 'react';
-import vendorService from '../../services/vendorService';
-import { StoreSettings } from '../../types';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  useVendorStoreDetails,
+  useUpdateStore,
+} from "../../services/vendorService";
+import { ApiResponse, StoreDetails } from "../../types";
 
 const VendorSettingsPage: React.FC = () => {
-  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    contactEmail: '',
-    contactPhone: '',
-    address: '',
-    city: '',
-    state: '',
-    country: '',
-    postalCode: ''
+    name: "",
+    description: "",
+    contactEmail: "",
+    contactPhone: "",
+    address: "",
+    city: "",
+    state: "",
+    country: "",
+    postalCode: "",
   });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  
+
   const logoInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch store details using React Query
+  const {
+    data: storeDetailsResponse,
+    isLoading,
+    error: fetchError,
+  } = useVendorStoreDetails();
+
+  // Get store details from the response
+  const storeSettings = storeDetailsResponse?.data || null;
+
+  // Handle store update mutation
+  const updateStoreMutation = useUpdateStore({
+    onSuccess: (response: ApiResponse<StoreDetails>) => {
+      // Update local state with the returned store details
+      const updatedStore = response.data;
+
+      // Set success message
+      setSuccessMessage("Store settings updated successfully!");
+
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3000);
+
+      // Reset file inputs
+      setLogoFile(null);
+      setBannerFile(null);
+      if (logoInputRef.current) {
+        logoInputRef.current.value = "";
+      }
+      if (bannerInputRef.current) {
+        bannerInputRef.current.value = "";
+      }
+
+      // Set image previews to new URLs
+      setLogoPreview(updatedStore.logoUrl);
+      setBannerPreview(updatedStore.bannerUrl);
+    },
+    onError: (error: Error) => {
+      setError(`Failed to update store settings: ${error.message}`);
+    },
+  });
+
+  // Initialize form data when store details are loaded
   useEffect(() => {
-    fetchStoreSettings();
-  }, []);
-
-  const fetchStoreSettings = async () => {
-    try {
-      setIsLoading(true);
-      const storeData = await vendorService.getStoreDetails();
-      setStoreSettings(storeData);
-      
-      // Initialize form data
+    if (storeSettings) {
       setFormData({
-        name: storeData.name,
-        description: storeData.description,
-        contactEmail: storeData.contactEmail,
-        contactPhone: storeData.contactPhone || '',
-        address: storeData.address || '',
-        city: storeData.city || '',
-        state: storeData.state || '',
-        country: storeData.country || '',
-        postalCode: storeData.postalCode || ''
+        name: storeSettings.name,
+        description: storeSettings.description,
+        contactEmail: storeSettings.contactEmail,
+        contactPhone: storeSettings.contactPhone || "",
+        address: storeSettings.address || "",
+        city: storeSettings.city || "",
+        state: storeSettings.state || "",
+        country: storeSettings.country || "",
+        postalCode: storeSettings.postalCode || "",
       });
-      
-      // Set image previews
-      if (storeData.logoUrl) {
-        setLogoPreview(storeData.logoUrl);
-      }
-      
-      if (storeData.bannerUrl) {
-        setBannerPreview(storeData.bannerUrl);
-      }
-    } catch (error) {
-      setError('Failed to load store settings');
-      console.error('Error fetching store settings:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      // Set image previews
+      if (storeSettings.logoUrl) {
+        setLogoPreview(storeSettings.logoUrl);
+      }
+
+      if (storeSettings.bannerUrl) {
+        setBannerPreview(storeSettings.bannerUrl);
+      }
+    }
+  }, [storeSettings]);
+
+  // Show fetch error if it occurs
+  useEffect(() => {
+    if (fetchError) {
+      setError("Failed to load store settings");
+    }
+  }, [fetchError]);
+
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -78,7 +119,7 @@ const VendorSettingsPage: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setLogoFile(file);
-      
+
       // Create and set preview URL
       const previewUrl = URL.createObjectURL(file);
       setLogoPreview(previewUrl);
@@ -89,7 +130,7 @@ const VendorSettingsPage: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setBannerFile(file);
-      
+
       // Create and set preview URL
       const previewUrl = URL.createObjectURL(file);
       setBannerPreview(previewUrl);
@@ -98,7 +139,7 @@ const VendorSettingsPage: React.FC = () => {
 
   const clearLogoFile = () => {
     if (logoInputRef.current) {
-      logoInputRef.current.value = '';
+      logoInputRef.current.value = "";
     }
     setLogoFile(null);
     if (logoPreview && !storeSettings?.logoUrl) {
@@ -109,7 +150,7 @@ const VendorSettingsPage: React.FC = () => {
 
   const clearBannerFile = () => {
     if (bannerInputRef.current) {
-      bannerInputRef.current.value = '';
+      bannerInputRef.current.value = "";
     }
     setBannerFile(null);
     if (bannerPreview && !storeSettings?.bannerUrl) {
@@ -120,84 +161,41 @@ const VendorSettingsPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    try {
-      setIsSaving(true);
-      setError(null);
-      
-      // Validate form data
-      if (!formData.name.trim()) {
-        setError('Store name is required');
-        return;
-      }
-      
-      if (!formData.description.trim()) {
-        setError('Store description is required');
-        return;
-      }
-      
-      if (!formData.contactEmail.trim()) {
-        setError('Contact email is required');
-        return;
-      }
-      
-      // Prepare update data
-      const updateData: any = {
-        ...formData
-      };
-      
-      if (logoFile) {
-        updateData.logoFile = logoFile;
-      }
-      
-      if (bannerFile) {
-        updateData.bannerFile = bannerFile;
-      }
-      
-      // Update store settings
-      const updatedStore = await vendorService.updateStore(updateData);
-      
-      // Update local state
-      setStoreSettings(updatedStore);
-      setFormData({
-        name: updatedStore.name,
-        description: updatedStore.description,
-        contactEmail: updatedStore.contactEmail,
-        contactPhone: updatedStore.contactPhone || '',
-        address: updatedStore.address || '',
-        city: updatedStore.city || '',
-        state: updatedStore.state || '',
-        country: updatedStore.country || '',
-        postalCode: updatedStore.postalCode || ''
-      });
-      
-      // Reset file inputs
-      setLogoFile(null);
-      setBannerFile(null);
-      if (logoInputRef.current) {
-        logoInputRef.current.value = '';
-      }
-      if (bannerInputRef.current) {
-        bannerInputRef.current.value = '';
-      }
-      
-      // Set image previews to new URLs
-      setLogoPreview(updatedStore.logoUrl);
-      setBannerPreview(updatedStore.bannerUrl);
-      
-      // Show success message
-      setSuccessMessage('Store settings updated successfully!');
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 3000);
-    } catch (error) {
-      setError('Failed to update store settings');
-      console.error('Error updating store settings:', error);
-    } finally {
-      setIsSaving(false);
+
+    // Clear previous error
+    setError(null);
+
+    // Validate form data
+    if (!formData.name.trim()) {
+      setError("Store name is required");
+      return;
     }
+
+    if (!formData.description.trim()) {
+      setError("Store description is required");
+      return;
+    }
+
+    if (!formData.contactEmail.trim()) {
+      setError("Contact email is required");
+      return;
+    }
+
+    // Prepare update data
+    const updateData: any = {
+      ...formData,
+    };
+
+    if (logoFile) {
+      updateData.logoFile = logoFile;
+    }
+
+    if (bannerFile) {
+      updateData.bannerFile = bannerFile;
+    }
+
+    // Update store settings using mutation
+    updateStoreMutation.mutate(updateData);
   };
 
   if (isLoading) {
@@ -216,30 +214,35 @@ const VendorSettingsPage: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Store Settings</h1>
       </div>
-      
+
       {/* Success Message */}
       {successMessage && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-6">
           {successMessage}
         </div>
       )}
-      
+
       {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
           {error}
         </div>
       )}
-      
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Left Column - Basic Info */}
             <div className="space-y-6">
-              <h2 className="text-lg font-medium text-gray-900">Basic Information</h2>
-              
+              <h2 className="text-lg font-medium text-gray-900">
+                Basic Information
+              </h2>
+
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Store Name*
                 </label>
                 <input
@@ -252,9 +255,12 @@ const VendorSettingsPage: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Store Description*
                 </label>
                 <textarea
@@ -268,9 +274,12 @@ const VendorSettingsPage: React.FC = () => {
                   placeholder="Tell customers about your store..."
                 ></textarea>
               </div>
-              
+
               <div>
-                <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="contactEmail"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Contact Email*
                 </label>
                 <input
@@ -283,9 +292,12 @@ const VendorSettingsPage: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="contactPhone" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="contactPhone"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Contact Phone
                 </label>
                 <input
@@ -298,13 +310,18 @@ const VendorSettingsPage: React.FC = () => {
                 />
               </div>
             </div>
-            
+
             {/* Right Column - Address and Images */}
             <div className="space-y-6">
-              <h2 className="text-lg font-medium text-gray-900">Location & Media</h2>
-              
+              <h2 className="text-lg font-medium text-gray-900">
+                Location & Media
+              </h2>
+
               <div>
-                <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="address"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Address
                 </label>
                 <input
@@ -316,10 +333,13 @@ const VendorSettingsPage: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="city"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     City
                   </label>
                   <input
@@ -332,7 +352,10 @@ const VendorSettingsPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="state"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     State/Province
                   </label>
                   <input
@@ -345,10 +368,13 @@ const VendorSettingsPage: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="postalCode" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="postalCode"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Postal Code
                   </label>
                   <input
@@ -361,7 +387,10 @@ const VendorSettingsPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="country"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Country
                   </label>
                   <select
@@ -380,7 +409,7 @@ const VendorSettingsPage: React.FC = () => {
                   </select>
                 </div>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Store Logo
@@ -388,9 +417,9 @@ const VendorSettingsPage: React.FC = () => {
                 <div className="mt-1 flex items-center">
                   {logoPreview ? (
                     <div className="relative">
-                      <img 
-                        src={logoPreview} 
-                        alt="Store Logo" 
+                      <img
+                        src={logoPreview}
+                        alt="Store Logo"
                         className="h-24 w-24 object-cover rounded-md"
                       />
                       <button
@@ -398,15 +427,35 @@ const VendorSettingsPage: React.FC = () => {
                         onClick={clearLogoFile}
                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-sm"
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
                         </svg>
                       </button>
                     </div>
                   ) : (
                     <span className="h-24 w-24 flex items-center justify-center rounded-md bg-gray-100 text-gray-300">
-                      <svg className="h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <svg
+                        className="h-12 w-12"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
                       </svg>
                     </span>
                   )}
@@ -423,14 +472,14 @@ const VendorSettingsPage: React.FC = () => {
                     onClick={() => logoInputRef.current?.click()}
                     className="ml-4 px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
-                    {logoPreview ? 'Change' : 'Upload'}
+                    {logoPreview ? "Change" : "Upload"}
                   </button>
                 </div>
                 <p className="mt-1 text-sm text-gray-500">
                   Recommended: Square image, at least 200x200px
                 </p>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Store Banner
@@ -438,9 +487,9 @@ const VendorSettingsPage: React.FC = () => {
                 <div className="mt-1">
                   {bannerPreview ? (
                     <div className="relative">
-                      <img 
-                        src={bannerPreview} 
-                        alt="Store Banner" 
+                      <img
+                        src={bannerPreview}
+                        alt="Store Banner"
                         className="h-32 w-full object-cover rounded-md"
                       />
                       <button
@@ -448,15 +497,35 @@ const VendorSettingsPage: React.FC = () => {
                         onClick={clearBannerFile}
                         className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 shadow-sm"
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
                         </svg>
                       </button>
                     </div>
                   ) : (
                     <div className="h-32 flex items-center justify-center rounded-md bg-gray-100 text-gray-300">
-                      <svg className="h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <svg
+                        className="h-12 w-12"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
                       </svg>
                     </div>
                   )}
@@ -473,23 +542,26 @@ const VendorSettingsPage: React.FC = () => {
                     onClick={() => bannerInputRef.current?.click()}
                     className="mt-2 px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
                   >
-                    {bannerPreview ? 'Change' : 'Upload'}
+                    {bannerPreview ? "Change" : "Upload"}
                   </button>
                 </div>
                 <p className="mt-1 text-sm text-gray-500">
-                  Recommended: 1200x300px, banner will be displayed at the top of your store page
+                  Recommended: 1200x300px, banner will be displayed at the top
+                  of your store page
                 </p>
               </div>
             </div>
           </div>
-          
+
           <div className="mt-8 flex justify-end">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={updateStoreMutation.isPending}
               className="px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-200 disabled:opacity-50"
             >
-              {isSaving ? 'Saving Changes...' : 'Save Changes'}
+              {updateStoreMutation.isPending
+                ? "Saving Changes..."
+                : "Save Changes"}
             </button>
           </div>
         </form>

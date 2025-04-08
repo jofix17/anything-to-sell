@@ -124,9 +124,6 @@ const ProductDetailPage: React.FC = () => {
     : 0;
 
   // Extract primary image and other images for the gallery
-  const primaryImage =
-    product.images.find((img) => img.isPrimary)?.imageUrl ||
-    (product.images.length > 0 ? product.images[0].imageUrl : "");
   const productImages = product.images.map((img) => img.imageUrl);
 
   // Get rating and review count from reviewSummary

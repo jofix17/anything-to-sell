@@ -1,62 +1,54 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import vendorService from '../../services/vendorService';
-import { Order, OrderStatus } from '../../types';
+import { useVendorOrders, useUpdateOrderStatus } from '../../services/vendorService';
+import { OrderStatus } from '../../types';
 import { format } from 'date-fns';
 
 const VendorOrdersPage: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState({
     startDate: '',
     endDate: ''
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchOrders();
-  }, [currentPage, statusFilter, dateRange]);
+  // Prepare the query parameters
+  const queryParams = {
+    page: currentPage,
+    perPage: 10,
+    status: statusFilter !== 'all' ? statusFilter as OrderStatus : undefined,
+    startDate: dateRange.startDate || undefined,
+    endDate: dateRange.endDate || undefined
+  };
 
-  const fetchOrders = async () => {
-    try {
-      setIsLoading(true);
-      
-      const params: {
-        page: number;
-        perPage: number;
-        status?: OrderStatus;
-        startDate?: string;
-        endDate?: string;
-      } = {
-        page: currentPage,
-        perPage: 10
-      };
-      
-      if (statusFilter && statusFilter !== 'all') {
-        params.status = statusFilter as OrderStatus;
-      }
-      
-      if (dateRange.startDate) {
-        params.startDate = dateRange.startDate;
-      }
-      
-      if (dateRange.endDate) {
-        params.endDate = dateRange.endDate;
-      }
-      
-      const response = await vendorService.getVendorOrders(params);
-      setOrders(response.data);
-      setTotalPages(response.totalPages);
-    } catch (error) {
+  // Fetch orders with React Query
+  const { 
+    data: ordersResponse, 
+    isLoading,
+    refetch 
+  } = useVendorOrders(queryParams, {
+    onError: (error: Error) => {
       setError('Failed to load orders');
       console.error('Error fetching orders:', error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
+
+  // Extract orders data from response
+  const orders = ordersResponse?.data || [];
+  const totalPages = ordersResponse?.totalPages || 1;
+
+  // Update order status mutation
+  const updateOrderStatusMutation = useUpdateOrderStatus({
+    onSuccess: () => {
+      // Refetch orders after successful status update
+      refetch();
+    },
+    onError: (error: Error) => {
+      setError('Failed to update order status');
+      console.error('Error updating order status:', error);
+    }
+  });
 
   const handleDateRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -71,21 +63,7 @@ const VendorOrdersPage: React.FC = () => {
   };
 
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
-    try {
-      await vendorService.updateOrderStatus(orderId, newStatus);
-      
-      // Update the order in the local state
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order.id === orderId 
-            ? { ...order, status: newStatus as OrderStatus } 
-            : order
-        )
-      );
-    } catch (error) {
-      setError('Failed to update order status');
-      console.error('Error updating order status:', error);
-    }
+    updateOrderStatusMutation.mutate({ orderId, status: newStatus });
   };
 
   // Format date helper
@@ -114,6 +92,12 @@ const VendorOrdersPage: React.FC = () => {
       default:
         return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const applyFilters = () => {
+    // Reset to page 1 when applying new filters
+    setCurrentPage(1);
+    refetch();
   };
 
   return (
@@ -179,7 +163,7 @@ const VendorOrdersPage: React.FC = () => {
         </div>
         <div className="mt-4 flex justify-end">
           <button
-            onClick={() => fetchOrders()}
+            onClick={applyFilters}
             className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-200"
           >
             Apply Filters
@@ -228,16 +212,20 @@ const VendorOrdersPage: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">#{order.id}</div>
                     </td>
-                    {/* <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{order.customer.firstName} {order.customer.lastName}</div>
-                      <div className="text-sm text-gray-500">{order.customer.email}</div>
-                    </td> */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {order.user && (
+                        <>
+                          <div className="text-sm text-gray-900">{order.user.firstName} {order.user.lastName}</div>
+                          <div className="text-sm text-gray-500">{order.user.email}</div>
+                        </>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{formatDate(order.createdAt)}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {order.items.filter(item => item.vendorId === 'your-vendor-id').length} items
+                        {order.items.filter(item => item.vendorId === order.vendorId).length} items
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -267,6 +255,7 @@ const VendorOrdersPage: React.FC = () => {
                               }
                             }}
                             className="rounded border border-gray-300 text-sm"
+                            disabled={updateOrderStatusMutation.isPending}
                           >
                             <option value="">Update Status</option>
                             {order.status === 'pending' && (

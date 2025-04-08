@@ -1,89 +1,79 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import adminService from '../../services/adminService';
-import { User } from '../../types';
-import { toast } from 'react-toastify';
+import React, { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  useAdminUserDetail,
+  useUpdateUser,
+  useSuspendUser,
+  useActivateUser,
+} from "../../services/adminService";
+import { User } from "../../types";
+import { toast } from "react-toastify";
 
 const AdminUserDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [suspendReason, setSuspendReason] = useState<string>('');
+  const [suspendReason, setSuspendReason] = useState<string>("");
   const [showSuspendModal, setShowSuspendModal] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchUserDetails = async () => {
-      try {
-        setLoading(true);
-        if (id) {
-          const userData = await adminService.getUserById(id);
-          setUser(userData);
-        }
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load user details. Please try again.');
-        toast.error('Failed to load user details');
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Use React Query hooks
+  const { data: userResponse, isLoading, error } = useAdminUserDetail(id || "");
 
-    fetchUserDetails();
-  }, [id]);
+  const user = userResponse?.data || null;
+
+  const updateUserMutation = useUpdateUser({
+    onSuccess: () => {
+      toast.success("User updated successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update user");
+    },
+  });
+
+  const suspendUserMutation = useSuspendUser({
+    onSuccess: () => {
+      toast.success("User suspended successfully");
+      setShowSuspendModal(false);
+      setSuspendReason("");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to suspend user");
+    },
+  });
+
+  const activateUserMutation = useActivateUser({
+    onSuccess: () => {
+      toast.success("User activated successfully");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to activate user");
+    },
+  });
 
   const handleActivateUser = async () => {
-    try {
-      setLoading(true);
-      if (id && user) {
-        const updatedUser = await adminService.activateUser(id);
-        setUser(updatedUser);
-        toast.success('User activated successfully');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to activate user');
-    } finally {
-      setLoading(false);
+    if (id && user) {
+      activateUserMutation.mutate(id);
     }
   };
 
   const handleSuspendUser = async () => {
-    try {
-      setLoading(true);
-      if (id && user && suspendReason.trim()) {
-        const updatedUser = await adminService.suspendUser(id, suspendReason);
-        setUser(updatedUser);
-        setShowSuspendModal(false);
-        setSuspendReason('');
-        toast.success('User suspended successfully');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to suspend user');
-    } finally {
-      setLoading(false);
+    if (id && user && suspendReason.trim()) {
+      suspendUserMutation.mutate({
+        id,
+        reason: suspendReason,
+      });
     }
   };
 
   const handleUpdateUser = async (userData: Partial<User>) => {
-    try {
-      setLoading(true);
-      if (id && user) {
-        const updatedUser = await adminService.updateUser(id, userData);
-        setUser(updatedUser);
-        toast.success('User updated successfully');
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to update user');
-    } finally {
-      setLoading(false);
+    if (id && user) {
+      updateUserMutation.mutate({
+        id,
+        userData,
+      });
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -95,9 +85,11 @@ const AdminUserDetailPage: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <h2 className="text-2xl font-bold text-red-500">Error</h2>
-        <p className="text-gray-600 mt-2">{error || 'User not found'}</p>
+        <p className="text-gray-600 mt-2">
+          {error instanceof Error ? error.message : "User not found"}
+        </p>
         <button
-          onClick={() => navigate('/admin/users')}
+          onClick={() => navigate("/admin/users")}
           className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
           Back to Users
@@ -111,7 +103,7 @@ const AdminUserDetailPage: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">User Details</h1>
         <button
-          onClick={() => navigate('/admin/users')}
+          onClick={() => navigate("/admin/users")}
           className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
         >
           Back to Users
@@ -124,10 +116,15 @@ const AdminUserDetailPage: React.FC = () => {
             <div className="flex items-center space-x-4">
               <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                 {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <span className="text-2xl font-bold text-gray-500">
-                    {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+                    {user.firstName.charAt(0)}
+                    {user.lastName.charAt(0)}
                   </span>
                 )}
               </div>
@@ -154,7 +151,7 @@ const AdminUserDetailPage: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Phone</p>
-                  <p>{user.phone || 'Not provided'}</p>
+                  <p>{user.phone || "Not provided"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Role</p>
@@ -162,8 +159,14 @@ const AdminUserDetailPage: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Status</p>
-                  <span className={`px-2 py-1 rounded text-sm ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {user.isActive ? 'Active' : 'Suspended'}
+                  <span
+                    className={`px-2 py-1 rounded text-sm ${
+                      user.isActive
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {user.isActive ? "Active" : "Suspended"}
                   </span>
                 </div>
               </div>
@@ -192,7 +195,10 @@ const AdminUserDetailPage: React.FC = () => {
                   <button
                     onClick={() => setShowSuspendModal(true)}
                     className="w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                    disabled={loading}
+                    disabled={
+                      suspendUserMutation.isPending ||
+                      activateUserMutation.isPending
+                    }
                   >
                     Suspend User
                   </button>
@@ -200,23 +206,32 @@ const AdminUserDetailPage: React.FC = () => {
                   <button
                     onClick={handleActivateUser}
                     className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                    disabled={loading}
+                    disabled={
+                      suspendUserMutation.isPending ||
+                      activateUserMutation.isPending
+                    }
                   >
                     Activate User
                   </button>
                 )}
-                
+
                 <button
                   onClick={() => {
-                    const newRole = user.role === 'vendor' ? 'buyer' : 'vendor';
+                    const newRole = user.role === "vendor" ? "buyer" : "vendor";
                     if (window.confirm(`Change user role to ${newRole}?`)) {
-                      handleUpdateUser({ role: newRole as 'admin' | 'vendor' | 'buyer' });
+                      handleUpdateUser({
+                        role: newRole as "admin" | "vendor" | "buyer",
+                      });
                     }
                   }}
                   className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 mt-2"
-                  disabled={loading || user.role === 'admin'}
+                  disabled={
+                    updateUserMutation.isPending || user.role === "admin"
+                  }
                 >
-                  {user.role === 'vendor' ? 'Change to Buyer' : 'Change to Vendor'}
+                  {user.role === "vendor"
+                    ? "Change to Buyer"
+                    : "Change to Vendor"}
                 </button>
               </div>
             </div>
@@ -224,7 +239,9 @@ const AdminUserDetailPage: React.FC = () => {
             {/* Add more sections as needed (e.g., recent orders, activity log, etc.) */}
             <div className="border-t pt-4">
               <h3 className="font-bold mb-2">Recent Activity</h3>
-              <p className="text-gray-500 italic">Activity log is not available</p>
+              <p className="text-gray-500 italic">
+                Activity log is not available
+              </p>
               {/* You could add activity log here if available */}
             </div>
           </div>
@@ -237,7 +254,8 @@ const AdminUserDetailPage: React.FC = () => {
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold mb-4">Suspend User</h3>
             <p className="text-gray-600 mb-4">
-              Please provide a reason for suspending this user. This will be recorded in the admin logs.
+              Please provide a reason for suspending this user. This will be
+              recorded in the admin logs.
             </p>
             <textarea
               value={suspendReason}
@@ -250,18 +268,21 @@ const AdminUserDetailPage: React.FC = () => {
               <button
                 onClick={() => {
                   setShowSuspendModal(false);
-                  setSuspendReason('');
+                  setSuspendReason("");
                 }}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                disabled={suspendUserMutation.isPending}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSuspendUser}
                 className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                disabled={!suspendReason.trim()}
+                disabled={
+                  !suspendReason.trim() || suspendUserMutation.isPending
+                }
               >
-                Suspend
+                {suspendUserMutation.isPending ? "Suspending..." : "Suspend"}
               </button>
             </div>
           </div>

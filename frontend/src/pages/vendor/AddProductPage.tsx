@@ -1,52 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import productService from '../../services/productService';
-import { Category } from '../../types';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  useCategories,
+  useCreateProduct,
+  useUploadProductImage,
+} from "../../services/productService";
+import { Category } from "../../types";
 
 const VendorAddProductPage: React.FC = () => {
   const navigate = useNavigate();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
-  
+
   // Form state
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    salePrice: '',
-    categoryId: '',
-    tags: '',
-    inventory: '1',
-    isActive: true
+    name: "",
+    description: "",
+    price: "",
+    salePrice: "",
+    categoryId: "",
+    tags: "",
+    inventory: "1",
+    isActive: true,
   });
 
-  // Fetch categories on component mount
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categoriesData = await productService.getCategories();
-        setCategories(categoriesData);
-      } catch (error) {
-        setError('Failed to load categories');
-        console.error('Error fetching categories:', error);
-      }
-    };
+  // Fetch categories using React Query
+  const {
+    data: categoriesResponse,
+    isLoading: categoriesLoading,
+    error: categoriesError,
+  } = useCategories();
 
-    fetchCategories();
-  }, []);
+  // Extract categories from response
+  const categories: Category[] = categoriesResponse?.data || [];
+
+  // Create product mutation
+  const createProductMutation = useCreateProduct({
+    onError: (error: Error) => {
+      setError(`Failed to create product: ${error.message}`);
+      console.error("Error creating product:", error);
+    },
+  });
+
+  // Upload product image mutation
+  const uploadProductImageMutation = useUploadProductImage("", {
+    onError: (error: Error) => {
+      setError(`Failed to upload image: ${error.message}`);
+      console.error("Error uploading image:", error);
+    },
+  });
 
   // Handle form input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
-    
-    setFormData(prev => ({
+
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -54,118 +71,118 @@ const VendorAddProductPage: React.FC = () => {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      
+
       // Create preview URLs for selected images
-      const newImagePreviewUrls = filesArray.map(file => URL.createObjectURL(file));
-      
-      setImageFiles(prev => [...prev, ...filesArray]);
-      setImagePreviewUrls(prev => [...prev, ...newImagePreviewUrls]);
+      const newImagePreviewUrls = filesArray.map((file) =>
+        URL.createObjectURL(file)
+      );
+
+      setImageFiles((prev) => [...prev, ...filesArray]);
+      setImagePreviewUrls((prev) => [...prev, ...newImagePreviewUrls]);
     }
   };
 
   // Remove image from selection
   const removeImage = (index: number) => {
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
-    
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+
     // Revoke object URL to avoid memory leaks
     URL.revokeObjectURL(imagePreviewUrls[index]);
-    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
+    setImagePreviewUrls((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    // Reset error and success messages
+    setError(null);
+    setSuccessMessage(null);
+
     try {
-      setIsLoading(true);
-      setError(null);
-      
       // Validate form data
       if (!formData.name.trim()) {
-        setError('Product name is required');
+        setError("Product name is required");
         return;
       }
-      
+
       if (!formData.description.trim()) {
-        setError('Product description is required');
+        setError("Product description is required");
         return;
       }
-      
-      if (!formData.price.trim() || isNaN(parseFloat(formData.price)) || parseFloat(formData.price) <= 0) {
-        setError('Please enter a valid price');
+
+      if (
+        !formData.price.trim() ||
+        isNaN(parseFloat(formData.price)) ||
+        parseFloat(formData.price) <= 0
+      ) {
+        setError("Please enter a valid price");
         return;
       }
-      
-      if (formData.salePrice.trim() && (isNaN(parseFloat(formData.salePrice)) || parseFloat(formData.salePrice) <= 0)) {
-        setError('Please enter a valid sale price');
+
+      if (
+        formData.salePrice.trim() &&
+        (isNaN(parseFloat(formData.salePrice)) ||
+          parseFloat(formData.salePrice) <= 0)
+      ) {
+        setError("Please enter a valid sale price");
         return;
       }
-      
+
       if (!formData.categoryId) {
-        setError('Please select a category');
+        setError("Please select a category");
         return;
       }
-      
-      if (!formData.inventory.trim() || isNaN(parseInt(formData.inventory)) || parseInt(formData.inventory) < 0) {
-        setError('Please enter a valid inventory quantity');
+
+      if (
+        !formData.inventory.trim() ||
+        isNaN(parseInt(formData.inventory)) ||
+        parseInt(formData.inventory) < 0
+      ) {
+        setError("Please enter a valid inventory quantity");
         return;
       }
-      
-      // Create product
-      const productData = {
-        name: formData.name,
-        description: formData.description,
-        price: parseFloat(formData.price),
-        salePrice: formData.salePrice ? parseFloat(formData.salePrice) : undefined,
-        categoryId: parseInt(formData.categoryId),
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-        inventory: parseInt(formData.inventory),
-        isActive: formData.isActive
-      };
-      
-      const product = await productService.createProduct(productData);
-      
+
       // Upload images if any
       if (imageFiles.length > 0) {
         for (let i = 0; i < imageFiles.length; i++) {
           const file = imageFiles[i];
           const isPrimary = i === 0; // First image is primary
-          
-          await productService.uploadProductImage(
-            product.id.toString(),
+
+          await uploadProductImageMutation.mutateAsync({
             file,
             isPrimary,
-          );
+          });
         }
       }
-      
+
       // Show success message
-      setSuccessMessage('Product created successfully!');
-      
+      setSuccessMessage("Product created successfully!");
+
       // Reset form after successful submission
       setFormData({
-        name: '',
-        description: '',
-        price: '',
-        salePrice: '',
-        categoryId: '',
-        tags: '',
-        inventory: '1',
-        isActive: true
+        name: "",
+        description: "",
+        price: "",
+        salePrice: "",
+        categoryId: "",
+        tags: "",
+        inventory: "1",
+        isActive: true,
       });
+
+      // Clear images
+      imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
       setImageFiles([]);
       setImagePreviewUrls([]);
-      
+
       // Redirect to products page after a delay
       setTimeout(() => {
-        navigate('/vendor/products');
+        navigate("/vendor/products");
       }, 2000);
-      
     } catch (error) {
-      setError('Failed to create product');
-      console.error('Error creating product:', error);
-    } finally {
-      setIsLoading(false);
+      // Error is handled in the mutation onError callbacks
+      console.error("Submission error:", error);
     }
   };
 
@@ -174,34 +191,44 @@ const VendorAddProductPage: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Add New Product</h1>
         <button
-          onClick={() => navigate('/vendor/products')}
+          onClick={() => navigate("/vendor/products")}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition duration-200"
         >
           Cancel
         </button>
       </div>
-      
+
       {/* Success Message */}
       {successMessage && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md mb-6">
           {successMessage}
         </div>
       )}
-      
+
       {/* Error Message */}
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
           {error}
         </div>
       )}
-      
+
+      {/* Categories Error */}
+      {categoriesError instanceof Error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-6">
+          Failed to load categories. Please refresh the page and try again.
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Left Column */}
             <div className="space-y-6">
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Product Name*
                 </label>
                 <input
@@ -215,9 +242,12 @@ const VendorAddProductPage: React.FC = () => {
                   placeholder="Enter product name"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Description*
                 </label>
                 <textarea
@@ -231,10 +261,13 @@ const VendorAddProductPage: React.FC = () => {
                   placeholder="Enter product description"
                 ></textarea>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="price"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Price* ($)
                   </label>
                   <input
@@ -251,7 +284,10 @@ const VendorAddProductPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label htmlFor="salePrice" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="salePrice"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Sale Price ($)
                   </label>
                   <input
@@ -267,9 +303,12 @@ const VendorAddProductPage: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
               <div>
-                <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="categoryId"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Category*
                 </label>
                 <select
@@ -279,18 +318,22 @@ const VendorAddProductPage: React.FC = () => {
                   onChange={handleInputChange}
                   required
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
+                  disabled={categoriesLoading}
                 >
                   <option value="">Select Category</option>
-                  {categories.map(category => (
+                  {categories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
                     </option>
                   ))}
                 </select>
               </div>
-              
+
               <div>
-                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="tags"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Tags (comma separated)
                 </label>
                 <input
@@ -303,9 +346,12 @@ const VendorAddProductPage: React.FC = () => {
                   placeholder="e.g. summer, discount, new"
                 />
               </div>
-              
+
               <div>
-                <label htmlFor="inventory" className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="inventory"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Inventory*
                 </label>
                 <input
@@ -319,7 +365,7 @@ const VendorAddProductPage: React.FC = () => {
                   className="w-full rounded-md border border-gray-300 px-3 py-2"
                 />
               </div>
-              
+
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -329,12 +375,16 @@ const VendorAddProductPage: React.FC = () => {
                   onChange={handleInputChange}
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
-                <label htmlFor="isActive" className="ml-2 block text-sm text-gray-700">
-                  Product is active and visible to customers (subject to admin approval)
+                <label
+                  htmlFor="isActive"
+                  className="ml-2 block text-sm text-gray-700"
+                >
+                  Product is active and visible to customers (subject to admin
+                  approval)
                 </label>
               </div>
             </div>
-            
+
             {/* Right Column - Image Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -374,14 +424,18 @@ const VendorAddProductPage: React.FC = () => {
                     </label>
                     <p className="pl-1">or drag and drop</p>
                   </div>
-                  <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
+                  <p className="text-xs text-gray-500">
+                    PNG, JPG, GIF up to 5MB
+                  </p>
                 </div>
               </div>
-              
+
               {/* Image Previews */}
               {imagePreviewUrls.length > 0 && (
                 <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Images</h4>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                    Selected Images
+                  </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {imagePreviewUrls.map((previewUrl, index) => (
                       <div key={index} className="relative group">
@@ -397,8 +451,18 @@ const VendorAddProductPage: React.FC = () => {
                           onClick={() => removeImage(index)}
                           className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M6 18L18 6M6 6l12 12"
+                            />
                           </svg>
                         </button>
                         {index === 0 && (
@@ -413,14 +477,19 @@ const VendorAddProductPage: React.FC = () => {
               )}
             </div>
           </div>
-          
+
           <div className="mt-8 flex justify-end">
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={
+                createProductMutation.isPending ||
+                uploadProductImageMutation.isPending
+              }
               className="px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-200 disabled:opacity-50"
             >
-              {isLoading ? 'Creating Product...' : 'Create Product'}
+              {createProductMutation.isPending
+                ? "Creating Product..."
+                : "Create Product"}
             </button>
           </div>
         </form>

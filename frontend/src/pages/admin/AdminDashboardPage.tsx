@@ -1,47 +1,44 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useAdminDashboardStats } from "../../services/adminService";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import StatCard from "../../components/admin/StartCard";
 import RecentUsers from "../../components/admin/RecentUsers";
 import OrderStatusChart from "../../components/admin/OrderStatusChart";
 import ProductApprovalsList from "../../components/admin/ProductApprovalList";
 import Button from "../../components/common/Button";
-import { AdminDashboardStats, DateRange } from "../../types";
-import { mockAdminDashboardData } from "../../mocks/mockDashboardData";
+import { DateRange } from "../../types";
 
-// Define interfaces for dashboard data
-
+/**
+ * Admin Dashboard Page Component
+ *
+ * Displays key performance indicators, recent users, pending product approvals,
+ * and provides quick access to main admin functions.
+ */
 const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [dashboardData, setDashboardData] =
-    useState<AdminDashboardStats | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("30days");
 
-  // Fetch dashboard data
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        // In a real app, this would be an API call
-        // const response = await api.get('/admin/dashboard', { params: { range: dateRange } });
+  // Fetch dashboard data using React Query hook with date range
+  const {
+    data: dashboardResponse,
+    isLoading,
+    error,
+    refetch,
+  } = useAdminDashboardStats({
+    queryParams: { dateRange }, // Pass dateRange as a query parameter
+    onSuccess: () => {
+      console.log("Dashboard data loaded successfully");
+    },
+    onError: (error: Error) => {
+      console.error("Error loading dashboard data:", error);
+    },
+  });
 
-        // For now, simulate API call with timeout
-        setTimeout(() => {
-          setDashboardData(mockAdminDashboardData);
-          setLoading(false);
-        }, 1000);
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-        setLoading(false);
-      }
-    };
+  const dashboardData = dashboardResponse?.data || null;
 
-    fetchDashboardData();
-  }, [dateRange]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner size="large" />
@@ -49,16 +46,18 @@ const AdminDashboardPage: React.FC = () => {
     );
   }
 
-  if (!dashboardData) {
+  if (error || !dashboardData) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">
           Error Loading Dashboard
         </h2>
         <p className="text-gray-600 mb-6">
-          We couldn't load your dashboard data. Please try again later.
+          {error instanceof Error
+            ? error.message
+            : "We couldn't load your dashboard data. Please try again later."}
         </p>
-        <Button onClick={() => window.location.reload()}>Refresh</Button>
+        <Button onClick={() => refetch()}>Refresh</Button>
       </div>
     );
   }
@@ -85,11 +84,7 @@ const AdminDashboardPage: React.FC = () => {
             <option value="90days">Last 90 Days</option>
             <option value="year">Last Year</option>
           </select>
-          <Button
-            variant="primary"
-            size="small"
-            onClick={() => window.location.reload()}
-          >
+          <Button variant="primary" size="small" onClick={() => refetch()}>
             Refresh
           </Button>
         </div>
@@ -132,7 +127,7 @@ const AdminDashboardPage: React.FC = () => {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Revenue Chart */}
+        {/* Order Status Chart */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <h2 className="text-lg font-medium text-gray-900">Order Status</h2>

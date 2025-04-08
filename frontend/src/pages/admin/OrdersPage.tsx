@@ -1,93 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Order } from '../../types';
-import { toast } from 'react-toastify';
-import adminService from '../../services/adminService';
-
-interface OrdersResponse {
-  data: Order[];
-  total: number;
-  page: number;
-  perPage: number;
-  totalPages: number;
-}
+import { useAdminOrders } from '../../services/adminService';
 
 const AdminOrdersPage: React.FC = () => {
-  // State for orders data
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages, setTotalPages] = useState<number>(1);
-  const [totalOrders, setTotalOrders] = useState<number>(0);
-  
   // State for filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState<number>(1);
   
   // Pagination settings
   const ordersPerPage = 10;
 
-  // Fetch orders on component mount and when filters change
-  useEffect(() => {
-    fetchOrders();
-  }, [currentPage, statusFilter, startDate, endDate]);
+  // Use React Query hook for fetching orders
+  const {
+    data: ordersResponse,
+    isLoading,
+    error,
+    refetch
+  } = useAdminOrders({
+    page: currentPage,
+    perPage: ordersPerPage,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    query: searchQuery || undefined
+  });
 
-  const fetchOrders = async () => {
-    try {
-      setLoading(true);
-      
-      // Prepare filters
-      const filters: any = {
-        page: currentPage,
-        perPage: ordersPerPage
-      };
-      
-      if (statusFilter !== 'all') {
-        filters.status = statusFilter;
-      }
-      
-      if (startDate) {
-        filters.startDate = startDate;
-      }
-      
-      if (endDate) {
-        filters.endDate = endDate;
-      }
-      
-      if (searchQuery.trim()) {
-        filters.query = searchQuery;
-      }
-      
-      // Call API endpoint through the admin service
-      const response = await adminService.get<OrdersResponse>('/admin/orders', filters);
-      
-      setOrders(response.data);
-      setTotalPages(response.totalPages);
-      setTotalOrders(response.total);
-      
-    } catch (error) {
-      toast.error('Failed to fetch orders');
-      console.error('Error fetching orders:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Extract data from response
+  const orders = ordersResponse?.data || [];
+  const totalOrders = ordersResponse?.total || 0;
+  const totalPages = ordersResponse?.totalPages || 1;
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setCurrentPage(1); // Reset to first page for new search
-    fetchOrders();
+    refetch();
   };
 
   const handleFilterChange = () => {
     setCurrentPage(1); // Reset to first page when filters change
-    fetchOrders();
+    refetch();
   };
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setStatusFilter(e.target.value);
+    handleFilterChange();
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -244,9 +203,13 @@ const AdminOrdersPage: React.FC = () => {
 
       {/* Orders Table */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        {loading ? (
+        {isLoading ? (
           <div className="flex justify-center items-center p-8">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : error ? (
+          <div className="text-center p-8 text-red-500">
+            {error instanceof Error ? error.message : "Failed to load orders"}
           </div>
         ) : orders.length === 0 ? (
           <div className="text-center p-8">
@@ -331,7 +294,7 @@ const AdminOrdersPage: React.FC = () => {
         )}
         
         {/* Pagination */}
-        {totalPages > 1 && (
+        {totalPages > 1 && !isLoading && (
           <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
             <div className="flex-1 flex justify-between sm:hidden">
               <button

@@ -1,61 +1,54 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import vendorService from '../../services/vendorService';
-import { Address, Order, OrderStatus } from '../../types';
+import { useVendorOrderDetail, useUpdateOrderStatus } from '../../services/vendorService';
+import { Address, ApiResponse, Order, OrderStatus } from '../../types';
 import { format } from 'date-fns';
 
 const VendorOrderDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [order, setOrder] = useState<Order | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    fetchOrderDetails();
-  }, [id]);
-
-  const fetchOrderDetails = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const orderData = await vendorService.getOrderById(id!);
-      setOrder(orderData);
-    } catch (error) {
+  // Fetch order details
+  const { data: orderResponse, isLoading } = useVendorOrderDetail(id || '', {
+    onError: (error: Error) => {
       setError('Failed to load order details');
       console.error('Error fetching order details:', error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  });
 
-  const handleStatusUpdate = async (newStatus: OrderStatus) => {
-    if (!id || !order) return;
-    
-    try {
-      setIsUpdating(true);
-      setError(null);
-      
-      await vendorService.updateOrderStatus(id, newStatus);
-      
-      // Update local state
-      setOrder(prev => prev ? { ...prev, status: newStatus } : null);
-      
-      setSuccessMessage(`Order status updated to ${newStatus}`);
+  // Extract order data from response
+  const order: Order | null = orderResponse?.data || null;
+
+  // Update order status mutation
+  const updateOrderStatusMutation = useUpdateOrderStatus({
+    onSuccess: (response: ApiResponse<{ orderId: string; status: OrderStatus }>) => {
+      setSuccessMessage(`Order status updated to ${response.data.status}`);
       
       // Clear success message after 3 seconds
       setTimeout(() => {
         setSuccessMessage(null);
       }, 3000);
-    } catch (error) {
+    },
+    onError: (error: Error) => {
       setError('Failed to update order status');
       console.error('Error updating order status:', error);
-    } finally {
-      setIsUpdating(false);
+    }
+  });
+
+  const handleStatusUpdate = async (newStatus: OrderStatus) => {
+    if (!id || !order) return;
+    
+    try {
+      // Use the mutation to update order status
+      updateOrderStatusMutation.mutate({
+        orderId: id,
+        status: newStatus
+      });
+    } catch (error) {
+      // Error is handled in the onError callback
+      console.error('Status update error:', error);
     }
   };
 
@@ -179,8 +172,12 @@ const VendorOrderDetailPage: React.FC = () => {
           
           <div className="mt-4 md:mt-0">
             <h2 className="text-lg font-medium text-gray-900 mb-2">Customer</h2>
-            {/* <p className="text-gray-600">{order.customer.firstName} {order.customer.lastName}</p>
-            <p className="text-gray-600">{order.customer.email}</p> */}
+            {order.user && (
+              <>
+                <p className="text-gray-600">{order.user.firstName} {order.user.lastName}</p>
+                <p className="text-gray-600">{order.user.email}</p>
+              </>
+            )}
           </div>
           
           {(order.status === 'pending' || order.status === 'processing' || order.status === 'shipped') && (
@@ -190,30 +187,30 @@ const VendorOrderDetailPage: React.FC = () => {
                 {order.status === 'pending' && (
                   <button
                     onClick={() => handleStatusUpdate('processing')}
-                    disabled={isUpdating}
+                    disabled={updateOrderStatusMutation.isPending}
                     className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-50"
                   >
-                    {isUpdating ? 'Updating...' : 'Mark Processing'}
+                    {updateOrderStatusMutation.isPending ? 'Updating...' : 'Mark Processing'}
                   </button>
                 )}
                 
                 {(order.status === 'pending' || order.status === 'processing') && (
                   <button
                     onClick={() => handleStatusUpdate('shipped')}
-                    disabled={isUpdating}
+                    disabled={updateOrderStatusMutation.isPending}
                     className="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition disabled:opacity-50"
                   >
-                    {isUpdating ? 'Updating...' : 'Mark Shipped'}
+                    {updateOrderStatusMutation.isPending ? 'Updating...' : 'Mark Shipped'}
                   </button>
                 )}
                 
                 {(order.status === 'pending' || order.status === 'processing' || order.status === 'shipped') && (
                   <button
                     onClick={() => handleStatusUpdate('delivered')}
-                    disabled={isUpdating}
+                    disabled={updateOrderStatusMutation.isPending}
                     className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 transition disabled:opacity-50"
                   >
-                    {isUpdating ? 'Updating...' : 'Mark Delivered'}
+                    {updateOrderStatusMutation.isPending ? 'Updating...' : 'Mark Delivered'}
                   </button>
                 )}
               </div>
@@ -228,11 +225,11 @@ const VendorOrderDetailPage: React.FC = () => {
           <h2 className="text-lg font-medium text-gray-900">Order Items</h2>
         </div>
         <div className="divide-y divide-gray-200">
-          {order.items.filter(item => item.vendorId === order.vendorId).map(item => (
+          {order.items && order.items.filter(item => item.vendorId === order.vendorId).map(item => (
             <div key={item.id} className="px-6 py-4 flex items-center">
               <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
                 <img 
-                  src={item.product?.images[0]?.imageUrl || '/api/placeholder/80/80'} 
+                  src={item.product?.images?.[0]?.imageUrl || '/api/placeholder/80/80'} 
                   alt={item.product?.name}
                   className="h-full w-full object-cover object-center"
                 />

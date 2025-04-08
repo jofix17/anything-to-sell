@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -7,35 +7,22 @@ import OrdersList from '../../components/vendor/OrderList';
 import SalesChart from '../../components/vendor/SalesChart';
 import TopProducts from '../../components/vendor/TopProducts';
 import Button from '../../components/common/Button';
-import { DateRange, VendorDashboardStats } from '../../types';
-import { mockVendorDashboardData } from '../../mocks/mockDashboardData';
+import { DateRange } from '../../types';
+import { useVendorDashboardStats } from '../../services/vendorService';
 
 const VendorDashboardPage: React.FC = () => {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [dashboardData, setDashboardData] = useState<VendorDashboardStats | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>('30days');
 
-  // Fetch dashboard data
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        // Simulate API call with timeout
-        setTimeout(() => {
-          setDashboardData(mockVendorDashboardData);
-          setLoading(false);
-        }, 1000);
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err);
-        setLoading(false);
-      }
-    };
+  const { 
+    data: dashboardData, 
+    isLoading, 
+    error: queryError 
+  } = useVendorDashboardStats({
+    refetchOnWindowFocus: false,
+  });
 
-    fetchDashboardData();
-  }, [dateRange]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner size="large" />
@@ -43,7 +30,7 @@ const VendorDashboardPage: React.FC = () => {
     );
   }
 
-  if (!dashboardData) {
+  if (queryError || !dashboardData?.data) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Error Loading Dashboard</h2>
@@ -56,6 +43,9 @@ const VendorDashboardPage: React.FC = () => {
       </div>
     );
   }
+
+  // Extract dashboard data from the API response
+  const stats = dashboardData.data;
 
   return (
     <div className="px-6 py-8">
@@ -89,28 +79,28 @@ const VendorDashboardPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           title="Total Sales"
-          value={`$${dashboardData.totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={`$${stats.totalSales.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           icon="dollar"
           change={8.2}
           changeType="increase"
         />
         <StatCard
           title="Total Orders"
-          value={dashboardData.totalOrders.toString()}
+          value={stats.totalOrders.toString()}
           icon="shopping-bag"
           change={12.5}
           changeType="increase"
         />
         <StatCard
           title="Pending Orders"
-          value={dashboardData.pendingOrders.toString()}
+          value={stats.pendingOrders.toString()}
           icon="clock"
           change={-5.3}
           changeType="decrease"
         />
         <StatCard
           title="Average Rating"
-          value={dashboardData.averageRating.toString()}
+          value={stats.averageRating.toString()}
           icon="star"
           change={0.2}
           changeType="increase"
@@ -125,7 +115,7 @@ const VendorDashboardPage: React.FC = () => {
             <h2 className="text-lg font-medium text-gray-900">Sales Overview</h2>
           </div>
           <div className="p-6">
-            <SalesChart data={dashboardData.monthlyRevenue} />
+            <SalesChart data={stats.monthlyRevenue} />
           </div>
         </div>
 
@@ -138,7 +128,7 @@ const VendorDashboardPage: React.FC = () => {
             </Link>
           </div>
           <div className="p-4">
-            <TopProducts products={dashboardData.topProducts} />
+            <TopProducts products={stats.topProducts} />
           </div>
         </div>
       </div>
@@ -152,7 +142,7 @@ const VendorDashboardPage: React.FC = () => {
           </Link>
         </div>
         <div className="p-6">
-          <OrdersList orders={dashboardData.recentOrders} />
+          <OrdersList orders={stats.recentOrders} />
         </div>
       </div>
 
