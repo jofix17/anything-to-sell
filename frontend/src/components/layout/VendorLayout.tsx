@@ -16,7 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 import Notification from '../common/Notification';
-import { NotificationContext } from './MainLayout';
+import { NotificationContext } from '../../context/NotificationContext';
 
 const VendorLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);

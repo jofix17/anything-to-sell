@@ -12,7 +12,7 @@ import {
 import { Product } from "../../types";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
-import { useNotification } from "../../components/layout/MainLayout";
+import { useNotification } from "../../context/NotificationContext";
 
 interface ProductCardProps {
   product: Product;
@@ -60,6 +60,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       await addToCart(product.id, 1);
       showNotification(`${product.name} added to cart`, "success");
     } catch (error) {
+      console.error("Add to cart error:", error);
       showNotification("Failed to add product to cart", "error");
     }
   };

@@ -9,6 +9,7 @@ import {
   ShieldCheckIcon,
   ArrowPathIcon as RefreshIcon
 } from '@heroicons/react/24/outline';
+import { APP_NAME } from '../../utils/appName';
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -23,7 +24,7 @@ const Footer: React.FC = () => {
               <TruckIcon className="h-10 w-10 text-primary-500 mr-4" />
               <div>
                 <h3 className="font-semibold text-lg">Free Shipping</h3>
-                <p className="text-gray-400 text-sm">On orders over $50</p>
+                <p className="text-gray-400 text-sm">On orders over ₱500</p>
               </div>
             </div>
             
@@ -59,7 +60,7 @@ const Footer: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* About */}
           <div>
-            <h2 className="text-xl font-bold mb-4">Marketplace</h2>
+            <h2 className="text-xl font-bold mb-4">{APP_NAME}</h2>
             <p className="text-gray-400 mb-4">
               We connect buyers with the best vendors and products from around the world.
               Find everything you need at competitive prices.
@@ -110,26 +111,6 @@ const Footer: React.FC = () => {
               <li>
                 <Link to="/contact" className="text-gray-400 hover:text-white transition-colors">
                   Contact Us
-                </Link>
-              </li>
-              <li>
-                <Link to="/blog" className="text-gray-400 hover:text-white transition-colors">
-                  Blog
-                </Link>
-              </li>
-              <li>
-                <Link to="/faq" className="text-gray-400 hover:text-white transition-colors">
-                  FAQ
-                </Link>
-              </li>
-              <li>
-                <Link to="/terms" className="text-gray-400 hover:text-white transition-colors">
-                  Terms & Conditions
-                </Link>
-              </li>
-              <li>
-                <Link to="/privacy" className="text-gray-400 hover:text-white transition-colors">
-                  Privacy Policy
                 </Link>
               </li>
             </ul>
@@ -184,20 +165,20 @@ const Footer: React.FC = () => {
               <li className="flex items-start">
                 <LocationMarkerIcon className="h-6 w-6 text-primary-500 mr-2 flex-shrink-0" />
                 <span className="text-gray-400">
-                  123 Main Street, Suite 200<br />
-                  New York, NY 10001
+                  Lower Dagatan, Brgy. Dagatan<br />
+                  Badian, Cebu, Philippines, 6031
                 </span>
               </li>
               <li className="flex items-center">
                 <PhoneIcon className="h-6 w-6 text-primary-500 mr-2 flex-shrink-0" />
-                <a href="tel:+15551234567" className="text-gray-400 hover:text-white">
-                  +1 (555) 123-4567
+                <a href="tel:+639324325006" className="text-gray-400 hover:text-white">
+                  +639 324 432 5006 
                 </a>
               </li>
               <li className="flex items-center">
                 <MailIcon className="h-6 w-6 text-primary-500 mr-2 flex-shrink-0" />
-                <a href="mailto:info@marketplace.com" className="text-gray-400 hover:text-white">
-                  info@marketplace.com
+                <a href="mailto:jofix17@gmail.com" className="text-gray-400 hover:text-white">
+                  jofix17@gmail.com
                 </a>
               </li>
             </ul>
@@ -209,11 +190,11 @@ const Footer: React.FC = () => {
                 <input
                   type="email"
                   placeholder="Your email"
-                  className="px-4 py-2 w-full rounded-l-md focus:outline-none text-gray-800"
+                  className="bg-white px-4 py-2 w-full rounded-l-md focus:outline-none text-gray-800"
                 />
                 <button
                   type="submit"
-                  className="bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-r-md transition-colors duration-300"
+                  className="border border-white bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-r-md transition-colors duration-300"
                 >
                   Subscribe
                 </button>

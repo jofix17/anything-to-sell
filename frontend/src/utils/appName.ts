@@ -1,0 +1,1 @@
+export const APP_NAME = import.meta.env.REACT_APP_APP_NAME || "Le Trexies";

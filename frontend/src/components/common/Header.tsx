@@ -13,6 +13,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCart } from "../../context/CartContext";
 import productService from "../../services/productService";
 import { Category } from "../../types";
+import { APP_NAME } from "../../utils/appName";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
@@ -82,7 +83,7 @@ const Header: React.FC<HeaderProps> = ({
       className={`fixed w-full z-50 transition-all duration-300 ${
         isScrolled || isMobileMenuOpen || isSearchOpen
           ? "bg-white shadow-md py-2"
-          : "bg-transparent py-4"
+          : "bg-transparent text-primary py-4"
       }`}
     >
       <div className="container mx-auto px-4">
@@ -107,7 +108,7 @@ const Header: React.FC<HeaderProps> = ({
                   isScrolled ? "text-gray-900" : "text-primary-600"
                 }`}
               >
-                Marketplace
+                {APP_NAME}
               </span>
             </Link>
           </div>
@@ -119,7 +120,7 @@ const Header: React.FC<HeaderProps> = ({
               className={`text-sm font-semibold ${
                 isScrolled
                   ? "text-gray-700 hover:text-gray-900"
-                  : "text-gray-800 hover:text-primary-600"
+                  : "text-primary-600"
               }`}
             >
               Home
@@ -131,7 +132,7 @@ const Header: React.FC<HeaderProps> = ({
                 className={`flex items-center text-sm font-semibold ${
                   isScrolled
                     ? "text-gray-700 hover:text-gray-900"
-                    : "text-gray-800 hover:text-primary-600"
+                    : "text-primary-600"
                 }`}
                 onClick={() =>
                   setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
@@ -177,7 +178,7 @@ const Header: React.FC<HeaderProps> = ({
               className={`text-sm font-semibold ${
                 isScrolled
                   ? "text-gray-700 hover:text-gray-900"
-                  : "text-gray-800 hover:text-primary-600"
+                  : "text-primary-600"
               }`}
             >
               Shop
@@ -188,7 +189,7 @@ const Header: React.FC<HeaderProps> = ({
               className={`text-sm font-semibold ${
                 isScrolled
                   ? "text-gray-700 hover:text-gray-900"
-                  : "text-gray-800 hover:text-primary-600"
+                  : "text-primary-600"
               }`}
             >
               About
@@ -199,7 +200,7 @@ const Header: React.FC<HeaderProps> = ({
               className={`text-sm font-semibold ${
                 isScrolled
                   ? "text-gray-700 hover:text-gray-900"
-                  : "text-gray-800 hover:text-primary-600"
+                  : "text-primary-600"
               }`}
             >
               Contact
@@ -214,7 +215,7 @@ const Header: React.FC<HeaderProps> = ({
               className={`p-2 rounded-md ${
                 isScrolled
                   ? "text-gray-600 hover:text-gray-900"
-                  : "text-gray-800 hover:text-primary-600"
+                  : "text-primary-600 hover:text-gray-600"
               } hover:bg-gray-100`}
             >
               <SearchIcon className="w-5 h-5" />
@@ -227,7 +228,7 @@ const Header: React.FC<HeaderProps> = ({
                 className={`p-2 rounded-md ${
                   isScrolled
                     ? "text-gray-600 hover:text-gray-900"
-                    : "text-gray-800 hover:text-primary-600"
+                    : "text-primary-600"
                 } hover:bg-gray-100`}
               >
                 <HeartIcon className="w-5 h-5" />
@@ -240,7 +241,7 @@ const Header: React.FC<HeaderProps> = ({
               className={`p-2 rounded-md ${
                 isScrolled
                   ? "text-gray-600 hover:text-gray-900"
-                  : "text-gray-800 hover:text-primary-600"
+                  : "text-primary-600 hover:text-gray-600"
               } hover:bg-gray-100 relative`}
             >
               <ShoppingCartIcon className="w-5 h-5" />
@@ -259,7 +260,7 @@ const Header: React.FC<HeaderProps> = ({
                   className={`flex items-center space-x-1 p-2 rounded-md ${
                     isScrolled
                       ? "text-gray-600 hover:text-gray-900"
-                      : "text-gray-800 hover:text-primary-600"
+                      : "text-primary-600"
                   } hover:bg-gray-100`}
                 >
                   <span className="hidden sm:block text-sm font-medium">
@@ -323,7 +324,7 @@ const Header: React.FC<HeaderProps> = ({
                         handleLogout();
                         setIsUserDropdownOpen(false);
                       }}
-                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 border-t border-gray-100"
+                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 border-t border-gray-100 "
                     >
                       Logout
                     </button>
@@ -336,7 +337,7 @@ const Header: React.FC<HeaderProps> = ({
                 className={`p-2 rounded-md ${
                   isScrolled
                     ? "text-gray-600 hover:text-gray-900"
-                    : "text-gray-800 hover:text-primary-600"
+                    : "text-primary-600 hover:text-gray-600"
                 } hover:bg-gray-100 flex items-center space-x-1`}
               >
                 <span className="hidden sm:block text-sm font-medium">

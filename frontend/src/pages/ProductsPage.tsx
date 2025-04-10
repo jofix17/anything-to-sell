@@ -13,8 +13,8 @@ import Skeleton from "../components/common/Skeleton";
 import { Product, Category, ProductSortType } from "../types";
 import productService from "../services/productService";
 import { useAuth } from "../context/AuthContext";
-import { useNotification } from "../components/layout/MainLayout";
 import wishlistService from "../services/wishlistService";
+import { useNotification } from "../context/NotificationContext";
 
 const ProductsPage: React.FC = () => {
   // URL search params
