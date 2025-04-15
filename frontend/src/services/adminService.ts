@@ -15,23 +15,55 @@ import {
   ProductApprovalParams,
   DateRange,
 } from "../types";
-import {
-  useApiQuery,
-  useApiMutation,
-  usePaginatedQuery,
-} from "../hooks/useQueryHooks";
+import queryHooks from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
+
+const { useApiQuery, useApiMutation, usePaginatedQuery } = queryHooks;
 
 // Traditional API service methods
 class AdminService {
   // User management
   async getUsers(
     params: UserFilterParams = {}
-  ): Promise<PaginatedResponse<User>> {
-    return await apiService.get<PaginatedResponse<User>>(
+  ): Promise<ApiResponse<PaginatedResponse<User>>> {
+    return await apiService.get<ApiResponse<PaginatedResponse<User>>>(
       "/admin/users",
       params
     );
+  }
+
+  async getUserById(id: string): Promise<ApiResponse<User>> {
+    return await apiService.get<ApiResponse<User>>(`/admin/users/${id}`);
+  }
+
+  async updateUser(
+    id: string,
+    userData: Partial<User>
+  ): Promise<ApiResponse<User>> {
+    return await apiService.put<ApiResponse<User>>(
+      `/admin/users/${id}`,
+      userData
+    );
+  }
+
+  async suspendUser(id: string, reason: string): Promise<ApiResponse<User>> {
+    return await apiService.patch<ApiResponse<User>>(
+      `/admin/users/${id}/suspend`,
+      { reason }
+    );
+  }
+
+  async activateUser(id: string): Promise<ApiResponse<User>> {
+    return await apiService.patch<ApiResponse<User>>(
+      `/admin/users/${id}/activate`
+    );
+  }
+
+  // Get vendors for filter selection
+  async getVendors(): Promise<ApiResponse<User[]>> {
+    return await apiService.get<ApiResponse<User[]>>("/admin/users", {
+      role: "vendor",
+    });
   }
 
   // Order management
@@ -44,8 +76,8 @@ class AdminService {
       endDate?: string;
       query?: string;
     } = {}
-  ): Promise<PaginatedResponse<Order>> {
-    return await apiService.get<PaginatedResponse<Order>>(
+  ): Promise<ApiResponse<PaginatedResponse<Order>>> {
+    return await apiService.get<ApiResponse<PaginatedResponse<Order>>>(
       "/admin/orders",
       params
     );
@@ -65,45 +97,11 @@ class AdminService {
     );
   }
 
-  async getUserById(id: string): Promise<ApiResponse<User>> {
-    return await apiService.get<ApiResponse<User>>(`/admin/users/${id}`);
-  }
-
-  // Get vendors for filter selection
-  async getVendors(): Promise<ApiResponse<User[]>> {
-    return await apiService.get<ApiResponse<User[]>>("/admin/users", {
-      role: "vendor",
-    });
-  }
-
-  async updateUser(
-    id: string,
-    userData: Partial<User>
-  ): Promise<ApiResponse<User>> {
-    return await apiService.put<ApiResponse<User>>(
-      `/admin/users/${id}`,
-      userData
-    );
-  }
-
-  async suspendUser(id: string, reason?: string): Promise<ApiResponse<User>> {
-    return await apiService.patch<ApiResponse<User>>(
-      `/admin/users/${id}/suspend`,
-      { reason }
-    );
-  }
-
-  async activateUser(id: string): Promise<ApiResponse<User>> {
-    return await apiService.patch<ApiResponse<User>>(
-      `/admin/users/${id}/activate`
-    );
-  }
-
   // Product management
   async getPendingProducts(
     params: ProductApprovalParams = {}
-  ): Promise<PaginatedResponse<Product>> {
-    return await apiService.get<PaginatedResponse<Product>>(
+  ): Promise<ApiResponse<PaginatedResponse<Product>>> {
+    return await apiService.get<ApiResponse<PaginatedResponse<Product>>>(
       "/admin/products/pending",
       params
     );
@@ -121,8 +119,8 @@ class AdminService {
       maxPrice?: number;
       onSale?: boolean;
     } = {}
-  ): Promise<PaginatedResponse<Product>> {
-    return await apiService.get<PaginatedResponse<Product>>(
+  ): Promise<ApiResponse<PaginatedResponse<Product>>> {
+    return await apiService.get<ApiResponse<PaginatedResponse<Product>>>(
       "/admin/products",
       params
     );
@@ -273,7 +271,7 @@ class AdminService {
 // Create the standard service instance
 const adminService = new AdminService();
 
-// React Query hooks
+// React Query hooks with improved invalidation
 export const useAdminUsers = (params: UserFilterParams = {}, options = {}) => {
   return usePaginatedQuery(
     QueryKeys.admin.users(params),
@@ -293,24 +291,47 @@ export const useAdminUserDetail = (id: string, options = {}) => {
   );
 };
 
+const userQueryInvalidations = (id: string) => [
+  QueryKeys.admin.users({}), // Invalidate the users list
+  [...QueryKeys.admin.users({}), "detail", id] // Invalidate the specific user
+];
+
 export const useUpdateUser = (options = {}) => {
   return useApiMutation(
     ({ id, userData }: { id: string; userData: Partial<User> }) =>
       adminService.updateUser(id, userData),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: ({ id }: { id: string }) => userQueryInvalidations(id)
+      }
+    }
   );
 };
 
 export const useSuspendUser = (options = {}) => {
   return useApiMutation(
-    ({ id, reason }: { id: string; reason?: string }) =>
+    ({ id, reason }: { id: string; reason: string }) =>
       adminService.suspendUser(id, reason),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: ({ id }: { id: string; reason: string }) => userQueryInvalidations(id)
+      }
+    }
   );
 };
 
 export const useActivateUser = (options = {}) => {
-  return useApiMutation((id: string) => adminService.activateUser(id), options);
+  return useApiMutation(
+    (id: string) => adminService.activateUser(id),
+    {
+      ...options,
+      meta: {
+        invalidateQueries: (id: string) => userQueryInvalidations(id)
+      }
+    }
+  );
 };
 
 // Products hooks
@@ -354,10 +375,23 @@ export const usePendingProductsCount = (options = {}) => {
   );
 };
 
+// Define the key query invalidation patterns for products
+const productQueryInvalidations = (id: string) => [
+  QueryKeys.admin.products({}), // Invalidate all products
+  QueryKeys.admin.products({ status: "pending" }), // Invalidate pending products
+  [...QueryKeys.admin.products({}), "pending", "count"], // Invalidate pending count
+  [...QueryKeys.admin.products({}), "detail", id] // Invalidate specific product
+];
+
 export const useApproveProduct = (options = {}) => {
   return useApiMutation(
     (id: string) => adminService.approveProduct(id),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: (id: string) => productQueryInvalidations(id)
+      }
+    }
   );
 };
 
@@ -365,16 +399,28 @@ export const useRejectProduct = (options = {}) => {
   return useApiMutation(
     ({ id, reason }: { id: string; reason: string }) =>
       adminService.rejectProduct(id, reason),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: ({ id }: { id: string; reason: string }) => productQueryInvalidations(id)
+      }
+    }
   );
 };
 
-// Categories hooks
+// Categories hooks with improved invalidation
+const categoryQueryInvalidations = [QueryKeys.categories.all];
+
 export const useCreateCategory = (options = {}) => {
   return useApiMutation(
     (categoryData: CategoryCreateData) =>
       adminService.createCategory(categoryData),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: categoryQueryInvalidations
+      }
+    }
   );
 };
 
@@ -387,18 +433,30 @@ export const useUpdateCategory = (options = {}) => {
       id: string;
       categoryData: Partial<CategoryCreateData>;
     }) => adminService.updateCategory(id, categoryData),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: categoryQueryInvalidations.concat([
+          [...QueryKeys.categories.all, "detail"]
+        ])
+      }
+    }
   );
 };
 
 export const useDeleteCategory = (options = {}) => {
   return useApiMutation(
     (id: string) => adminService.deleteCategory(id),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: categoryQueryInvalidations
+      }
+    }
   );
 };
 
-// Discount hooks
+// Discount hooks with improved invalidation
 export const useDiscountEvents = (options = {}) => {
   return useApiQuery(
     QueryKeys.admin.discounts,
@@ -411,7 +469,12 @@ export const useCreateDiscountEvent = (options = {}) => {
   return useApiMutation(
     (eventData: DiscountEventData) =>
       adminService.createDiscountEvent(eventData),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: [QueryKeys.admin.discounts]
+      }
+    }
   );
 };
 
@@ -424,32 +487,52 @@ export const useUpdateDiscountEvent = (options = {}) => {
       id: string;
       eventData: Partial<DiscountEventData>;
     }) => adminService.updateDiscountEvent(id, eventData),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: [QueryKeys.admin.discounts]
+      }
+    }
   );
 };
 
 export const useDeleteDiscountEvent = (options = {}) => {
   return useApiMutation(
     (id: string) => adminService.deleteDiscountEvent(id),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: [QueryKeys.admin.discounts]
+      }
+    }
   );
 };
 
 export const useActivateDiscountEvent = (options = {}) => {
   return useApiMutation(
     (id: string) => adminService.activateDiscountEvent(id),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: [QueryKeys.admin.discounts]
+      }
+    }
   );
 };
 
 export const useDeactivateDiscountEvent = (options = {}) => {
   return useApiMutation(
     (id: string) => adminService.deactivateDiscountEvent(id),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: [QueryKeys.admin.discounts]
+      }
+    }
   );
 };
 
-// Order hooks
+// Order hooks with improved invalidation
 export const useAdminOrders = (
   params: {
     page?: number;
@@ -483,7 +566,15 @@ export const useUpdateOrderStatus = (options = {}) => {
   return useApiMutation(
     ({ orderId, status }: { orderId: string; status: OrderStatus }) =>
       adminService.updateOrderStatus(orderId, status),
-    options
+    {
+      ...options,
+      meta: {
+        invalidateQueries: ({ orderId }: { orderId: string; status: OrderStatus }) => [
+          QueryKeys.admin.orders({}),
+          [...QueryKeys.admin.orders({}), "detail", orderId]
+        ]
+      }
+    }
   );
 };
 
@@ -497,7 +588,12 @@ export const useAdminVendors = (options = {}) => {
 };
 
 // Dashboard hooks
-export const useAdminDashboardStats = (options: any = {}) => {
+export const useAdminDashboardStats = (
+  options: {
+    queryParams?: { dateRange?: DateRange };
+    [key: string]: unknown;
+  } = {}
+) => {
   const { queryParams, ...restOptions } = options;
   const dateRange = queryParams?.dateRange;
 

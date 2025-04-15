@@ -13,7 +13,8 @@ import {
   useRegister,
   useUpdateProfile,
 } from "../services/authService";
-import { queryClient } from "../context/QueryContext";
+import { queryClient } from "./QueryContext";
+import { useNotification } from "./NotificationContext";
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
@@ -23,6 +24,7 @@ interface AuthContextType extends AuthState {
   isAdmin: () => boolean;
   isVendor: () => boolean;
   isBuyer: () => boolean;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,6 +39,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     isLoading: true,
     error: null,
   });
+
+  const { showNotification } = useNotification();
 
   // Use the React Query hook for current user
   const { isLoading: isUserLoading } = useCurrentUser({
@@ -67,6 +71,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     },
   });
 
+  // Initialize from localStorage if available but API check is pending
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const userJson = localStorage.getItem("user");
+
+    if (token && userJson && authState.isLoading) {
+      try {
+        const user = JSON.parse(userJson);
+        setAuthState((prevState) => ({
+          ...prevState,
+          user,
+          isAuthenticated: true,
+          // Keep isLoading true until API check completes
+        }));
+      } catch (e) {
+        console.error("Failed to parse stored user:", e);
+      }
+    }
+  }, []);
+
   // Update loading state based on user query
   useEffect(() => {
     if (!authState.token) {
@@ -95,6 +119,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   // Use the update profile mutation
   const updateProfileMutation = useUpdateProfile();
 
+  // Function to clear the error state
+  const clearError = () => {
+    setAuthState((prevState) => ({
+      ...prevState,
+      error: null,
+    }));
+  };
+
   // Login function
   const login = async (email: string, password: string) => {
     try {
@@ -118,12 +150,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
+
+      showNotification("Login successful!", { type: "success" });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Login failed";
+
+      console.log({ errorMessage });
       setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Login failed",
+        error: errorMessage,
       }));
+
+      // We don't show notification here - we'll let components handle this
+      // based on the error state to avoid duplicate notifications
+
       throw error;
     }
   };
@@ -151,12 +193,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
+
+      showNotification("Registration successful!", { type: "success" });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Registration failed";
+
       setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Registration failed",
+        error: errorMessage,
       }));
+
+      // We don't show notification here - we'll let components handle this
+      // based on the error state to avoid duplicate notifications
+
       throw error;
     }
   };
@@ -177,6 +228,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
+
+      showNotification("You have been logged out", { type: "info" });
     } catch (error) {
       console.error("Logout error:", error);
 
@@ -191,6 +244,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
+
+      showNotification("Logged out with errors", { type: "warning" });
     }
   };
 
@@ -210,12 +265,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         user: { ...prevState.user!, ...result.data },
         isLoading: false,
       }));
+
+      showNotification("Profile updated successfully", { type: "success" });
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Profile update failed";
+
       setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Profile update failed",
+        error: errorMessage,
       }));
+
+      // We don't show notification here - we'll let components handle this
+      // based on the error state to avoid duplicate notifications
+
       throw error;
     }
   };
@@ -236,6 +300,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isAdmin,
         isVendor,
         isBuyer,
+        clearError,
       }}
     >
       {children}

@@ -1,33 +1,35 @@
 import apiService from './api';
 import { ApiResponse, WishlistItem } from '../types';
-import { useApiQuery, useApiMutation } from '../hooks/useQueryHooks';
+import queryHooks from '../hooks/useQueryHooks';
 import { QueryKeys } from '../utils/queryKeys';
+
+const { useApiQuery, useApiMutation } = queryHooks;
 
 // Traditional API service methods
 class WishlistService {
   // Get all items in the user's wishlist
   async getWishlist(): Promise<ApiResponse<WishlistItem[]>> {
-    return await apiService.get<ApiResponse<WishlistItem[]>>('/wishlist');
+    return await apiService.get<ApiResponse<WishlistItem[]>>('/api/v1/wishlist');
   }
   
   // Add a product to the wishlist
   async addToWishlist(productId: string): Promise<ApiResponse<WishlistItem>> {
-    return await apiService.post<ApiResponse<WishlistItem>>('/wishlist', { productId });
+    return await apiService.post<ApiResponse<WishlistItem>>('/api/v1/wishlist', { productId });
   }
   
   // Remove an item from the wishlist
   async removeFromWishlist(wishlistItemId: string): Promise<ApiResponse<null>> {
-    return await apiService.delete<ApiResponse<null>>(`/wishlist/${wishlistItemId}`);
+    return await apiService.delete<ApiResponse<null>>(`/api/v1/wishlist/${wishlistItemId}`);
   }
   
   // Check if a product is in the wishlist
   async isProductInWishlist(productId: string): Promise<ApiResponse<{ exists: boolean }>> {
-    return await apiService.get<ApiResponse<{ exists: boolean }>>(`/wishlist/check/${productId}`);
+    return await apiService.get<ApiResponse<{ exists: boolean }>>(`/api/v1/wishlist/check/${productId}`);
   }
   
   // Toggle wishlist status (add if not in wishlist, remove if already in wishlist)
   async toggleWishlist(productId: string): Promise<ApiResponse<{ added: boolean; item?: WishlistItem }>> {
-    return await apiService.post<ApiResponse<{ added: boolean; item?: WishlistItem }>>('/wishlist/toggle', { productId });
+    return await apiService.post<ApiResponse<{ added: boolean; item?: WishlistItem }>>('/api/v1/wishlist/toggle', { productId });
   }
 }
 

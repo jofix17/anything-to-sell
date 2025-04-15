@@ -46,7 +46,7 @@ import VendorAnalyticsPage from "./pages/vendor/AnalyticsPage";
 
 // Admin pages
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
-import AdminUsersPage from "./pages/admin/UserPage";
+import AdminUsersPage from "./pages/admin/UsersPage";
 import AdminUserDetailPage from "./pages/admin/UserDetailPage";
 import AdminProductsPage from "./pages/admin/ProductsPage";
 import AdminProductDetailPage from "./pages/admin/ProductDetailPage";
@@ -58,6 +58,10 @@ import AdminSettingsPage from "./pages/admin/SettingsPage";
 
 // Error pages
 import NotFoundPage from "./pages/NotFoundPage";
+import { WishlistProvider } from "./context/WishlistContext";
+import { NotificationProvider } from "./context/NotificationContext";
+import { ThemeProvider } from "./context/ThemesContext";
+import NotificationToast from "./components/common/NotificationToast";
 
 // Protected route wrapper
 interface ProtectedRouteProps {
@@ -104,110 +108,152 @@ const App: React.FC = () => {
   return (
     <QueryProvider>
       <Router>
-        <AuthProvider>
-          <CartProvider>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/" element={<MainLayout />}>
-                <Route index element={<HomePage />} />
-                <Route path="products" element={<ProductsPage />} />
-                <Route path="products/:id" element={<ProductDetailPage />} />
-                <Route path="about" element={<AboutPage />} />
-                <Route path="contact" element={<ContactPage />} />
-                <Route path="login" element={<LoginPage />} />
-                <Route path="register" element={<RegisterPage />} />
-                <Route
-                  path="forgot-password"
-                  element={<ForgotPasswordPage />}
-                />
-                <Route path="reset-password" element={<ResetPasswordPage />} />
-              </Route>
+        <NotificationProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <CartProvider>
+                <WishlistProvider>
+                  <NotificationToast />
+                  <Routes>
+                    {/* Public routes */}
+                    <Route path="/" element={<MainLayout />}>
+                      <Route index element={<HomePage />} />
+                      <Route path="products" element={<ProductsPage />} />
+                      <Route
+                        path="products/:id"
+                        element={<ProductDetailPage />}
+                      />
+                      <Route path="about" element={<AboutPage />} />
+                      <Route path="contact" element={<ContactPage />} />
+                      <Route path="login" element={<LoginPage />} />
+                      <Route path="register" element={<RegisterPage />} />
+                      <Route
+                        path="forgot-password"
+                        element={<ForgotPasswordPage />}
+                      />
+                      <Route
+                        path="reset-password"
+                        element={<ResetPasswordPage />}
+                      />
+                    </Route>
 
-              {/* Buyer routes */}
-              <Route path="/" element={<MainLayout />}>
-                <Route
-                  path="profile"
-                  element={<ProtectedRoute element={<ProfilePage />} />}
-                />
-                <Route
-                  path="cart"
-                  element={<ProtectedRoute element={<CartPage />} />}
-                />
-                <Route
-                  path="checkout"
-                  element={<ProtectedRoute element={<CheckoutPage />} />}
-                />
-                <Route
-                  path="orders"
-                  element={<ProtectedRoute element={<OrdersPage />} />}
-                />
-                <Route
-                  path="orders/:id"
-                  element={<ProtectedRoute element={<OrderDetailPage />} />}
-                />
-                <Route
-                  path="wishlist"
-                  element={<ProtectedRoute element={<WishlistPage />} />}
-                />
-                <Route
-                  path="support"
-                  element={<ProtectedRoute element={<SupportPage />} />}
-                />
-              </Route>
+                    {/* Buyer routes */}
+                    <Route path="/" element={<MainLayout />}>
+                      <Route
+                        path="profile"
+                        element={<ProtectedRoute element={<ProfilePage />} />}
+                      />
+                      <Route
+                        path="cart"
+                        element={<ProtectedRoute element={<CartPage />} />}
+                      />
+                      <Route
+                        path="checkout"
+                        element={<ProtectedRoute element={<CheckoutPage />} />}
+                      />
+                      <Route
+                        path="orders"
+                        element={<ProtectedRoute element={<OrdersPage />} />}
+                      />
+                      <Route
+                        path="orders/:id"
+                        element={
+                          <ProtectedRoute element={<OrderDetailPage />} />
+                        }
+                      />
+                      <Route
+                        path="wishlist"
+                        element={<ProtectedRoute element={<WishlistPage />} />}
+                      />
+                      <Route
+                        path="support"
+                        element={<ProtectedRoute element={<SupportPage />} />}
+                      />
+                    </Route>
 
-              {/* Vendor routes */}
-              <Route
-                path="/vendor"
-                element={
-                  <ProtectedRoute
-                    element={<VendorLayout />}
-                    requiredRole="vendor"
-                  />
-                }
-              >
-                <Route path="dashboard" element={<VendorDashboardPage />} />
-                <Route path="products" element={<VendorProductsPage />} />
-                <Route path="products/add" element={<VendorAddProductPage />} />
-                <Route
-                  path="products/edit/:id"
-                  element={<VendorEditProductPage />}
-                />
-                <Route path="orders" element={<VendorOrdersPage />} />
-                <Route path="orders/:id" element={<VendorOrderDetailPage />} />
-                <Route path="settings" element={<VendorSettingsPage />} />
-                <Route path="analytics" element={<VendorAnalyticsPage />} />
-              </Route>
+                    {/* Vendor routes */}
+                    <Route
+                      path="/vendor"
+                      element={
+                        <ProtectedRoute
+                          element={<VendorLayout />}
+                          requiredRole="vendor"
+                        />
+                      }
+                    >
+                      <Route
+                        path="dashboard"
+                        element={<VendorDashboardPage />}
+                      />
+                      <Route path="products" element={<VendorProductsPage />} />
+                      <Route
+                        path="products/add"
+                        element={<VendorAddProductPage />}
+                      />
+                      <Route
+                        path="products/edit/:id"
+                        element={<VendorEditProductPage />}
+                      />
+                      <Route path="orders" element={<VendorOrdersPage />} />
+                      <Route
+                        path="orders/:id"
+                        element={<VendorOrderDetailPage />}
+                      />
+                      <Route path="settings" element={<VendorSettingsPage />} />
+                      <Route
+                        path="analytics"
+                        element={<VendorAnalyticsPage />}
+                      />
+                    </Route>
 
-              {/* Admin routes */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute
-                    element={<AdminLayout />}
-                    requiredRole="admin"
-                  />
-                }
-              >
-                <Route path="dashboard" element={<AdminDashboardPage />} />
-                <Route path="users" element={<AdminUsersPage />} />
-                <Route path="users/:id" element={<AdminUserDetailPage />} />
-                <Route path="products" element={<AdminProductsPage />} />
-                <Route
-                  path="products/:id"
-                  element={<AdminProductDetailPage />}
-                />
-                <Route path="categories" element={<AdminCategoriesPage />} />
-                <Route path="orders" element={<AdminOrdersPage />} />
-                <Route path="orders/:id" element={<AdminOrderDetailPage />} />
-                <Route path="discounts" element={<AdminDiscountsPage />} />
-                <Route path="settings" element={<AdminSettingsPage />} />
-              </Route>
+                    {/* Admin routes */}
+                    <Route
+                      path="/admin"
+                      element={
+                        <ProtectedRoute
+                          element={<AdminLayout />}
+                          requiredRole="admin"
+                        />
+                      }
+                    >
+                      <Route
+                        path="dashboard"
+                        element={<AdminDashboardPage />}
+                      />
+                      <Route path="users" element={<AdminUsersPage />} />
+                      <Route
+                        path="users/:id"
+                        element={<AdminUserDetailPage />}
+                      />
+                      <Route path="products" element={<AdminProductsPage />} />
+                      <Route
+                        path="products/:id"
+                        element={<AdminProductDetailPage />}
+                      />
+                      <Route
+                        path="categories"
+                        element={<AdminCategoriesPage />}
+                      />
+                      <Route path="orders" element={<AdminOrdersPage />} />
+                      <Route
+                        path="orders/:id"
+                        element={<AdminOrderDetailPage />}
+                      />
+                      <Route
+                        path="discounts"
+                        element={<AdminDiscountsPage />}
+                      />
+                      <Route path="settings" element={<AdminSettingsPage />} />
+                    </Route>
 
-              {/* Catch-all route for 404 */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </CartProvider>
-        </AuthProvider>
+                    {/* Catch-all route for 404 */}
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </WishlistProvider>
+              </CartProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </NotificationProvider>
       </Router>
     </QueryProvider>
   );

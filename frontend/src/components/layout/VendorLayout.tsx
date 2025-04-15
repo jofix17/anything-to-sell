@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  ChartBarIcon, 
-  ShoppingBagIcon, 
-  ShoppingCartIcon, 
-  CogIcon, 
+import {
+  ChartBarIcon,
+  ShoppingBagIcon,
+  ShoppingCartIcon,
+  CogIcon,
   BanknotesIcon as CashIcon,
   ChartPieIcon,
   PlusIcon,
@@ -15,8 +15,6 @@ import {
   ArrowRightEndOnRectangleIcon as LogoutIcon,
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
-import Notification from '../common/Notification';
-import { NotificationContext } from '../../context/NotificationContext';
 
 const VendorLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -26,16 +24,6 @@ const VendorLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  
-  const [notification, setNotification] = useState<{
-    message: string;
-    type: 'success' | 'error' | 'info';
-    isVisible: boolean;
-  }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  });
 
   // Navigation items
   const navItems = [
@@ -54,20 +42,6 @@ const VendorLayout: React.FC = () => {
     { id: 2, message: 'Product approved by admin', time: '1 hour ago', isRead: false },
     { id: 3, message: 'Payment processed', time: '3 hours ago', isRead: true },
   ];
-
-  // Helper to show notifications
-  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setNotification({
-      message,
-      type,
-      isVisible: true,
-    });
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-      setNotification(prev => ({ ...prev, isVisible: false }));
-    }, 5000);
-  };
 
   // Handle logout
   const handleLogout = async () => {
@@ -267,9 +241,7 @@ const VendorLayout: React.FC = () => {
 
         {/* Page content */}
         <main className="flex-grow p-6">
-          <NotificationContext.Provider value={{ showNotification }}>
-            <Outlet />
-          </NotificationContext.Provider>
+          <Outlet />
         </main>
 
         {/* Footer */}
@@ -288,13 +260,6 @@ const VendorLayout: React.FC = () => {
         ></div>
       )}
 
-      {/* Notification toast */}
-      <Notification
-        message={notification.message}
-        type={notification.type}
-        isVisible={notification.isVisible}
-        onClose={() => setNotification(prev => ({ ...prev, isVisible: false }))}
-      />
     </div>
   );
 };

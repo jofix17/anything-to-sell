@@ -14,7 +14,7 @@ export type QueryKeyGenerator<T = void> = T extends void
  * Acts as a more flexible alternative to Record<string, unknown>
  */
 export interface QueryFilters {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -28,13 +28,13 @@ export type ResponseTransformer<TResponse, TResult> =
  * Type for API function that returns standard API response
  */
 export type ApiFunction<TData> = 
-  (...args: any[]) => Promise<ApiResponse<TData>>;
+  (...args: unknown[]) => Promise<ApiResponse<TData>>;
 
 /**
  * Type for API function that returns paginated response
  */
 export type PaginatedApiFunction<TData> = 
-  (...args: any[]) => Promise<PaginatedResponse<TData>>;
+  (...args: unknown[]) => Promise<PaginatedResponse<TData>>;
 
 /**
  * Generic success handler type for mutations

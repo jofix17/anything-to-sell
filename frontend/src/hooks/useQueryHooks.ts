@@ -1,105 +1,118 @@
 import {
   useQuery,
   useMutation,
-  UseQueryOptions,
+  useQueryClient,
   UseMutationOptions,
+  UseQueryOptions,
   QueryKey,
-  UseQueryResult,
-  UseMutationResult,
-} from '@tanstack/react-query';
-import { ApiResponse, PaginatedResponse } from '../types';
-import { queryClient } from '../context/QueryContext';
-
-// Type definitions for query hooks
-type ApiQueryResult<TData> = UseQueryResult<ApiResponse<TData>, Error>;
-type ApiMutationResult<TData, TVariables> = UseMutationResult<ApiResponse<TData>, Error, TVariables, unknown>;
-type PaginatedQueryResult<TData> = UseQueryResult<PaginatedResponse<TData>, Error>;
+} from "@tanstack/react-query";
+import { ApiResponse, PaginatedResponse } from "../types";
 
 /**
- * Custom hook for making API queries with standard ApiResponse<T> return type
- * @param queryKey Unique key for identifying the query
- * @param queryFn Function that returns a Promise with ApiResponse<TData>
- * @param options Additional options for the query
- * @returns UseQueryResult with ApiResponse<TData> data
+ * Custom hook for generic API queries
  */
-export function useApiQuery<TData = unknown>(
+export function useApiQuery<TData, TError = Error>(
   queryKey: QueryKey,
   queryFn: () => Promise<ApiResponse<TData>>,
-  options?: Omit<UseQueryOptions<ApiResponse<TData>, Error, ApiResponse<TData>>, 'queryKey' | 'queryFn'>
-): ApiQueryResult<TData> {
-  return useQuery({
-    queryKey,
-    queryFn,
-    ...options
+  options: Omit<
+    UseQueryOptions<ApiResponse<TData>, TError, TData>,
+    "queryKey" | "queryFn"
+  > = {}
+) {
+  // Create a default selector to extract data from API response
+  const defaultSelect = (response: ApiResponse<TData>) => response.data;
+
+  return useQuery<ApiResponse<TData>, TError, TData>({
+    queryKey: queryKey,
+    queryFn: queryFn,
+    select: options.select || defaultSelect,
+    ...options,
   });
 }
 
 /**
- * Custom hook for making API mutations with standard ApiResponse<T> return type
- * @param mutationFn Function that returns a Promise with ApiResponse<TData>
- * @param options Additional options for the mutation
- * @returns UseMutationResult with ApiResponse<TData> data
+ * Custom hook for paginated queries
  */
-export function useApiMutation<TData = unknown, TVariables = unknown>(
+export function usePaginatedQuery<TData, TError = Error>(
+  queryKey: QueryKey,
+  queryFn: () => Promise<ApiResponse<PaginatedResponse<TData>>>,
+  options: Omit<
+    UseQueryOptions<
+      ApiResponse<PaginatedResponse<TData>>,
+      TError,
+      PaginatedResponse<TData>
+    >,
+    "queryKey" | "queryFn"
+  > = {}
+) {
+  // Create a default selector to extract paginated data from API response
+  const defaultSelect = (response: ApiResponse<PaginatedResponse<TData>>) =>
+    response.data;
+
+  return useQuery<
+    ApiResponse<PaginatedResponse<TData>>,
+    TError,
+    PaginatedResponse<TData>
+  >({
+    queryKey: queryKey,
+    queryFn: queryFn,
+    select: options.select || defaultSelect,
+    ...options,
+  });
+}
+
+/**
+ * Custom hook for API mutations
+ */
+export function useApiMutation<TData, TVariables, TError = Error>(
   mutationFn: (variables: TVariables) => Promise<ApiResponse<TData>>,
-  options?: Omit<UseMutationOptions<ApiResponse<TData>, Error, TVariables, unknown>, 'mutationFn'>
-): ApiMutationResult<TData, TVariables> {
-  return useMutation({
-    mutationFn,
-    ...options
+  options: Omit<
+    UseMutationOptions<ApiResponse<TData>, TError, TVariables>,
+    "mutationFn"
+  > = {}
+) {
+  return useMutation<ApiResponse<TData>, TError, TVariables>({
+    mutationFn: mutationFn,
+    ...options,
   });
 }
 
 /**
- * Custom hook for making paginated API queries
- * @param queryKey Unique key for identifying the query
- * @param queryFn Function that returns a Promise with PaginatedResponse<TData>
- * @param options Additional options for the query
- * @returns UseQueryResult with PaginatedResponse<TData> data
+ * Custom hook for prefetching a query
+ * Returns a function that can be called to prefetch the query
  */
-export function usePaginatedQuery<TData = unknown>(
-  queryKey: QueryKey,
-  queryFn: () => Promise<PaginatedResponse<TData>>,
-  options?: Omit<UseQueryOptions<PaginatedResponse<TData>, Error, PaginatedResponse<TData>>, 'queryKey' | 'queryFn'>
-): PaginatedQueryResult<TData> {
-  return useQuery({
-    queryKey,
-    queryFn,
-    ...options
-  });
+export function usePrefetchQuery<TData>() {
+  const queryClient = useQueryClient();
+
+  // Return a function that can be called to prefetch a query
+  return (queryKey: QueryKey, queryFn: () => Promise<ApiResponse<TData>>) => {
+    return queryClient.prefetchQuery({
+      queryKey,
+      queryFn,
+    });
+  };
 }
 
 /**
- * Helper function to prefetch data for a query
- * @param queryKey Unique key for identifying the query
- * @param queryFn Function that returns a Promise with the query data
+ * Custom hook for invalidating queries
+ * Returns a function that can be called to invalidate queries
  */
-export async function prefetchQuery<TData>(
-  queryKey: QueryKey,
-  queryFn: () => Promise<TData>
-): Promise<void> {
-  await queryClient.prefetchQuery({
-    queryKey,
-    queryFn
-  });
+export function useInvalidateQueries() {
+  const queryClient = useQueryClient();
+
+  // Return a function that can be called to invalidate queries
+  return (queryKey: QueryKey) => {
+    return queryClient.invalidateQueries({ queryKey });
+  };
 }
 
-/**
- * Helper function to invalidate queries by key
- * @param queryKey Unique key for identifying the query to invalidate
- */
-export function invalidateQueries(queryKey: QueryKey): Promise<void> {
-  return queryClient.invalidateQueries({ queryKey });
-}
+// Export everything in a single object for easier imports
+const queryHooks = {
+  useApiQuery,
+  usePaginatedQuery,
+  useApiMutation,
+  usePrefetchQuery,
+  useInvalidateQueries,
+};
 
-/**
- * Helper function to update query data
- * @param queryKey Unique key for identifying the query to update
- * @param updaterFn Function that receives the old data and returns the updated data
- */
-export function setQueryData<TData>(
-  queryKey: QueryKey,
-  updaterFn: (oldData: TData | undefined) => TData
-): void {
-  queryClient.setQueryData(queryKey, updaterFn);
-}
+export default queryHooks;

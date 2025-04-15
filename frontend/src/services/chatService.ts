@@ -1,9 +1,11 @@
 import apiService from './api';
 import { Message, Conversation, ApiResponse, PaginatedResponse } from '../types';
 import { io, Socket } from 'socket.io-client';
-import { useApiQuery, useApiMutation, usePaginatedQuery, invalidateQueries } from '../hooks/useQueryHooks';
+import queryHooks from '../hooks/useQueryHooks';
 import { QueryKeys } from '../utils/queryKeys';
 import { useEffect } from 'react';
+
+const { useApiQuery, useApiMutation, usePaginatedQuery, useInvalidateQueries } = queryHooks;
 
 // Traditional API service methods
 class ChatService {
@@ -52,12 +54,9 @@ class ChatService {
       const conversationId = message.id.toString();
       const listeners = this.messageListeners.get(conversationId) || [];
       listeners.forEach(listener => listener(message));
-      
-      // Also invalidate the related queries to trigger a refetch
-      invalidateQueries(QueryKeys.support.messages(conversationId));
     });
     
-    this.socket.on('error', (error: any) => {
+    this.socket.on('error', (error: Error) => {
       console.error('Socket error:', error);
     });
   }
@@ -95,17 +94,17 @@ class ChatService {
   
   // Get all conversations for the current user
   async getConversations(): Promise<ApiResponse<Conversation[]>> {
-    return await apiService.get<ApiResponse<Conversation[]>>('/conversations');
+    return await apiService.get<ApiResponse<Conversation[]>>('/api/v1/conversations');
   }
   
   // Get or create a conversation with another user
   async getOrCreateConversation(userId: number): Promise<ApiResponse<Conversation>> {
-    return await apiService.post<ApiResponse<Conversation>>('/conversations', { userId });
+    return await apiService.post<ApiResponse<Conversation>>('/api/v1/conversations', { userId });
   }
   
   // Get messages for a conversation
-  async getMessages(conversationId: string, page = 1, perPage = 20): Promise<PaginatedResponse<Message>> {
-    return await apiService.get<PaginatedResponse<Message>>(`/conversations/${conversationId}/messages`, {
+  async getMessages(conversationId: string, page = 1, perPage = 20): Promise<ApiResponse<PaginatedResponse<Message>>> {
+    return await apiService.get<ApiResponse<PaginatedResponse<Message>>>(`/api/v1/conversations/${conversationId}/messages`, {
       page,
       perPage
     });
@@ -113,24 +112,24 @@ class ChatService {
   
   // Send a message
   async sendMessage(conversationId: string, content: string): Promise<ApiResponse<Message>> {
-    return await apiService.post<ApiResponse<Message>>(`/conversations/${conversationId}/messages`, {
+    return await apiService.post<ApiResponse<Message>>(`/api/v1/conversations/${conversationId}/messages`, {
       content
     });
   }
   
   // Mark messages as read
   async markAsRead(conversationId: string): Promise<ApiResponse<null>> {
-    return await apiService.patch<ApiResponse<null>>(`/conversations/${conversationId}/read`);
+    return await apiService.patch<ApiResponse<null>>(`/api/v1/conversations/${conversationId}/read`);
   }
   
   // Support chat for vendors and admin
   async getSupportConversations(status?: 'open' | 'closed'): Promise<ApiResponse<Conversation[]>> {
-    return await apiService.get<ApiResponse<Conversation[]>>('/support/conversations', { status });
+    return await apiService.get<ApiResponse<Conversation[]>>('/api/v1/support/conversations', { status });
   }
   
   // Create a support conversation (for buyers)
   async createSupportConversation(subject: string, message: string): Promise<ApiResponse<Conversation>> {
-    return await apiService.post<ApiResponse<Conversation>>('/support/conversations', {
+    return await apiService.post<ApiResponse<Conversation>>('/api/v1/support/conversations', {
       subject,
       message
     });
@@ -138,7 +137,7 @@ class ChatService {
   
   // Close a support conversation
   async closeSupportConversation(conversationId: string): Promise<ApiResponse<null>> {
-    return await apiService.patch<ApiResponse<null>>(`/support/conversations/${conversationId}/close`);
+    return await apiService.patch<ApiResponse<null>>(`/api/v1/support/conversations/${conversationId}/close`);
   }
 }
 
@@ -245,6 +244,7 @@ export const useCloseSupportConversation = (options = {}) => {
 // Custom hook to automatically join a conversation and handle listeners
 export const useConversation = (conversationId: string) => {
   const { joinConversation, leaveConversation } = useChatSocket();
+  const invalidateQueries = useInvalidateQueries();
   
   useEffect(() => {
     if (conversationId) {

@@ -44,7 +44,8 @@ export const QueryKeys = {
   },
   admin: {
     dashboard: ['admin', 'dashboard'],
-    users: (params: QueryFilters) => ['admin', 'users', params],
+    // Update the users function to accept a more generic parameter
+    users: (params: Record<string, unknown>) => ['admin', 'users', params],
     products: (params: QueryFilters) => ['admin', 'products', params],
     orders: (params: QueryFilters) => ['admin', 'orders', params],
     vendors: (params: QueryFilters) => ['admin', 'vendors', params],

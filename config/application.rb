@@ -14,6 +14,8 @@ require "action_view/railtie"
 require "action_cable/engine"
 require "rails/test_unit/railtie"
 
+require_relative "../app/middleware/case_transform_middleware"
+
 # Require the gems listed in Gemfile, including any gems
 # you've limited to :test, :development, or :production.
 Bundler.require(*Rails.groups)
@@ -32,13 +34,22 @@ module AnythingToSell
     #
     # These settings can be overridden in specific environments using the files
     # in config/environments, which are processed later.
-    #
-    # config.time_zone = "Central Time (US & Canada)"
+
     # config.eager_load_paths << Rails.root.join("extras")
 
     # Only loads a smaller set of middleware suitable for API only apps.
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
+
+    config.time_zone = "Asia/Manila"
+
+    config.eager_load_paths << Rails.root.join("app/services")
+    config.autoload_paths << Rails.root.join("app", "middleware")
+
+    config.middleware.use CaseTransformMiddleware
+    config.generators do |g|
+      g.orm(:active_record, primary_key_type: :uuid)
+    end
   end
 end

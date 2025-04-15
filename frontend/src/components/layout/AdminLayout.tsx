@@ -16,8 +16,6 @@ import {
   Bars3Icon as MenuIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../../context/AuthContext";
-import Notification from '../common/Notification'
-import { NotificationContext } from "../../context/NotificationContext";
 
 const AdminLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -27,16 +25,6 @@ const AdminLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-
-  const [notification, setNotification] = useState<{
-    message: string;
-    type: "success" | "error" | "info";
-    isVisible: boolean;
-  }>({
-    message: "",
-    type: "info",
-    isVisible: false,
-  });
 
   // Navigation items
   const navItems = [
@@ -71,23 +59,6 @@ const AdminLayout: React.FC = () => {
       isRead: true,
     },
   ];
-
-  // Helper to show notifications
-  const showNotification = (
-    message: string,
-    type: "success" | "error" | "info" = "info"
-  ) => {
-    setNotification({
-      message,
-      type,
-      isVisible: true,
-    });
-
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-      setNotification((prev) => ({ ...prev, isVisible: false }));
-    }, 5000);
-  };
 
   // Handle logout
   const handleLogout = async () => {
@@ -286,9 +257,7 @@ const AdminLayout: React.FC = () => {
 
         {/* Page content */}
         <main className="flex-grow p-6">
-          <NotificationContext.Provider value={{ showNotification }}>
-            <Outlet />
-          </NotificationContext.Provider>
+          <Outlet />
         </main>
 
         {/* Footer */}
@@ -308,15 +277,6 @@ const AdminLayout: React.FC = () => {
         ></div>
       )}
 
-      {/* Notification toast */}
-      <Notification
-        message={notification.message}
-        type={notification.type}
-        isVisible={notification.isVisible}
-        onClose={() =>
-          setNotification((prev) => ({ ...prev, isVisible: false }))
-        }
-      />
     </div>
   );
 };

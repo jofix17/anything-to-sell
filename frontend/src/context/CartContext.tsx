@@ -14,7 +14,7 @@ import {
   useClearCart,
 } from "../services/cartService";
 import { useAuth } from "./AuthContext";
-import { invalidateQueries } from "../hooks/useQueryHooks";
+import { useInvalidateQueries } from "../hooks/useQueryHooks"; // Corrected import
 import { QueryKeys } from "../utils/queryKeys";
 
 interface CartContextType {
@@ -44,6 +44,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
   });
 
   const { isAuthenticated } = useAuth();
+  const invalidateQueries = useInvalidateQueries(); // Use the hook to get the function
 
   // Use React Query hook to fetch cart data
   const { isLoading: isCartLoading, refetch } = useCartQuery({

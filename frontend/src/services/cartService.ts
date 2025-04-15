@@ -8,8 +8,10 @@ import {
   UpdateCartItemData,
   CreateOrderData
 } from '../types';
-import { useApiQuery, useApiMutation, prefetchQuery } from '../hooks/useQueryHooks';
+import queryHooks from '../hooks/useQueryHooks';
 import { QueryKeys } from '../utils/queryKeys';
+
+const { useApiQuery, useApiMutation, usePrefetchQuery } = queryHooks;
 
 // Traditional API service methods
 class CartService {
@@ -219,11 +221,16 @@ export const useConfirmPayment = (options = {}) => {
   );
 };
 
-// Helper function to prefetch order details (for better UX)
-export const prefetchOrderDetail = (id: string) => {
-  return prefetchQuery(QueryKeys.orders.detail(id), () =>
-    cartService.getOrderById(id)
-  );
+// Helper hook to prefetch order details (for better UX)
+export const usePrefetchOrderDetail = () => {
+  const prefetchQuery = usePrefetchQuery<Order>();
+  
+  return (id: string) => {
+    return prefetchQuery(
+      QueryKeys.orders.detail(id), 
+      () => cartService.getOrderById(id)
+    );
+  };
 };
 
 // Export the original service for cases where direct API calls are needed

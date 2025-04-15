@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   useAdminUserDetail,
@@ -6,7 +6,7 @@ import {
   useSuspendUser,
   useActivateUser,
 } from "../../services/adminService";
-import { User } from "../../types";
+import { User, UserRole } from "../../types";
 import { toast } from "react-toastify";
 
 const AdminUserDetailPage: React.FC = () => {
@@ -16,10 +16,10 @@ const AdminUserDetailPage: React.FC = () => {
   const [showSuspendModal, setShowSuspendModal] = useState<boolean>(false);
 
   // Use React Query hooks
-  const { data: userResponse, isLoading, error } = useAdminUserDetail(id || "");
+  const { data: userResponse, isLoading, error, refetch } = useAdminUserDetail(id || "");
+  const user = userResponse || null;
 
-  const user = userResponse?.data || null;
-
+  // These mutation hooks now have automatic query invalidation through the meta options
   const updateUserMutation = useUpdateUser({
     onSuccess: () => {
       toast.success("User updated successfully");
@@ -48,6 +48,13 @@ const AdminUserDetailPage: React.FC = () => {
       toast.error(error.message || "Failed to activate user");
     },
   });
+
+  // Manually trigger a refetch when the component mounts or when ID changes
+  useEffect(() => {
+    if (id) {
+      refetch();
+    }
+  }, [id, refetch]);
 
   const handleActivateUser = async () => {
     if (id && user) {
@@ -183,6 +190,12 @@ const AdminUserDetailPage: React.FC = () => {
                   <p className="text-sm text-gray-500">Last Updated</p>
                   <p>{new Date(user.updatedAt).toLocaleDateString()}</p>
                 </div>
+                {!user.isActive && user.suspensionReason && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-gray-500">Suspension Reason</p>
+                    <p className="text-red-500">{user.suspensionReason}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -194,44 +207,60 @@ const AdminUserDetailPage: React.FC = () => {
                 {user.isActive ? (
                   <button
                     onClick={() => setShowSuspendModal(true)}
-                    className="w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                    className="w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors duration-200"
                     disabled={
                       suspendUserMutation.isPending ||
                       activateUserMutation.isPending
                     }
                   >
-                    Suspend User
+                    {suspendUserMutation.isPending ? 
+                      <span className="flex items-center justify-center">
+                        <span className="animate-spin h-4 w-4 mr-2 border-t-2 border-b-2 border-white rounded-full"></span>
+                        Processing...
+                      </span> : 
+                      "Suspend User"
+                    }
                   </button>
                 ) : (
                   <button
                     onClick={handleActivateUser}
-                    className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                    className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors duration-200"
                     disabled={
                       suspendUserMutation.isPending ||
                       activateUserMutation.isPending
                     }
                   >
-                    Activate User
+                    {activateUserMutation.isPending ? 
+                      <span className="flex items-center justify-center">
+                        <span className="animate-spin h-4 w-4 mr-2 border-t-2 border-b-2 border-white rounded-full"></span>
+                        Processing...
+                      </span> : 
+                      "Activate User"
+                    }
                   </button>
                 )}
 
                 <button
                   onClick={() => {
-                    const newRole = user.role === "vendor" ? "buyer" : "vendor";
+                    const newRole: UserRole = user.role === "vendor" ? "buyer" : "vendor";
                     if (window.confirm(`Change user role to ${newRole}?`)) {
                       handleUpdateUser({
-                        role: newRole as "admin" | "vendor" | "buyer",
+                        role: newRole,
                       });
                     }
                   }}
-                  className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 mt-2"
+                  className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors duration-200 mt-2"
                   disabled={
                     updateUserMutation.isPending || user.role === "admin"
                   }
                 >
-                  {user.role === "vendor"
-                    ? "Change to Buyer"
-                    : "Change to Vendor"}
+                  {updateUserMutation.isPending ? 
+                    <span className="flex items-center justify-center">
+                      <span className="animate-spin h-4 w-4 mr-2 border-t-2 border-b-2 border-white rounded-full"></span>
+                      Processing...
+                    </span> : 
+                    user.role === "vendor" ? "Change to Buyer" : "Change to Vendor"
+                  }
                 </button>
               </div>
             </div>
@@ -270,19 +299,25 @@ const AdminUserDetailPage: React.FC = () => {
                   setShowSuspendModal(false);
                   setSuspendReason("");
                 }}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors duration-200"
                 disabled={suspendUserMutation.isPending}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSuspendUser}
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors duration-200"
                 disabled={
                   !suspendReason.trim() || suspendUserMutation.isPending
                 }
               >
-                {suspendUserMutation.isPending ? "Suspending..." : "Suspend"}
+                {suspendUserMutation.isPending ? 
+                  <span className="flex items-center justify-center">
+                    <span className="animate-spin h-4 w-4 mr-2 border-t-2 border-b-2 border-white rounded-full"></span>
+                    Suspending...
+                  </span> : 
+                  "Suspend"
+                }
               </button>
             </div>
           </div>

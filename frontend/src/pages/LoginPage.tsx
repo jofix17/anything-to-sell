@@ -13,29 +13,26 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login, isAuthenticated, error } = useAuth();
+  const { login, isAuthenticated, error, clearError } = useAuth();
   const { showNotification } = useNotification();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Get the intended redirect path from location state or default to home
   const from = location.state?.from?.pathname || "/";
 
-  // If user is already authenticated, redirect to home
   useEffect(() => {
     if (isAuthenticated) {
       navigate(from, { replace: true });
     }
   }, [isAuthenticated, navigate, from]);
 
-  // Show error notification if login fails
   useEffect(() => {
     if (error) {
-      showNotification(error, "error");
+      showNotification(error, { type: "error" });
+      clearError();
     }
-  }, [error, showNotification]);
+  }, [error, showNotification, clearError]);
 
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -44,11 +41,11 @@ const LoginPage: React.FC = () => {
     try {
       setIsSubmitting(true);
       await login(email, password);
-
       // The redirect will be handled by the useEffect above
     } catch (error) {
       console.error({ error });
       // Error notifications handled by the useEffect above
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -162,7 +159,7 @@ const LoginPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-primary-300"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-secondary bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-primary-300"
               >
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </button>

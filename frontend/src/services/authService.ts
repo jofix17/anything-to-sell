@@ -1,97 +1,128 @@
-import apiService from './api';
-import { User, ApiResponse, LoginCredentials, RegisterData, AuthResponse, PasswordChangeData, PasswordResetData } from '../types';
-import { useApiQuery, useApiMutation } from '../hooks/useQueryHooks';
-import { QueryKeys } from '../utils/queryKeys';
+import apiService from "./api";
+import {
+  User,
+  ApiResponse,
+  LoginCredentials,
+  RegisterData,
+  AuthResponse,
+  PasswordChangeData,
+  PasswordResetData,
+} from "../types";
+import { useApiQuery, useApiMutation } from "../hooks/useQueryHooks";
+import { QueryKeys } from "../utils/queryKeys";
 
 // Traditional API service methods
 class AuthService {
-  async login(credentials: LoginCredentials): Promise<ApiResponse<AuthResponse>> {
-    const response = await apiService.post<ApiResponse<AuthResponse>>('/auth/login', credentials);
-    
+  async login(
+    credentials: LoginCredentials
+  ): Promise<ApiResponse<AuthResponse>> {
+    // The case transformation now happens in the API service interceptors
+    const response = await apiService.post<ApiResponse<AuthResponse>>(
+      "/auth/login",
+      credentials
+    );
+
     // Store token and user in local storage
     if (response.data && response.data.token) {
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
     }
-    
+
     return response;
   }
-  
+
   async register(userData: RegisterData): Promise<ApiResponse<AuthResponse>> {
-    const response = await apiService.post<ApiResponse<AuthResponse>>('/auth/register', userData);
-    
+    // The case transformation now happens in the API service interceptors
+    const response = await apiService.post<ApiResponse<AuthResponse>>(
+      "/auth/register",
+      userData
+    );
+
     // Store token and user in local storage
     if (response.data && response.data.token) {
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
     }
-    
+
     return response;
   }
-  
+
   async logout(): Promise<ApiResponse<null>> {
     try {
-      const response = await apiService.post<ApiResponse<null>>('/auth/logout');
+      const response = await apiService.post<ApiResponse<null>>("/auth/logout");
       // Always clear local storage regardless of API response
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
       return response;
     } catch (error) {
       // Always clear local storage regardless of API response
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
       throw error;
     }
   }
-  
+
   async getCurrentUser(): Promise<ApiResponse<User>> {
-    return await apiService.get<ApiResponse<User>>('/auth/me');
+    return await apiService.get<ApiResponse<User>>("/auth/me");
   }
-  
+
   async updateProfile(userData: Partial<User>): Promise<ApiResponse<User>> {
-    const response = await apiService.put<ApiResponse<User>>('/auth/profile', userData);
-    
+    const response = await apiService.put<ApiResponse<User>>(
+      "/auth/profile",
+      userData
+    );
+
     // Update the stored user data
     if (response.data) {
-      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
       const updatedUser = { ...currentUser, ...response.data };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      localStorage.setItem("user", JSON.stringify(updatedUser));
     }
-    
+
     return response;
   }
-  
+
   async changePassword(data: PasswordChangeData): Promise<ApiResponse<null>> {
-    return await apiService.post<ApiResponse<null>>('/auth/change-password', data);
+    return await apiService.post<ApiResponse<null>>(
+      "/auth/change-password",
+      data
+    );
   }
-  
+
   async requestPasswordReset(email: string): Promise<ApiResponse<null>> {
-    return await apiService.post<ApiResponse<null>>('/auth/forgot-password', { email });
+    return await apiService.post<ApiResponse<null>>("/auth/forgot-password", {
+      email,
+    });
   }
-  
+
   async resetPassword(data: PasswordResetData): Promise<ApiResponse<null>> {
-    return await apiService.post<ApiResponse<null>>('/auth/reset-password', data);
+    return await apiService.post<ApiResponse<null>>(
+      "/auth/reset-password",
+      data
+    );
   }
-  
+
   async verifyEmail(token: string): Promise<ApiResponse<null>> {
-    return await apiService.post<ApiResponse<null>>(`/auth/verify-email/${token}`);
+    return await apiService.post<ApiResponse<null>>(
+      `/auth/verify-email/${token}`
+    );
   }
-  
+
   isAuthenticated(): boolean {
-    return !!localStorage.getItem('token');
+    return !!localStorage.getItem("token");
   }
-  
+
   getStoredUser(): User | null {
-    const userStr = localStorage.getItem('user');
+    const userStr = localStorage.getItem("user");
     if (!userStr) return null;
     try {
       return JSON.parse(userStr) as User;
     } catch (e) {
-      console.error('Error parsing user from local storage:', e);
+      console.error("Error parsing user from local storage:", e);
       return null;
     }
   }
-  
+
   hasRole(role: string): boolean {
     const user = this.getStoredUser();
     return user ? user.role === role : false;
@@ -119,8 +150,12 @@ export const useLogin = (options = {}) => {
     {
       ...options,
       onError: (error: unknown) => {
-        console.error('Login error:', error);
-        if (options && 'onError' in options && typeof options.onError === 'function') {
+        console.error("Login error:", error);
+        if (
+          options &&
+          "onError" in options &&
+          typeof options.onError === "function"
+        ) {
           options.onError(error);
         }
       },
@@ -134,8 +169,12 @@ export const useRegister = (options = {}) => {
     {
       ...options,
       onError: (error: unknown) => {
-        console.error('Registration error:', error);
-        if (options && 'onError' in options && typeof options.onError === 'function') {
+        console.error("Registration error:", error);
+        if (
+          options &&
+          "onError" in options &&
+          typeof options.onError === "function"
+        ) {
           options.onError(error);
         }
       },
@@ -144,24 +183,29 @@ export const useRegister = (options = {}) => {
 };
 
 export const useLogout = (options = {}) => {
-  return useApiMutation(
-    () => authService.logout(),
-    {
-      ...options,
-      onSuccess: (data: ApiResponse<null>) => {
-        console.log('Logout successful:', data.message);
-        if (options && 'onSuccess' in options && typeof options.onSuccess === 'function') {
-          options.onSuccess(data, {});
-        }
-      },
-      onError: (error: unknown) => {
-        console.error('Logout error:', error);
-        if (options && 'onError' in options && typeof options.onError === 'function') {
-          options.onError(error);
-        }
-      },
-    }
-  );
+  return useApiMutation(() => authService.logout(), {
+    ...options,
+    onSuccess: (data: ApiResponse<null>) => {
+      console.log("Logout successful:", data.message);
+      if (
+        options &&
+        "onSuccess" in options &&
+        typeof options.onSuccess === "function"
+      ) {
+        options.onSuccess(data, {});
+      }
+    },
+    onError: (error: unknown) => {
+      console.error("Logout error:", error);
+      if (
+        options &&
+        "onError" in options &&
+        typeof options.onError === "function"
+      ) {
+        options.onError(error);
+      }
+    },
+  });
 };
 
 export const useUpdateProfile = (options = {}) => {
@@ -170,14 +214,22 @@ export const useUpdateProfile = (options = {}) => {
     {
       ...options,
       onSuccess: (data: ApiResponse<User>) => {
-        console.log('Profile updated:', data.data);
-        if (options && 'onSuccess' in options && typeof options.onSuccess === 'function') {
+        console.log("Profile updated:", data.data);
+        if (
+          options &&
+          "onSuccess" in options &&
+          typeof options.onSuccess === "function"
+        ) {
           options.onSuccess(data, {});
         }
       },
       onError: (error: unknown) => {
-        console.error('Profile update error:', error);
-        if (options && 'onError' in options && typeof options.onError === 'function') {
+        console.error("Profile update error:", error);
+        if (
+          options &&
+          "onError" in options &&
+          typeof options.onError === "function"
+        ) {
           options.onError(error);
         }
       },
