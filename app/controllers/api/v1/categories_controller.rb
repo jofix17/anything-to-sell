@@ -1,6 +1,6 @@
 module Api
   module V1
-    class CategoriesController < ApplicationController
+    class CategoriesController < BaseController
       # GET /api/v1/categories
       def index
         @categories = Category.all

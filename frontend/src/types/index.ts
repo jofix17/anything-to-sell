@@ -102,8 +102,8 @@ export interface Product {
   sku: string;
   name: string;
   description: string;
-  price: number;
-  salePrice?: number; // matches Rails sale_price
+  price: string;
+  salePrice?: string; // matches Rails sale_price
   category: Category;
   vendor: User;
   images: ProductImage[];
@@ -151,8 +151,8 @@ export interface Review {
 }
 
 export interface ProductFilterParams {
-  categoryId?: number; // matches Rails category_id
-  vendorId?: number; // matches Rails vendor_id
+  categoryId?: string; // matches Rails category_id
+  vendorId?: string; // matches Rails vendor_id
   minPrice?: number; // matches Rails min_price
   maxPrice?: number; // matches Rails max_price
   query?: string;
@@ -161,6 +161,7 @@ export interface ProductFilterParams {
   sortBy?: ProductSortType; // matches Rails sort_by
   page?: number;
   perPage?: number; // matches Rails per_page
+  [key: string]: unknown;
 }
 
 export interface ReviewCreateData {

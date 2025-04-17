@@ -1,40 +1,57 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useCart } from '../context/CartContext';
-import { useWishlist, useRemoveFromWishlist } from '../services/wishlistService';
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
+import { useCart } from "../context/CartContext";
+import {
+  useWishlist,
+  useRemoveFromWishlist,
+} from "../services/wishlistService";
+import { QueryKeys } from "../utils/queryKeys";
+import { useInvalidateQueries } from "../hooks/useQueryHooks";
 
 const WishlistPage: React.FC = () => {
   const { addToCart } = useCart();
   const [addingToCart, setAddingToCart] = useState<Record<string, boolean>>({});
-
+  const [removingItems, setRemovingItems] = useState<Record<string, boolean>>(
+    {}
+  );
+  const invalidateQueries = useInvalidateQueries();
+  
   // Use React Query hooks for wishlist
-  const { 
-    data: wishlistResponse,
-    isLoading,
-    error
-  } = useWishlist();
-  
+  const { data: wishlistResponse, isLoading, error, refetch } = useWishlist();
   const wishlistItems = wishlistResponse?.data || [];
-  
+
   // Use mutation hook for removing from wishlist
-  const removeFromWishlistMutation = useRemoveFromWishlist();
+  const removeFromWishlistMutation = useRemoveFromWishlist({
+    onSuccess: () => {
+      // Invalidate and refetch wishlist data after successful removal
+      invalidateQueries(QueryKeys.user.wishlist);
+      refetch();
+    },
+  });
 
   const handleRemoveFromWishlist = async (wishlistItemId: string) => {
     try {
+      // Set removing state for this specific item
+      setRemovingItems((prev) => ({ ...prev, [wishlistItemId]: true }));
+
+      // Call the mutation to remove the item
       await removeFromWishlistMutation.mutateAsync(wishlistItemId);
     } catch (err) {
-      console.error('Failed to remove item from wishlist:', err);
+      console.error("Failed to remove item from wishlist:", err);
+    } finally {
+      // Reset removing state regardless of success/failure
+      setRemovingItems((prev) => ({ ...prev, [wishlistItemId]: false }));
     }
   };
 
   const handleAddToCart = async (productId: string) => {
     try {
-      setAddingToCart(prev => ({ ...prev, [productId]: true }));
+      setAddingToCart((prev) => ({ ...prev, [productId]: true }));
       await addToCart(productId, 1);
     } catch (err) {
-      console.error('Failed to add item to cart:', err);
+      console.error("Failed to add item to cart:", err);
     } finally {
-      setAddingToCart(prev => ({ ...prev, [productId]: false }));
+      setAddingToCart((prev) => ({ ...prev, [productId]: false }));
     }
   };
 
@@ -54,14 +71,28 @@ const WishlistPage: React.FC = () => {
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              <svg
+                className="h-5 w-5 text-red-400"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">Error</h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>{error instanceof Error ? error.message : 'Failed to load wishlist.'}</p>
+                <p>
+                  {error instanceof Error
+                    ? error.message
+                    : "Failed to load wishlist."}
+                </p>
               </div>
             </div>
           </div>
@@ -81,15 +112,19 @@ const WishlistPage: React.FC = () => {
             viewBox="0 0 24 24"
             xmlns="http://www.w3.org/2000/svg"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
             />
           </svg>
-          <h3 className="mt-2 text-lg font-medium text-gray-900">Your wishlist is empty</h3>
-          <p className="mt-1 text-sm text-gray-500">You haven't added any products to your wishlist yet.</p>
+          <h3 className="mt-2 text-lg font-medium text-gray-900">
+            Your wishlist is empty
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            You haven't added any products to your wishlist yet.
+          </p>
           <div className="mt-6">
             <Link
               to="/products"
@@ -111,7 +146,10 @@ const WishlistPage: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {wishlistItems.map((item) => (
-          <div key={item.id} className="bg-white shadow rounded-lg overflow-hidden">
+          <div
+            key={item.id}
+            className="bg-white shadow rounded-lg overflow-hidden"
+          >
             <div className="relative h-48">
               <Link to={`/products/${item.product.id}`}>
                 {item.product.images && item.product.images.length > 0 ? (
@@ -130,20 +168,29 @@ const WishlistPage: React.FC = () => {
               </Link>
             </div>
             <div className="p-4">
-              <Link to={`/products/${item.product.id}`} className="text-lg font-medium text-gray-900 hover:text-indigo-600">
+              <Link
+                to={`/products/${item.product.id}`}
+                className="text-lg font-medium text-gray-900 hover:text-indigo-600"
+              >
                 {item.product.name}
               </Link>
               <p className="mt-1 text-sm text-gray-500">
-                {item.product.vendor?.name || 'Unknown Vendor'}
+                {item.product.vendor?.name || "Unknown Vendor"}
               </p>
               <div className="mt-2 flex items-center">
                 {item.product.salePrice ? (
                   <>
-                    <span className="text-red-600 font-medium">${item.product.salePrice.toFixed(2)}</span>
-                    <span className="ml-2 text-sm text-gray-500 line-through">${item.product.price.toFixed(2)}</span>
+                    <span className="text-red-600 font-medium">
+                      ${item.product.salePrice}
+                    </span>
+                    <span className="ml-2 text-sm text-gray-500 line-through">
+                      ${item.product.price}
+                    </span>
                   </>
                 ) : (
-                  <span className="text-gray-900 font-medium">${item.product.price.toFixed(2)}</span>
+                  <span className="text-gray-900 font-medium">
+                    ${item.product.price}
+                  </span>
                 )}
               </div>
               <div className="mt-4 flex flex-col space-y-2">
@@ -154,22 +201,64 @@ const WishlistPage: React.FC = () => {
                 >
                   {addingToCart[item.product.id] ? (
                     <div className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
                       </svg>
                       Adding...
                     </div>
                   ) : (
-                    'Add to Cart'
+                    "Add to Cart"
                   )}
                 </button>
                 <button
                   onClick={() => handleRemoveFromWishlist(item.id)}
-                  disabled={removeFromWishlistMutation.isPending && removeFromWishlistMutation.variables === item.id}
+                  disabled={removingItems[item.id]}
                   className="flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
                 >
-                  {removeFromWishlistMutation.isPending && removeFromWishlistMutation.variables === item.id ? 'Removing...' : 'Remove from Wishlist'}
+                  {removingItems[item.id] ? (
+                    <div className="flex items-center">
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Removing...
+                    </div>
+                  ) : (
+                    "Remove from Wishlist"
+                  )}
                 </button>
               </div>
             </div>

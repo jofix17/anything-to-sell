@@ -83,7 +83,7 @@ const SupportPage: React.FC = () => {
         const messagesResponse = await chatService.getMessages(
           selectedConversation.id
         );
-        setMessages(messagesResponse.data);
+        setMessages(messagesResponse.data.data);
 
         // Mark messages as read
         await chatService.markAsRead(selectedConversation.id);

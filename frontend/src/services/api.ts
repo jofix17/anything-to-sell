@@ -34,6 +34,12 @@ class ApiService {
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        
+        // Add guest cart token if available
+        const guestCartToken = localStorage.getItem("guest_cart_token");
+        if (guestCartToken && config.headers) {
+          config.headers["X-Guest-Cart-Token"] = guestCartToken;
+        }
 
         // Transform request data from camelCase to snake_case
         if (
@@ -59,6 +65,12 @@ class ApiService {
     // Response interceptor for handling common errors and transforming snake_case to camelCase
     this.api.interceptors.response.use(
       (response: AxiosResponse) => {
+        // Check for guest cart token in response headers
+        const guestCartToken = response.headers["x-guest-cart-token"];
+        if (guestCartToken) {
+          localStorage.setItem("guest_cart_token", guestCartToken);
+        }
+        
         // Transform response data from snake_case to camelCase
         if (response.data && typeof response.data === 'object') {
           response.data = objectToCamelCase(response.data);
@@ -70,7 +82,6 @@ class ApiService {
         if (error.response && error.response.status === 401) {
           localStorage.removeItem("token");
           localStorage.removeItem("user");
-          window.location.href = "/login";
         }
 
         // Handle forbidden errors (403)
@@ -166,6 +177,16 @@ class ApiService {
     } catch (error) {
       throw this.handleError(error);
     }
+  }
+
+  // Clear guest cart token
+  public clearGuestCartToken(): void {
+    localStorage.removeItem("guest_cart_token");
+  }
+
+  // Get the base URL
+  public getBaseUrl(): string {
+    return API_BASE_URL;
   }
 
   // Error handler

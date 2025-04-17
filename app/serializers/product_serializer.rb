@@ -1,10 +1,15 @@
 class ProductSerializer < ActiveModel::Serializer
   attributes :id, :sku, :name, :description, :price, :sale_price, :is_active,
-             :inventory, :status, :rejection_reason, :created_at, :updated_at
+             :inventory, :status, :rejection_reason, :created_at, :updated_at, :collection_ids, :images
 
   belongs_to :category
-  belongs_to :user, serializer: UserSerializer
-  has_many :images
+  belongs_to :user, key: :vendor, serializer: UserSerializer
+  has_many :product_images
+
+  # Virtual attribute for collection IDs instead of embedding the full collections
+  def collection_ids
+    object.collections.where(is_active: true).pluck(:id)
+  end
 
   # Virtual attribute for product images
   def images

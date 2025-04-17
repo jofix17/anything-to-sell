@@ -10,7 +10,7 @@ class CreateProducts < ActiveRecord::Migration[7.2]
       t.references :user, type: :uuid, null: false, foreign_key: true
       t.integer :inventory, default: 0
       t.boolean :is_active, default: false
-      t.string :status, default: 'pending'
+      t.integer :status, default: 0
       t.text :rejection_reason
       t.timestamps
     end

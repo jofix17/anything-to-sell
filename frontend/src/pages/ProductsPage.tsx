@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   FunnelIcon as FilterIcon,
   Squares2X2Icon as ViewGridIcon,
@@ -10,28 +10,37 @@ import {
 } from "@heroicons/react/24/outline";
 import ProductList from "../components/product/ProductList";
 import Skeleton from "../components/common/Skeleton";
-import { Product, Category, ProductSortType } from "../types";
-import productService from "../services/productService";
+import {
+  ProductSortType,
+  ProductFilterParams,
+  WishlistItem,
+  ApiResponse,
+} from "../types";
+import { useProducts, useCategories } from "../services/productService";
 import { useAuth } from "../context/AuthContext";
-import wishlistService from "../services/wishlistService";
+import { useToggleWishlist, useWishlist } from "../services/wishlistService";
 import { useNotification } from "../context/NotificationContext";
+import SearchBar from "../components/common/SearchBar";
+import Dropdown from "../components/common/Dropdown";
+import Pagination from "../components/common/Pagination";
 
 const ProductsPage: React.FC = () => {
-  // URL search params
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isAuthenticated } = useAuth();
+  const { showNotification } = useNotification();
 
-  // Products state
-  const [products, setProducts] = useState<Product[]>([]);
-  const [totalProducts, setTotalProducts] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Categories state
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isCategoriesLoading, setIsCategoriesLoading] = useState<boolean>(true);
-
-  // Filter state
+  // Filters UI state
   const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
+  const [expandedSections, setExpandedSections] = useState<
+    Record<string, boolean>
+  >({
+    categories: true,
+    price: true,
+    ratings: true,
+  });
+
+  // Price range presets
   const [priceRanges] = useState<
     Array<{ min: number; max: number; label: string }>
   >([
@@ -42,229 +51,188 @@ const ProductsPage: React.FC = () => {
     { min: 500, max: -1, label: "Over $500" },
   ]);
 
-  // Filter UI state
-  const [expandedSections, setExpandedSections] = useState<
-    Record<string, boolean>
-  >({
-    categories: true,
-    price: true,
-    ratings: true,
+  // Extract filter params from URL
+  const page = parseInt(searchParams.get("page") || "1");
+  const perPage = parseInt(searchParams.get("perPage") || "12");
+  const query = searchParams.get("query") || "";
+  const categoryId = searchParams.get("category") || "";
+  const minPrice = searchParams.get("minPrice") || "";
+  const maxPrice = searchParams.get("maxPrice") || "";
+  const sort = searchParams.get("sort") || "newest";
+  const onSale = searchParams.get("onSale") === "true";
+  const inStock = searchParams.get("inStock") === "true";
+
+  // Construct filter params object
+  const filterParams: ProductFilterParams = {
+    page,
+    perPage,
+    ...(query && { query }),
+    ...(categoryId && { categoryId: categoryId }),
+    ...(minPrice && { minPrice: parseFloat(minPrice) }),
+    ...(maxPrice && { maxPrice: parseFloat(maxPrice) }),
+    ...(sort && { sortBy: sort as ProductSortType }),
+    ...(onSale && { onSale }),
+    ...(inStock && { inStock }),
+  };
+
+  // Fetch products with the filter params
+  const {
+    data: productsResponse,
+    isLoading: isProductsLoading,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useProducts(filterParams);
+
+  // Extract nested data structure (response.data.data)
+  const productsData = productsResponse?.data;
+
+  // Fetch categories
+  const { data: categoriesData, isLoading: isCategoriesLoading } =
+    useCategories();
+
+  // Fetch user's wishlist items
+  const { data: wishlistData, refetch: refetchWishlist } = useWishlist({
+    enabled: isAuthenticated,
   });
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [perPage] = useState<number>(12);
+  // Extract wishlist product IDs
+  const wishlistedProductIds = wishlistData?.data
+    ? wishlistData.data.map((item) => item.productId)
+    : [];
 
-  // Sorting
-  const sortOptions = [
-    { value: "newest", label: "Newest" },
-    { value: "price_asc", label: "Price: Low to High" },
-    { value: "price_desc", label: "Price: High to Low" },
-    { value: "popular", label: "Popularity" },
-  ];
-
-  // Wishlist
-  const [wishlistedProductIds, setWishlistedProductIds] = useState<string[]>(
-    []
-  );
-
-  // Auth and notifications
-  const { isAuthenticated } = useAuth();
-  const { showNotification } = useNotification();
-
-  // Extract filter values from URL search params
-  useEffect(() => {
-    // Get current page from URL or default to 1
-    const page = searchParams.get("page");
-    if (page) {
-      setCurrentPage(parseInt(page));
-    }
-
-    // Get query from URL
-    const query = searchParams.get("query");
-
-    // Get category ID from URL
-    const categoryId = searchParams.get("category");
-
-    // Get price range from URL
-    const minPrice = searchParams.get("minPrice");
-    const maxPrice = searchParams.get("maxPrice");
-
-    // Get sort option from URL
-    const sort = searchParams.get("sort");
-
-    // Get 'on sale' filter from URL
-    const onSale = searchParams.get("onSale");
-
-    // Get 'in stock' filter from URL
-    const inStock = searchParams.get("inStock");
-
-    // Fetch products with these filters
-    fetchProducts({
-      page: page ? parseInt(page) : 1,
-      query: query || undefined,
-      categoryId: categoryId ? parseInt(categoryId) : undefined,
-      minPrice: minPrice ? parseFloat(minPrice) : undefined,
-      maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-      sort: (sort as ProductSortType) || undefined,
-      onSale: onSale === "true" ? true : undefined,
-      inStock: inStock === "true" ? true : undefined,
-    });
-  }, [searchParams]);
-
-  // Fetch categories on initial load
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        setIsCategoriesLoading(true);
-        const categoriesData = await productService.getCategories();
-        setCategories(categoriesData.data);
-        setIsCategoriesLoading(false);
-      } catch (error) {
-        console.error("Error fetching categories:", error);
-        setIsCategoriesLoading(false);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
-  // Fetch wishlisted products if authenticated
-  useEffect(() => {
-    const fetchWishlist = async () => {
-      if (isAuthenticated) {
-        try {
-          const wishlist = await wishlistService.getWishlist();
-          setWishlistedProductIds(wishlist.data.map((item) => item.productId));
-        } catch (error) {
-          console.error("Error fetching wishlist:", error);
-        }
-      }
-    };
-
-    fetchWishlist();
-  }, [isAuthenticated]);
-
-  // Fetch products with filters
-  const fetchProducts = async (filters: {
-    page?: number;
-    query?: string;
-    categoryId?: number;
-    minPrice?: number;
-    maxPrice?: number;
-    sort?: ProductSortType;
-    onSale?: boolean;
-    inStock?: boolean;
-  }) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const response = await productService.getProducts({
-        page: filters.page || 1,
-        perPage,
-        query: filters.query,
-        categoryId: filters.categoryId,
-        minPrice: filters.minPrice,
-        maxPrice: filters.maxPrice,
-        sortBy: filters.sort,
-        onSale: filters.onSale,
-        inStock: filters.inStock,
+  // Wishlist toggle mutation
+  const toggleWishlistMutation = useToggleWishlist({
+    onSuccess: (
+      response: ApiResponse<{ added: boolean; item?: WishlistItem }>
+    ) => {
+      const action = response?.data?.added ? "added to" : "removed from";
+      showNotification(`Product ${action} wishlist`, {
+        type: "success",
       });
-
-      setProducts(response.data);
-      setTotalProducts(response.total);
-      setCurrentPage(filters.page || 1);
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      setError("Failed to load products. Please try again later.");
-      setIsLoading(false);
-    }
-  };
-
-  // Update URL with new filters
-  const updateFilters = (newFilters: Record<string, string | null>) => {
-    const newSearchParams = new URLSearchParams(searchParams);
-
-    // Reset to page 1 when filters change
-    if (!("page" in newFilters)) {
-      newSearchParams.set("page", "1");
-    }
-
-    // Update search params
-    Object.entries(newFilters).forEach(([key, value]) => {
-      if (value === null) {
-        newSearchParams.delete(key);
-      } else {
-        newSearchParams.set(key, value);
-      }
-    });
-
-    setSearchParams(newSearchParams);
-  };
+      refetchWishlist();
+    },
+    onError: (error: Error) => {
+      showNotification(error.message || "Failed to update wishlist", {
+        type: "error",
+      });
+    },
+  });
 
   // Handle page change
-  const handlePageChange = (page: number) => {
-    updateFilters({ page: page.toString() });
+  const handlePageChange = (newPage: number) => {
+    setSearchParams({
+      ...Object.fromEntries(searchParams),
+      page: newPage.toString(),
+    });
+  };
+
+  // Handle per page change
+  const handlePerPageChange = (newPerPage: number) => {
+    setSearchParams({
+      ...Object.fromEntries(searchParams),
+      page: "1", // Reset to first page when changing items per page
+      perPage: newPerPage.toString(),
+    });
+  };
+
+  // Handle search query change
+  const handleSearchChange = (newQuery: string) => {
+    setSearchParams({
+      ...Object.fromEntries(searchParams),
+      page: "1", // Reset to first page when searching
+      query: newQuery,
+    });
   };
 
   // Handle category filter
   const handleCategoryChange = (categoryId: string | null) => {
-    updateFilters({ category: categoryId?.toString() || null });
+    setSearchParams({
+      ...Object.fromEntries(searchParams),
+      page: "1", // Reset to first page when changing filter
+      ...(categoryId ? { category: categoryId } : {}),
+    });
+
+    if (!categoryId) {
+      // Remove category param if null
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("category");
+      setSearchParams(newParams);
+    }
   };
 
   // Handle price range filter
   const handlePriceRangeChange = (minPrice: number, maxPrice: number) => {
-    updateFilters({
-      minPrice: minPrice.toString(),
-      maxPrice: maxPrice === -1 ? null : maxPrice.toString(),
-    });
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("page", "1"); // Reset to first page when changing filter
+
+    if (minPrice === 0 && maxPrice === 0) {
+      // Clear price filters
+      newParams.delete("minPrice");
+      newParams.delete("maxPrice");
+    } else {
+      if (minPrice > 0) {
+        newParams.set("minPrice", minPrice.toString());
+      } else {
+        newParams.delete("minPrice");
+      }
+
+      if (maxPrice > 0) {
+        newParams.set("maxPrice", maxPrice.toString());
+      } else {
+        newParams.delete("maxPrice");
+      }
+    }
+
+    setSearchParams(newParams);
   };
 
   // Handle sort change
-  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    updateFilters({ sort: e.target.value });
+  const handleSortChange = (newSort: string) => {
+    setSearchParams({
+      ...Object.fromEntries(searchParams),
+      page: "1", // Reset to first page when changing sort
+      sort: newSort,
+    });
   };
 
   // Handle on sale filter
   const handleOnSaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    updateFilters({ onSale: e.target.checked ? "true" : null });
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("page", "1"); // Reset to first page when changing filter
+
+    if (e.target.checked) {
+      newParams.set("onSale", "true");
+    } else {
+      newParams.delete("onSale");
+    }
+
+    setSearchParams(newParams);
   };
 
   // Handle in stock filter
   const handleInStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    updateFilters({ inStock: e.target.checked ? "true" : null });
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set("page", "1"); // Reset to first page when changing filter
+
+    if (e.target.checked) {
+      newParams.set("inStock", "true");
+    } else {
+      newParams.delete("inStock");
+    }
+
+    setSearchParams(newParams);
   };
 
   // Toggle wishlist
   const handleToggleWishlist = async (productId: string) => {
     if (!isAuthenticated) {
-      showNotification("Please login to add items to your wishlist", "info");
+      showNotification("Please login to add items to your wishlist", {
+        type: "info",
+      });
       return;
     }
 
-    try {
-      // Check if product is already in wishlist
-      const isWishlisted = wishlistedProductIds.includes(productId);
-
-      if (isWishlisted) {
-        // Remove from wishlist
-        // await wishlistService.removeFromWishlist(productId);
-        setWishlistedProductIds((prevIds) =>
-          prevIds.filter((id) => id !== productId)
-        );
-        showNotification("Product removed from wishlist", "success");
-      } else {
-        // Add to wishlist
-        // await wishlistService.addToWishlist(productId);
-        setWishlistedProductIds((prevIds) => [...prevIds, productId]);
-        showNotification("Product added to wishlist", "success");
-      }
-    } catch (error) {
-      console.error("Error updating wishlist:", error);
-      showNotification("Failed to update wishlist", "error");
-    }
+    toggleWishlistMutation.mutate(productId);
   };
 
   // Toggle filter section expand/collapse
@@ -275,14 +243,29 @@ const ProductsPage: React.FC = () => {
     });
   };
 
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchParams({
+      page: "1",
+      perPage: perPage.toString(),
+    });
+  };
+
+  // Sort options for dropdown
+  const sortOptions = [
+    { value: "newest", label: "Newest" },
+    { value: "price_asc", label: "Price: Low to High" },
+    { value: "price_desc", label: "Price: High to Low" },
+    { value: "popular", label: "Popularity" },
+  ];
+
   // Current active filters for UI display
   const getActiveFilters = () => {
     const activeFilters: { label: string; removeFilter: () => void }[] = [];
 
     // Category filter
-    const categoryId = searchParams.get("category");
     if (categoryId) {
-      const category = categories.find((c) => c.id === categoryId);
+      const category = categoriesData?.find((c) => c.id === categoryId);
       if (category) {
         activeFilters.push({
           label: `Category: ${category.name}`,
@@ -292,8 +275,6 @@ const ProductsPage: React.FC = () => {
     }
 
     // Price range filter
-    const minPrice = searchParams.get("minPrice");
-    const maxPrice = searchParams.get("maxPrice");
     if (minPrice || maxPrice) {
       let priceLabel = "Price: ";
       if (minPrice && maxPrice) {
@@ -311,20 +292,26 @@ const ProductsPage: React.FC = () => {
     }
 
     // On sale filter
-    const onSale = searchParams.get("onSale");
-    if (onSale === "true") {
+    if (onSale) {
       activeFilters.push({
         label: "On Sale",
-        removeFilter: () => updateFilters({ onSale: null }),
+        removeFilter: () => {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete("onSale");
+          setSearchParams(newParams);
+        },
       });
     }
 
     // In stock filter
-    const inStock = searchParams.get("inStock");
-    if (inStock === "true") {
+    if (inStock) {
       activeFilters.push({
         label: "In Stock",
-        removeFilter: () => updateFilters({ inStock: null }),
+        removeFilter: () => {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete("inStock");
+          setSearchParams(newParams);
+        },
       });
     }
 
@@ -333,26 +320,59 @@ const ProductsPage: React.FC = () => {
 
   const activeFilters = getActiveFilters();
 
+  // Refresh data when component mounts or URL params change
+  useEffect(() => {
+    refetchProducts();
+  }, [searchParams, refetchProducts]);
+
+  // Show error notification if there's an error fetching products
+  useEffect(() => {
+    if (productsError) {
+      showNotification(
+        productsError instanceof Error
+          ? productsError.message
+          : "Failed to load products",
+        { type: "error" }
+      );
+    }
+  }, [productsError, showNotification]);
+
+  if (isProductsLoading && !productsData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="pt-20 min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         {/* Page title and filter toggle */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Products
           </h1>
-          <button
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className="md:hidden flex items-center text-gray-600 hover:text-gray-900"
-          >
-            <FilterIcon className="h-5 w-5 mr-1" />
-            Filters
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className="md:hidden flex items-center text-gray-600 hover:text-gray-900"
+            >
+              <FilterIcon className="h-5 w-5 mr-1" />
+              Filters
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+            >
+              Back to Home
+            </button>
+          </div>
         </div>
 
         {/* Active filters */}
         {activeFilters.length > 0 && (
-          <div className="mb-6">
+          <div className="mb-6 bg-white rounded-lg shadow-md p-4">
             <div className="flex items-center flex-wrap gap-2">
               <span className="text-sm text-gray-700">Active Filters:</span>
               {activeFilters.map((filter, index) => (
@@ -372,7 +392,7 @@ const ProductsPage: React.FC = () => {
 
               {/* Clear all filters */}
               <button
-                onClick={() => setSearchParams(new URLSearchParams())}
+                onClick={handleClearFilters}
                 className="text-sm text-primary-600 hover:text-primary-800 ml-2"
               >
                 Clear All
@@ -381,6 +401,7 @@ const ProductsPage: React.FC = () => {
           </div>
         )}
 
+        {/* Filters and Products Grid */}
         <div className="flex flex-col md:flex-row gap-6">
           {/* Filters sidebar */}
           <div
@@ -402,6 +423,16 @@ const ProductsPage: React.FC = () => {
               >
                 <XIcon className="h-5 w-5" />
               </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="mb-6">
+              <SearchBar
+                value={query}
+                onChange={handleSearchChange}
+                placeholder="Search products..."
+                className="w-full"
+              />
             </div>
 
             {/* Categories filter */}
@@ -431,20 +462,19 @@ const ProductsPage: React.FC = () => {
                       <button
                         onClick={() => handleCategoryChange(null)}
                         className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                          !searchParams.get("category")
+                          !categoryId
                             ? "bg-primary-100 text-primary-800"
                             : "text-gray-700 hover:bg-gray-100"
                         }`}
                       >
                         All Categories
                       </button>
-                      {categories.map((category) => (
+                      {categoriesData?.map((category) => (
                         <button
                           key={category.id}
                           onClick={() => handleCategoryChange(category.id)}
                           className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                            searchParams.get("category") ===
-                            category.id.toString()
+                            categoryId === category.id.toString()
                               ? "bg-primary-100 text-primary-800"
                               : "text-gray-700 hover:bg-gray-100"
                           }`}
@@ -477,8 +507,7 @@ const ProductsPage: React.FC = () => {
                   <button
                     onClick={() => handlePriceRangeChange(0, 0)}
                     className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                      !searchParams.get("minPrice") &&
-                      !searchParams.get("maxPrice")
+                      !minPrice && !maxPrice
                         ? "bg-primary-100 text-primary-800"
                         : "text-gray-700 hover:bg-gray-100"
                     }`}
@@ -493,11 +522,10 @@ const ProductsPage: React.FC = () => {
                         handlePriceRangeChange(range.min, range.max)
                       }
                       className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                        searchParams.get("minPrice") === range.min.toString() &&
+                        minPrice === range.min.toString() &&
                         (range.max === -1
-                          ? !searchParams.get("maxPrice")
-                          : searchParams.get("maxPrice") ===
-                            range.max.toString())
+                          ? !maxPrice
+                          : maxPrice === range.max.toString())
                           ? "bg-primary-100 text-primary-800"
                           : "text-gray-700 hover:bg-gray-100"
                       }`}
@@ -516,7 +544,7 @@ const ProductsPage: React.FC = () => {
                 <label className="flex items-center">
                   <input
                     type="checkbox"
-                    checked={searchParams.get("onSale") === "true"}
+                    checked={onSale}
                     onChange={handleOnSaleChange}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                   />
@@ -525,7 +553,7 @@ const ProductsPage: React.FC = () => {
                 <label className="flex items-center">
                   <input
                     type="checkbox"
-                    checked={searchParams.get("inStock") === "true"}
+                    checked={inStock}
                     onChange={handleInStockChange}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                   />
@@ -551,25 +579,29 @@ const ProductsPage: React.FC = () => {
             <div className="bg-white p-4 rounded-lg shadow-sm flex flex-wrap items-center justify-between mb-6">
               <div className="flex items-center mb-2 sm:mb-0">
                 <span className="text-sm text-gray-700 mr-2">Sort by:</span>
-                <select
-                  value={searchParams.get("sort") || "newest"}
+                <Dropdown
+                  value={sort}
                   onChange={handleSortChange}
-                  className="border-gray-300 rounded-md text-sm focus:ring-primary-500 focus:border-primary-500"
-                >
-                  {sortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={sortOptions}
+                  className="w-40"
+                />
               </div>
 
               <div className="flex items-center">
                 <span className="text-sm text-gray-700 mr-2 hidden sm:inline">
                   Showing{" "}
-                  {Math.min((currentPage - 1) * perPage + 1, totalProducts)} -{" "}
-                  {Math.min(currentPage * perPage, totalProducts)} of{" "}
-                  {totalProducts} products
+                  {productsData ? (
+                    <>
+                      {Math.min(
+                        (page - 1) * perPage + 1,
+                        productsResponse.total
+                      )}{" "}
+                      - {Math.min(page * perPage, productsResponse.total)} of{" "}
+                      {productsResponse.total} products
+                    </>
+                  ) : (
+                    "0 products"
+                  )}
                 </span>
 
                 {/* View mode toggle - could be implemented in a real app */}
@@ -584,18 +616,50 @@ const ProductsPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Error Display */}
+            {productsError && (
+              <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                <p>
+                  Error loading products:{" "}
+                  {productsError instanceof Error
+                    ? productsError.message
+                    : "Unknown error"}
+                </p>
+                <button
+                  onClick={() => refetchProducts()}
+                  className="mt-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
             {/* Products list */}
-            <ProductList
-              products={products}
-              isLoading={isLoading}
-              error={error}
-              totalProducts={totalProducts}
-              currentPage={currentPage}
-              perPage={perPage}
-              onPageChange={handlePageChange}
-              wishlistedProductIds={wishlistedProductIds}
-              onToggleWishlist={handleToggleWishlist}
-            />
+            {productsData && (
+              <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                <ProductList
+                  products={productsData}
+                  isLoading={isProductsLoading}
+                  error={productsError ? String(productsError) : null}
+                  perPage={perPage}
+                  wishlistedProductIds={wishlistedProductIds}
+                  onToggleWishlist={handleToggleWishlist}
+                />
+
+                {/* Pagination */}
+                <div className="border-t border-gray-200 px-4 py-3">
+                  <Pagination
+                    currentPage={page}
+                    totalPages={productsResponse.totalPages}
+                    onPageChange={handlePageChange}
+                    perPage={perPage}
+                    onPerPageChange={handlePerPageChange}
+                    totalItems={productsResponse.total}
+                    perPageOptions={[12, 24, 36, 48]}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

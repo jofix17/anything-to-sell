@@ -55,8 +55,8 @@ const VendorEditProductPage: React.FC = () => {
     useCategories();
 
   // Extract data from responses
-  const product = productResponse?.data;
-  const categories: Category[] = categoriesResponse?.data || [];
+  const product = productResponse;
+  const categories: Category[] = categoriesResponse || [];
 
   // Set up mutations
   const updateProductMutation = useUpdateProduct(id || "", {
@@ -278,7 +278,7 @@ const VendorEditProductPage: React.FC = () => {
       imagePreviewUrls.forEach((url) => URL.revokeObjectURL(url));
       setImageFiles([]);
       setImagePreviewUrls([]);
-    } catch (error) {
+    } catch {
       // Errors are handled in mutation onError callbacks
     }
   };

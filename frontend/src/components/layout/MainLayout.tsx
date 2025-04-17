@@ -33,7 +33,7 @@ const MainLayout: React.FC = () => {
       />
 
       {/* Main content area */}
-      <main className="flex-grow">
+      <main className="flex-grow pt-6">
         <Outlet />
       </main>
 

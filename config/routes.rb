@@ -84,23 +84,39 @@ Rails.application.routes.draw do
 
       # Buyer/public routes (no namespace)
       resources :products, only: [ :index, :show ] do
+        collection do
+          get :featured
+          get :new_arrivals
+        end
         resources :reviews, only: [ :index, :create ]
+      end
+
+      # Add a new resource for collections
+      resources :collections, only: [ :index, :show ] do
+        resources :products, only: [ :index ], controller: "collection_products"
       end
 
       resources :categories, only: [ :index, :show ]
 
-      resource :cart do
+      resource :cart, only: [ :show ] do
         post "items", to: "carts#add_item"
         put "items/:id", to: "carts#update_item"
         delete "items/:id", to: "carts#remove_item"
         delete "clear", to: "carts#clear"
+        post "transfer", to: "carts#transfer"
       end
 
       resources :orders, only: [ :index, :show, :create ]
 
       resources :addresses
 
-      resources :wishlist, only: [ :index, :create, :destroy ]
+      resources :wishlist_items, only: [ :index, :create, :destroy ] do
+        collection do
+          get "check/:product_id", to: "wishlist_items#check"
+          post :add
+          post :toggle
+        end
+      end
 
       # Root path for API health check
       root to: "base#health_check"

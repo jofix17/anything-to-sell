@@ -10,6 +10,7 @@ import {
 } from "../types";
 import { useApiQuery, useApiMutation } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
+import cartService from "./cartService";
 
 // Traditional API service methods
 class AuthService {
@@ -26,6 +27,16 @@ class AuthService {
     if (response.data && response.data.token) {
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
+      
+      // Transfer guest cart to user cart if exists
+      try {
+        await cartService.transferCart();
+        // Clear guest cart token after successful transfer
+        apiService.clearGuestCartToken();
+      } catch (error) {
+        console.error('Failed to transfer cart:', error);
+        // Continue with login process even if cart transfer fails
+      }
     }
 
     return response;
@@ -42,6 +53,16 @@ class AuthService {
     if (response.data && response.data.token) {
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
+      
+      // Transfer guest cart to user cart if exists
+      try {
+        await cartService.transferCart();
+        // Clear guest cart token after successful transfer
+        apiService.clearGuestCartToken();
+      } catch (error) {
+        console.error('Failed to transfer cart:', error);
+        // Continue with registration process even if cart transfer fails
+      }
     }
 
     return response;
@@ -127,6 +148,16 @@ class AuthService {
     const user = this.getStoredUser();
     return user ? user.role === role : false;
   }
+  
+  // Handle redirect after login
+  handleLoginRedirect(): void {
+    const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+    
+    if (redirectPath) {
+      sessionStorage.removeItem('redirectAfterLogin');
+      window.location.href = redirectPath;
+    }
+  }
 }
 
 // Create the standard service instance
@@ -149,6 +180,18 @@ export const useLogin = (options = {}) => {
     (credentials: LoginCredentials) => authService.login(credentials),
     {
       ...options,
+      onSuccess: (data, variables, context) => {
+        // Handle redirect if needed
+        authService.handleLoginRedirect();
+        
+        if (
+          options &&
+          "onSuccess" in options &&
+          typeof options.onSuccess === "function"
+        ) {
+          options.onSuccess(data, variables, context);
+        }
+      },
       onError: (error: unknown) => {
         console.error("Login error:", error);
         if (
@@ -168,6 +211,18 @@ export const useRegister = (options = {}) => {
     (userData: RegisterData) => authService.register(userData),
     {
       ...options,
+      onSuccess: (data, variables, context) => {
+        // Handle redirect if needed
+        authService.handleLoginRedirect();
+        
+        if (
+          options &&
+          "onSuccess" in options &&
+          typeof options.onSuccess === "function"
+        ) {
+          options.onSuccess(data, variables, context);
+        }
+      },
       onError: (error: unknown) => {
         console.error("Registration error:", error);
         if (
@@ -185,14 +240,14 @@ export const useRegister = (options = {}) => {
 export const useLogout = (options = {}) => {
   return useApiMutation(() => authService.logout(), {
     ...options,
-    onSuccess: (data: ApiResponse<null>) => {
+    onSuccess: (data: ApiResponse<null>, variables, context) => {
       console.log("Logout successful:", data.message);
       if (
         options &&
         "onSuccess" in options &&
         typeof options.onSuccess === "function"
       ) {
-        options.onSuccess(data, {});
+        options.onSuccess(data, variables, context);
       }
     },
     onError: (error: unknown) => {
@@ -213,14 +268,14 @@ export const useUpdateProfile = (options = {}) => {
     (userData: Partial<User>) => authService.updateProfile(userData),
     {
       ...options,
-      onSuccess: (data: ApiResponse<User>) => {
+      onSuccess: (data: ApiResponse<User>, variables, context) => {
         console.log("Profile updated:", data.data);
         if (
           options &&
           "onSuccess" in options &&
           typeof options.onSuccess === "function"
         ) {
-          options.onSuccess(data, {});
+          options.onSuccess(data, variables, context);
         }
       },
       onError: (error: unknown) => {

@@ -16,7 +16,7 @@ const ProfilePage: React.FC = () => {
   const { user, updateProfile, isLoading } = useAuth();
   const { showNotification } = useNotification();
   const changePasswordMutation = useChangePassword();
-  
+
   // Form states
   const [profileData, setProfileData] = useState<ProfileUpdateValues>({
     firstName: "",
@@ -33,10 +33,14 @@ const ProfilePage: React.FC = () => {
 
   // UI states
   const [activeTab, setActiveTab] = useState<string>("profile");
-  const [isSubmittingProfile, setIsSubmittingProfile] = useState<boolean>(false);
-  const [isSubmittingPassword, setIsSubmittingPassword] = useState<boolean>(false);
-  const [profileUpdateSuccess, setProfileUpdateSuccess] = useState<boolean>(false);
-  const [passwordUpdateSuccess, setPasswordUpdateSuccess] = useState<boolean>(false);
+  const [isSubmittingProfile, setIsSubmittingProfile] =
+    useState<boolean>(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] =
+    useState<boolean>(false);
+  const [profileUpdateSuccess, setProfileUpdateSuccess] =
+    useState<boolean>(false);
+  const [passwordUpdateSuccess, setPasswordUpdateSuccess] =
+    useState<boolean>(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Update form data when user data changes
@@ -55,7 +59,7 @@ const ProfilePage: React.FC = () => {
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setProfileData({ ...profileData, [name]: value });
-    
+
     // Clear error for this field
     if (errors[name]) {
       setErrors({ ...errors, [name]: "" });
@@ -66,7 +70,7 @@ const ProfilePage: React.FC = () => {
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setPasswordData({ ...passwordData, [name]: value });
-    
+
     // Clear error for this field
     if (errors[name]) {
       setErrors({ ...errors, [name]: "" });
@@ -76,21 +80,21 @@ const ProfilePage: React.FC = () => {
   // Validate profile form
   const validateProfileForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!profileData.firstName.trim()) {
       newErrors.firstName = "First name is required";
     }
-    
+
     if (!profileData.lastName.trim()) {
       newErrors.lastName = "Last name is required";
     }
-    
+
     if (!profileData.email.trim()) {
       newErrors.email = "Email is required";
     } else if (!/\S+@\S+\.\S+/.test(profileData.email)) {
       newErrors.email = "Email is invalid";
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -98,23 +102,23 @@ const ProfilePage: React.FC = () => {
   // Validate password form
   const validatePasswordForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!passwordData.currentPassword) {
       newErrors.currentPassword = "Current password is required";
     }
-    
+
     if (!passwordData.newPassword) {
       newErrors.newPassword = "New password is required";
     } else if (passwordData.newPassword.length < 8) {
       newErrors.newPassword = "Password must be at least 8 characters";
     }
-    
+
     if (!passwordData.passwordConfirmation) {
       newErrors.passwordConfirmation = "Password confirmation is required";
     } else if (passwordData.newPassword !== passwordData.passwordConfirmation) {
       newErrors.passwordConfirmation = "Passwords don't match";
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -122,26 +126,26 @@ const ProfilePage: React.FC = () => {
   // Handle profile update submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (isSubmittingProfile) return;
     if (!validateProfileForm()) return;
-    
+
     try {
       setIsSubmittingProfile(true);
       await updateProfile(profileData);
       setProfileUpdateSuccess(true);
-      
+
       // Hide success message after 3 seconds
       setTimeout(() => {
         setProfileUpdateSuccess(false);
       }, 3000);
-      
-      showNotification("Profile updated successfully", "success");
+
+      showNotification("Profile updated successfully", { type: "success" });
     } catch (error) {
       console.error("Profile update error:", error);
       showNotification(
         error instanceof Error ? error.message : "Failed to update profile",
-        "error"
+        { type: "error" }
       );
     } finally {
       setIsSubmittingProfile(false);
@@ -151,34 +155,34 @@ const ProfilePage: React.FC = () => {
   // Handle password update submission
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (isSubmittingPassword) return;
     if (!validatePasswordForm()) return;
-    
+
     try {
       setIsSubmittingPassword(true);
       await changePasswordMutation.mutateAsync(passwordData);
-      
+
       // Clear password fields after successful update
       setPasswordData({
         currentPassword: "",
         newPassword: "",
         passwordConfirmation: "",
       });
-      
+
       setPasswordUpdateSuccess(true);
-      
+
       // Hide success message after 3 seconds
       setTimeout(() => {
         setPasswordUpdateSuccess(false);
       }, 3000);
-      
-      showNotification("Password updated successfully", "success");
+
+      showNotification("Password updated successfully", { type: "success" });
     } catch (error) {
       console.error("Password update error:", error);
       showNotification(
         error instanceof Error ? error.message : "Failed to update password",
-        "error"
+        { type: "error" }
       );
     } finally {
       setIsSubmittingPassword(false);
@@ -203,7 +207,9 @@ const ProfilePage: React.FC = () => {
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center p-8 bg-white rounded-lg shadow-md">
           <h2 className="text-xl font-semibold mb-2">Unable to load profile</h2>
-          <p className="text-gray-600 mb-4">Please log in to access your profile.</p>
+          <p className="text-gray-600 mb-4">
+            Please log in to access your profile.
+          </p>
           <Link
             to="/login"
             className="inline-block bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700"
@@ -218,15 +224,25 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="bg-gray-50 min-h-screen pt-16">
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8 px-4 sm:px-0">My Profile</h1>
-        
+        <h1 className="text-2xl font-bold text-gray-900 mb-8 px-4 sm:px-0">
+          My Profile
+        </h1>
+
         {/* Success notification for profile update */}
         {profileUpdateSuccess && activeTab === "profile" && (
           <div className="mb-6 bg-green-50 border-l-4 border-green-400 p-4 rounded shadow mx-4 sm:mx-0">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                <svg
+                  className="h-5 w-5 text-green-400"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </div>
               <div className="ml-3">
@@ -237,14 +253,22 @@ const ProfilePage: React.FC = () => {
             </div>
           </div>
         )}
-        
+
         {/* Success notification for password update */}
         {passwordUpdateSuccess && activeTab === "password" && (
           <div className="mb-6 bg-green-50 border-l-4 border-green-400 p-4 rounded shadow mx-4 sm:mx-0">
             <div className="flex">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                <svg
+                  className="h-5 w-5 text-green-400"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </div>
               <div className="ml-3">
@@ -260,12 +284,14 @@ const ProfilePage: React.FC = () => {
           {/* Sidebar */}
           <div className="w-full md:w-64 bg-white rounded-lg shadow p-4">
             <nav className="space-y-1">
-              <h3 className="text-lg font-medium mb-3 text-gray-900">Account Settings</h3>
+              <h3 className="text-lg font-medium mb-3 text-gray-900">
+                Account Settings
+              </h3>
               <button
                 onClick={() => setActiveTab("profile")}
                 className={`block w-full text-left px-3 py-2 rounded-md text-sm font-medium ${
-                  activeTab === "profile" 
-                    ? "bg-primary-50 text-primary-700" 
+                  activeTab === "profile"
+                    ? "bg-primary-50 text-primary-700"
                     : "text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -274,8 +300,8 @@ const ProfilePage: React.FC = () => {
               <button
                 onClick={() => setActiveTab("password")}
                 className={`block w-full text-left px-3 py-2 rounded-md text-sm font-medium ${
-                  activeTab === "password" 
-                    ? "bg-primary-50 text-primary-700" 
+                  activeTab === "password"
+                    ? "bg-primary-50 text-primary-700"
                     : "text-gray-700 hover:bg-gray-50"
                 }`}
               >
@@ -289,7 +315,9 @@ const ProfilePage: React.FC = () => {
             {/* Profile Information Tab */}
             {activeTab === "profile" && (
               <>
-                <h2 className="text-lg font-medium mb-6 text-gray-900">Profile Information</h2>
+                <h2 className="text-lg font-medium mb-6 text-gray-900">
+                  Profile Information
+                </h2>
                 <form onSubmit={handleProfileSubmit}>
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     {/* First name */}
@@ -307,11 +335,15 @@ const ProfilePage: React.FC = () => {
                         value={profileData.firstName}
                         onChange={handleProfileChange}
                         className={`w-full px-3 py-2 border ${
-                          errors.firstName ? "border-red-300" : "border-gray-300"
+                          errors.firstName
+                            ? "border-red-300"
+                            : "border-gray-300"
                         } rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500`}
                       />
                       {errors.firstName && (
-                        <p className="mt-1 text-sm text-red-600">{errors.firstName}</p>
+                        <p className="mt-1 text-sm text-red-600">
+                          {errors.firstName}
+                        </p>
                       )}
                     </div>
 
@@ -334,7 +366,9 @@ const ProfilePage: React.FC = () => {
                         } rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500`}
                       />
                       {errors.lastName && (
-                        <p className="mt-1 text-sm text-red-600">{errors.lastName}</p>
+                        <p className="mt-1 text-sm text-red-600">
+                          {errors.lastName}
+                        </p>
                       )}
                     </div>
 
@@ -357,7 +391,9 @@ const ProfilePage: React.FC = () => {
                         } rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500`}
                       />
                       {errors.email && (
-                        <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+                        <p className="mt-1 text-sm text-red-600">
+                          {errors.email}
+                        </p>
                       )}
                     </div>
 
@@ -396,7 +432,9 @@ const ProfilePage: React.FC = () => {
             {/* Password & Security Tab */}
             {activeTab === "password" && (
               <>
-                <h2 className="text-lg font-medium mb-6 text-gray-900">Password & Security</h2>
+                <h2 className="text-lg font-medium mb-6 text-gray-900">
+                  Password & Security
+                </h2>
                 <form onSubmit={handlePasswordSubmit}>
                   <div className="space-y-4">
                     {/* Current password */}
@@ -414,11 +452,15 @@ const ProfilePage: React.FC = () => {
                         value={passwordData.currentPassword}
                         onChange={handlePasswordChange}
                         className={`w-full px-3 py-2 border ${
-                          errors.currentPassword ? "border-red-300" : "border-gray-300"
+                          errors.currentPassword
+                            ? "border-red-300"
+                            : "border-gray-300"
                         } rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500`}
                       />
                       {errors.currentPassword && (
-                        <p className="mt-1 text-sm text-red-600">{errors.currentPassword}</p>
+                        <p className="mt-1 text-sm text-red-600">
+                          {errors.currentPassword}
+                        </p>
                       )}
                     </div>
 
@@ -437,11 +479,15 @@ const ProfilePage: React.FC = () => {
                         value={passwordData.newPassword}
                         onChange={handlePasswordChange}
                         className={`w-full px-3 py-2 border ${
-                          errors.newPassword ? "border-red-300" : "border-gray-300"
+                          errors.newPassword
+                            ? "border-red-300"
+                            : "border-gray-300"
                         } rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500`}
                       />
                       {errors.newPassword ? (
-                        <p className="mt-1 text-sm text-red-600">{errors.newPassword}</p>
+                        <p className="mt-1 text-sm text-red-600">
+                          {errors.newPassword}
+                        </p>
                       ) : (
                         <p className="mt-1 text-sm text-gray-500">
                           Must be at least 8 characters long
@@ -464,7 +510,9 @@ const ProfilePage: React.FC = () => {
                         value={passwordData.passwordConfirmation}
                         onChange={handlePasswordChange}
                         className={`w-full px-3 py-2 border ${
-                          errors.passwordConfirmation ? "border-red-300" : "border-gray-300"
+                          errors.passwordConfirmation
+                            ? "border-red-300"
+                            : "border-gray-300"
                         } rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500`}
                       />
                       {errors.passwordConfirmation && (
@@ -481,7 +529,9 @@ const ProfilePage: React.FC = () => {
                       disabled={isSubmittingPassword}
                       className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:bg-primary-400"
                     >
-                      {isSubmittingPassword ? "Updating password..." : "Update password"}
+                      {isSubmittingPassword
+                        ? "Updating password..."
+                        : "Update password"}
                     </button>
                   </div>
                 </form>

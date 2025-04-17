@@ -42,7 +42,7 @@ const RegisterPage: React.FC = () => {
   // Show error notification if registration fails
   useEffect(() => {
     if (error) {
-      showNotification(error, "error");
+      showNotification(error, { type: "error" });
     }
   }, [error, showNotification]);
 

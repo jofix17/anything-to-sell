@@ -31,7 +31,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   // Calculate discount percentage if product is on sale
   const discountPercentage = product.salePrice
-    ? Math.round(((product.price - product.salePrice) / product.price) * 100)
+    ? Math.round(
+        (((Number(product.price) || 0) - (Number(product.salePrice) || 0)) /
+          (Number(product.price) || 1)) *
+          100
+      )
     : 0;
 
   // Get primary image or fallback
@@ -41,27 +45,28 @@ const ProductCard: React.FC<ProductCardProps> = ({
         product.images[0].imageUrl
       : "/placeholder-product.jpg";
 
-  // Format price with currency
-  const formatPrice = (price: number): string => {
-    return `$${price.toFixed(2)}`;
-  };
-
   // Handle add to cart
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
     if (!isAuthenticated) {
-      showNotification("Please login to add items to your cart", "info");
+      showNotification("Please login to add items to your cart", {
+        type: "info",
+      });
       return;
     }
 
     try {
       await addToCart(product.id, 1);
-      showNotification(`${product.name} added to cart`, "success");
+      showNotification(`${product.name} added to cart`, {
+        type: "success",
+      });
     } catch (error) {
       console.error("Add to cart error:", error);
-      showNotification("Failed to add product to cart", "error");
+      showNotification("Failed to add product to cart", {
+        type: "error",
+      });
     }
   };
 
@@ -71,7 +76,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
     e.stopPropagation();
 
     if (!isAuthenticated) {
-      showNotification("Please login to add items to your wishlist", "info");
+      showNotification("Please login to add items to your wishlist", {
+        type: "info",
+      });
       return;
     }
 
@@ -139,7 +146,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <div className="flex items-center">
             {[1, 2, 3, 4, 5].map((star) => (
               <span key={star}>
-                {star <= Math.round(product.reviewSummary.rating) ? (
+                {star <= Math.round(product.reviewSummary?.rating) ? (
                   <StarSolidIcon className="h-4 w-4 text-yellow-400" />
                 ) : (
                   <StarIcon className="h-4 w-4 text-yellow-400" />
@@ -148,7 +155,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             ))}
           </div>
           <span className="text-xs text-gray-500 ml-1">
-            ({product.reviewSummary.reviewCount} reviews)
+            ({product.reviewSummary?.reviewCount} reviews)
           </span>
         </div>
 
@@ -168,15 +175,15 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.salePrice ? (
               <>
                 <span className="text-lg font-medium text-primary-600">
-                  {formatPrice(product.salePrice)}
+                  {product.salePrice}
                 </span>
                 <span className="text-sm text-gray-500 line-through">
-                  {formatPrice(product.price)}
+                  {product.price}
                 </span>
               </>
             ) : (
               <span className="text-lg font-medium text-gray-900">
-                {formatPrice(product.price)}
+                {product.price}
               </span>
             )}
           </div>

@@ -2,16 +2,17 @@ class Product < ApplicationRecord
   belongs_to :category
   belongs_to :user
   has_many :product_images, dependent: :destroy
+  has_many :collection_products, dependent: :destroy
+  has_many :collections, through: :collection_products
+
+  enum :status, { pending: 0, active: 1, inactive: 2, rejected: 3 }
 
   validates :sku, presence: true, uniqueness: { case_sensitive: false }
   validates :name, presence: true, length: { minimum: 3, maximum: 255 }
   validates :price, presence: true, numericality: { greater_than: 0 }
   validates :sale_price, numericality: { greater_than: 0 }, allow_nil: true
   validates :inventory, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
-  validates :status, inclusion: { in: [ "pending", "active", "inactive", "rejected" ] }
 
-  scope :active, -> { where(is_active: true, status: "active") }
-  scope :pending, -> { where(status: "pending") }
   scope :by_vendor, ->(user_id) { where(user_id: user_id) }
   scope :in_category, ->(category_id) { where(category_id: category_id) }
   scope :in_stock, -> { where("inventory > 0") }

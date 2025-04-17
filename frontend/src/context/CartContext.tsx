@@ -4,8 +4,11 @@ import React, {
   useState,
   useEffect,
   ReactNode,
+  useCallback,
+  useRef,
+  useMemo,
 } from "react";
-import { Cart, ApiResponse } from "../types";
+import { Cart, ApiResponse, AddToCartData } from "../types";
 import {
   useCart as useCartQuery,
   useAddToCart,
@@ -13,8 +16,7 @@ import {
   useRemoveCartItem,
   useClearCart,
 } from "../services/cartService";
-import { useAuth } from "./AuthContext";
-import { useInvalidateQueries } from "../hooks/useQueryHooks"; // Corrected import
+import { useInvalidateQueries } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
 
 interface CartContextType {
@@ -43,19 +45,31 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
     error: null,
   });
 
-  const { isAuthenticated } = useAuth();
-  const invalidateQueries = useInvalidateQueries(); // Use the hook to get the function
+  const invalidateQueries = useInvalidateQueries();
 
-  // Use React Query hook to fetch cart data
+  // Use refs to prevent stale closures in the refreshCart function
+  const isLoadingRef = useRef(false);
+
+  // Setup React Query with appropriate options
   const { isLoading: isCartLoading, refetch } = useCartQuery({
-    enabled: isAuthenticated, // Only fetch cart if user is authenticated
+    // Always fetch cart, even for guest users
+    refetchOnWindowFocus: false,
+    retry: 0,
     onSuccess: (response: ApiResponse<Cart>) => {
-      setCartState((prevState) => ({
-        ...prevState,
-        cart: response.data,
-        isLoading: false,
-        error: null,
-      }));
+      if (response && response.success) {
+        setCartState((prevState) => ({
+          ...prevState,
+          cart: response.data,
+          isLoading: false,
+          error: null,
+        }));
+      } else {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: false,
+          error: response?.message || "Failed to load cart",
+        }));
+      }
     },
     onError: (error: unknown) => {
       setCartState((prevState) => ({
@@ -74,26 +88,20 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
 
   // Update cart loading state
   useEffect(() => {
+    isLoadingRef.current = isCartLoading;
+
     setCartState((prevState) => ({
       ...prevState,
       isLoading: isCartLoading,
     }));
   }, [isCartLoading]);
 
-  // Clear cart when user logs out
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setCartState({
-        cart: null,
-        isLoading: false,
-        error: null,
-      });
+  // Refresh cart data - memoize with useCallback to prevent recreation on each render
+  const refreshCart = useCallback(async (): Promise<void> => {
+    // Prevent refresh if already loading
+    if (isLoadingRef.current) {
+      return Promise.resolve();
     }
-  }, [isAuthenticated]);
-
-  // Refresh cart data
-  const refreshCart = async () => {
-    if (!isAuthenticated) return;
 
     try {
       setCartState((prevState) => ({
@@ -102,7 +110,9 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
         error: null,
       }));
 
+      isLoadingRef.current = true;
       await refetch();
+      return Promise.resolve();
     } catch (error) {
       setCartState((prevState) => ({
         ...prevState,
@@ -110,109 +120,137 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
         error:
           error instanceof Error ? error.message : "Failed to refresh cart",
       }));
+      return Promise.reject(error);
     }
-  };
+  }, [refetch]); // Only depend on refetch
 
   // Add item to cart
-  const addToCart = async (productId: string, quantity: number) => {
-    try {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: true,
-        error: null,
-      }));
+  const addToCart = useCallback(
+    async (productId: string, quantity: number) => {
+      try {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: true,
+          error: null,
+        }));
 
-      const result = await addToCartMutation.mutateAsync({
-        productId,
-        quantity,
-      });
+        const data: AddToCartData = {
+          productId,
+          quantity,
+        };
 
-      setCartState({
-        cart: result.data,
-        isLoading: false,
-        error: null,
-      });
+        const result = await addToCartMutation.mutateAsync(data);
 
-      // Invalidate cart query to ensure consistency
-      invalidateQueries(QueryKeys.cart.current);
-    } catch (error) {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: false,
-        error:
-          error instanceof Error ? error.message : "Failed to add item to cart",
-      }));
-      throw error;
-    }
-  };
+        if (result && result.success) {
+          setCartState({
+            cart: result.data,
+            isLoading: false,
+            error: null,
+          });
+
+          // Invalidate cart query to ensure consistency
+          invalidateQueries(QueryKeys.cart.current);
+        } else {
+          throw new Error(result?.message || "Failed to add item to cart");
+        }
+      } catch (error) {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to add item to cart",
+        }));
+        throw error;
+      }
+    },
+    [addToCartMutation, invalidateQueries]
+  );
 
   // Update cart item quantity
-  const updateCartItem = async (cartItemId: string, quantity: number) => {
-    try {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: true,
-        error: null,
-      }));
+  const updateCartItem = useCallback(
+    async (cartItemId: string, quantity: number) => {
+      try {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: true,
+          error: null,
+        }));
 
-      const result = await updateCartItemMutation.mutateAsync({
-        cartItemId,
-        quantity,
-      });
+        const result = await updateCartItemMutation.mutateAsync({
+          cartItemId,
+          quantity,
+        });
 
-      setCartState({
-        cart: result.data,
-        isLoading: false,
-        error: null,
-      });
+        if (result && result.success) {
+          setCartState({
+            cart: result.data,
+            isLoading: false,
+            error: null,
+          });
 
-      // Invalidate cart query to ensure consistency
-      invalidateQueries(QueryKeys.cart.current);
-    } catch (error) {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: false,
-        error:
-          error instanceof Error ? error.message : "Failed to update cart item",
-      }));
-      throw error;
-    }
-  };
+          // Invalidate cart query to ensure consistency
+          invalidateQueries(QueryKeys.cart.current);
+        } else {
+          throw new Error(result?.message || "Failed to update cart item");
+        }
+      } catch (error) {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to update cart item",
+        }));
+        throw error;
+      }
+    },
+    [updateCartItemMutation, invalidateQueries]
+  );
 
   // Remove item from cart
-  const removeCartItem = async (cartItemId: string) => {
-    try {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: true,
-        error: null,
-      }));
+  const removeCartItem = useCallback(
+    async (cartItemId: string) => {
+      try {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: true,
+          error: null,
+        }));
 
-      const result = await removeCartItemMutation.mutateAsync(cartItemId);
+        const result = await removeCartItemMutation.mutateAsync(cartItemId);
 
-      setCartState({
-        cart: result.data,
-        isLoading: false,
-        error: null,
-      });
+        if (result && result.success) {
+          setCartState({
+            cart: result.data,
+            isLoading: false,
+            error: null,
+          });
 
-      // Invalidate cart query to ensure consistency
-      invalidateQueries(QueryKeys.cart.current);
-    } catch (error) {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to remove item from cart",
-      }));
-      throw error;
-    }
-  };
+          // Invalidate cart query to ensure consistency
+          invalidateQueries(QueryKeys.cart.current);
+        } else {
+          throw new Error(result?.message || "Failed to remove item from cart");
+        }
+      } catch (error) {
+        setCartState((prevState) => ({
+          ...prevState,
+          isLoading: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to remove item from cart",
+        }));
+        throw error;
+      }
+    },
+    [removeCartItemMutation, invalidateQueries]
+  );
 
   // Clear entire cart
-  const clearCart = async () => {
+  const clearCart = useCallback(async () => {
     try {
       setCartState((prevState) => ({
         ...prevState,
@@ -220,16 +258,20 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
         error: null,
       }));
 
-      await clearCartMutation.mutateAsync({});
+      const result = await clearCartMutation.mutateAsync({});
 
-      setCartState({
-        cart: null,
-        isLoading: false,
-        error: null,
-      });
+      if (result && result.success) {
+        setCartState({
+          cart: null,
+          isLoading: false,
+          error: null,
+        });
 
-      // Invalidate cart query to ensure consistency
-      invalidateQueries(QueryKeys.cart.current);
+        // Invalidate cart query to ensure consistency
+        invalidateQueries(QueryKeys.cart.current);
+      } else {
+        throw new Error(result?.message || "Failed to clear cart");
+      }
     } catch (error) {
       setCartState((prevState) => ({
         ...prevState,
@@ -238,21 +280,37 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
       }));
       throw error;
     }
-  };
+  }, [clearCartMutation, invalidateQueries]);
+
+  // Fetch cart data on initial load
+  useEffect(() => {
+    refreshCart().catch((error) => {
+      console.error("Failed to fetch initial cart data:", error);
+    });
+  }, [refreshCart]);
+
+  // Memoize context value to prevent unnecessary re-renders of consumers
+  const contextValue = useMemo(
+    () => ({
+      ...cartState,
+      addToCart,
+      updateCartItem,
+      removeCartItem,
+      clearCart,
+      refreshCart,
+    }),
+    [
+      cartState,
+      addToCart,
+      updateCartItem,
+      removeCartItem,
+      clearCart,
+      refreshCart,
+    ]
+  );
 
   return (
-    <CartContext.Provider
-      value={{
-        ...cartState,
-        addToCart,
-        updateCartItem,
-        removeCartItem,
-        clearCart,
-        refreshCart,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+    <CartContext.Provider value={contextValue}>{children}</CartContext.Provider>
   );
 };
 

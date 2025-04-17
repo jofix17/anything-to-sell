@@ -1,15 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import { useNotification } from "../context/NotificationContext";
 import StarRating from "../components/common/StarRating";
 import ProductImageGallery from "../components/product/ProductImageGallery";
 import ProductReviews from "../components/product/ProductReviews";
 import QuantitySelector from "../components/common/QuantitySelector";
 import Button from "../components/common/Button";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-import { toast } from "react-toastify";
-import RelatedProducts from "../components/product/RelatedProducts";
+import ProductBreadcrumb from "../components/product/ProductBreadcrumb";
 import { useProductDetail } from "../services/productService";
 import {
   useToggleWishlist,
@@ -17,32 +17,58 @@ import {
 } from "../services/wishlistService";
 import { ApiResponse, WishlistItem } from "../types";
 
+type ProductTab = "description" | "specifications" | "reviews";
+
 const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const { addToCart } = useCart();
+  const { showNotification } = useNotification();
 
   const [quantity, setQuantity] = useState<number>(1);
-  const [activeTab, setActiveTab] = useState<
-    "description" | "specifications" | "reviews"
-  >("description");
+  const [activeTab, setActiveTab] = useState<ProductTab>("description");
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch product data using React Query
   const {
     data: productResponse,
     isLoading,
-    error,
+    error: productError,
   } = useProductDetail(id || "", {
     enabled: !!id,
   });
 
-  // Check if product is in wishlist
-  const { data: wishlistResponse } = useIsProductInWishlist(id || "", {
-    enabled: !!id && isAuthenticated,
-  });
+  // Handle product fetch errors
+  useEffect(() => {
+    if (productError) {
+      const errorMessage =
+        productError instanceof Error
+          ? productError.message
+          : "Failed to load product details";
+      setError(errorMessage);
+      showNotification(errorMessage, { type: "error" });
+    }
+  }, [productError, showNotification]);
 
-  const inWishlist = wishlistResponse?.data?.exists || false;
+  // Check if product is in wishlist
+  const { data: wishlistResponse, error: wishlistError } =
+    useIsProductInWishlist(id || "", {
+      enabled: !!id && isAuthenticated,
+    });
+
+  // Handle wishlist check errors
+  useEffect(() => {
+    if (wishlistError && isAuthenticated) {
+      const errorMessage =
+        wishlistError instanceof Error
+          ? wishlistError.message
+          : "Failed to check wishlist status";
+      showNotification(errorMessage, { type: "error" });
+    }
+  }, [wishlistError, isAuthenticated, showNotification]);
+
+  const inWishlist = wishlistResponse?.exists || false;
 
   // Setup wishlist toggle mutation
   const toggleWishlistMutation = useToggleWishlist({
@@ -50,16 +76,18 @@ const ProductDetailPage: React.FC = () => {
       response: ApiResponse<{ added: boolean; item?: WishlistItem }>
     ) => {
       const added = response.data.added;
-      toast.success(
-        added ? "Added to your wishlist" : "Removed from your wishlist"
+      showNotification(
+        added ? "Added to your wishlist" : "Removed from your wishlist",
+        { type: "success" }
       );
     },
-    onError: () => {
-      toast.error("Failed to update wishlist. Please try again.");
+    onError: (error: Error) => {
+      const errorMessage = error ? error.message : "Failed to update wishlist";
+      showNotification(errorMessage, { type: "error" });
     },
   });
 
-  const product = productResponse?.data;
+  const product = productResponse;
 
   const handleQuantityChange = (newQuantity: number) => {
     setQuantity(newQuantity);
@@ -67,20 +95,38 @@ const ProductDetailPage: React.FC = () => {
 
   const handleAddToCart = () => {
     if (product) {
-      addToCart(product.id, quantity);
-      toast.success(`Added ${quantity} ${product.name} to cart!`);
+      try {
+        addToCart(product.id, quantity);
+        showNotification(`Added ${quantity} ${product.name} to cart!`, {
+          type: "success",
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to add item to cart";
+        showNotification(errorMessage, { type: "error" });
+      }
     }
   };
 
   const handleBuyNow = () => {
-    handleAddToCart();
-    navigate("/checkout");
+    try {
+      handleAddToCart();
+      navigate("/checkout");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to proceed to checkout";
+      showNotification(errorMessage, { type: "error" });
+    }
   };
 
   const handleToggleWishlist = async () => {
     if (!isAuthenticated) {
-      toast.info("Please log in to add items to your wishlist");
-      navigate("/login");
+      showNotification("Please log in to add items to your wishlist", {
+        type: "info",
+      });
+      navigate("/login", { state: { from: { pathname: `/products/${id}` } } });
       return;
     }
 
@@ -91,7 +137,7 @@ const ProductDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
+      <div className="flex justify-center items-center min-h-screen mt-8">
         <LoadingSpinner size="large" />
       </div>
     );
@@ -99,9 +145,9 @@ const ProductDetailPage: React.FC = () => {
 
   if (error || !product) {
     return (
-      <div className="container mx-auto px-4 py-8 text-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-8 text-center">
         <h2 className="text-2xl font-bold text-red-600 mb-4">
-          {error instanceof Error ? error.message : "Product not found"}
+          {error || "Product not found"}
         </h2>
         <p className="mb-6">
           The product you're looking for might have been removed or is
@@ -120,7 +166,11 @@ const ProductDetailPage: React.FC = () => {
   // Parse product data according to our actual Product interface
   const isInStock = product.inventory > 0;
   const discount = product.salePrice
-    ? Math.round(((product.price - product.salePrice) / product.price) * 100)
+    ? Math.round(
+        ((Number(product.price) - Number(product.salePrice)) /
+          Number(product.price)) *
+          100
+      )
     : 0;
 
   // Extract primary image and other images for the gallery
@@ -130,40 +180,26 @@ const ProductDetailPage: React.FC = () => {
   const rating = product.reviewSummary?.rating || 0;
   const reviewCount = product.reviewSummary?.reviewCount || 0;
 
+  // Create breadcrumb items
+  const breadcrumbItems = [
+    { name: "Home", path: "/" },
+    { name: "Products", path: "/products" },
+    {
+      name: product.category.name,
+      path: `/products?category=${product.category.id}`,
+    },
+    { name: product.name, path: `/products/${product.id}`, isLast: true },
+  ];
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Breadcrumb Navigation */}
-      <nav className="text-sm mb-6">
-        <ol className="list-none p-0 inline-flex">
-          <li className="flex items-center">
-            <Link to="/" className="text-gray-500 hover:text-blue-600">
-              Home
-            </Link>
-            <span className="mx-2 text-gray-500">/</span>
-          </li>
-          <li className="flex items-center">
-            <Link to="/products" className="text-gray-500 hover:text-blue-600">
-              Products
-            </Link>
-            <span className="mx-2 text-gray-500">/</span>
-          </li>
-          <li className="flex items-center">
-            <Link
-              to={`/products?category=${product.category.id}`}
-              className="text-gray-500 hover:text-blue-600"
-            >
-              {product.category.name}
-            </Link>
-            <span className="mx-2 text-gray-500">/</span>
-          </li>
-          <li className="text-gray-700 font-medium truncate">{product.name}</li>
-        </ol>
-      </nav>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Breadcrumb Navigation - Using our dedicated component */}
+      <ProductBreadcrumb items={breadcrumbItems} />
 
       {/* Main Product Section */}
       <div className="flex flex-col lg:flex-row gap-8 mb-16">
         {/* Product Images */}
-        <div className="lg:w-1/2">
+        <div className="lg:w-3/5">
           <ProductImageGallery
             images={productImages}
             productName={product.name}
@@ -171,31 +207,38 @@ const ProductDetailPage: React.FC = () => {
         </div>
 
         {/* Product Info */}
-        <div className="lg:w-1/2">
+        <div className="lg:w-2/5">
           <div className="mb-6">
+            {/* Vendor Link */}
             <Link
               to={`/vendor/${product.vendor.id}`}
               className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 mb-2"
             >
               {product.vendor.name}
             </Link>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+
+            {/* Product Title */}
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
               {product.name}
             </h1>
 
-            <div className="flex items-center gap-2 mb-4">
+            {/* Rating Section */}
+            <div className="flex items-center gap-2 mb-6">
               <StarRating rating={rating} size="medium" />
-              <span className="text-gray-600">({reviewCount} reviews)</span>
+              <span className="text-gray-600">
+                ({reviewCount} {reviewCount === 1 ? "review" : "reviews"})
+              </span>
             </div>
 
-            <div className="mb-4">
+            {/* Price Section */}
+            <div className="mb-6">
               {product.salePrice ? (
                 <div className="flex items-center gap-3">
                   <span className="text-3xl font-bold text-gray-900">
-                    ${product.salePrice.toFixed(2)}
+                    ${product.salePrice}
                   </span>
                   <span className="text-xl text-gray-500 line-through">
-                    ${product.price.toFixed(2)}
+                    ${product.price}
                   </span>
                   <span className="bg-red-100 text-red-800 text-sm font-semibold px-2.5 py-0.5 rounded">
                     {discount}% OFF
@@ -203,11 +246,12 @@ const ProductDetailPage: React.FC = () => {
                 </div>
               ) : (
                 <span className="text-3xl font-bold text-gray-900">
-                  ${product.price.toFixed(2)}
+                  ${product.price}
                 </span>
               )}
             </div>
 
+            {/* Stock Status */}
             <div className="flex items-center gap-2 mb-6">
               <span
                 className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -225,7 +269,8 @@ const ProductDetailPage: React.FC = () => {
               )}
             </div>
 
-            <div className="border-t border-b border-gray-200 py-4 my-6">
+            {/* Purchase Actions Section */}
+            <div className="border-t border-b border-gray-200 py-6 my-6">
               <div className="flex flex-col gap-6">
                 {isInStock && (
                   <div className="flex items-center gap-4">
@@ -246,7 +291,7 @@ const ProductDetailPage: React.FC = () => {
                     disabled={!isInStock}
                     variant="primary"
                     size="large"
-                    className="flex-1"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
                   >
                     Add to Cart
                   </Button>
@@ -255,7 +300,7 @@ const ProductDetailPage: React.FC = () => {
                     disabled={!isInStock}
                     variant="secondary"
                     size="large"
-                    className="flex-1"
+                    className="flex-1 bg-gray-800 hover:bg-gray-900 text-white"
                   >
                     Buy Now
                   </Button>
@@ -290,19 +335,21 @@ const ProductDetailPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Rest of the component remains the same */}
             {/* Product Tags */}
             <div className="mb-6">
               <h3 className="text-sm font-medium text-gray-900 mb-2">Tags:</h3>
               <div className="flex flex-wrap gap-2">
-                {product.tags.map((tag) => (
-                  <Link
-                    key={tag}
-                    to={`/products?tag=${tag}`}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-sm"
-                  >
-                    {tag}
-                  </Link>
-                ))}
+                {product.tags &&
+                  product.tags.map((tag) => (
+                    <Link
+                      key={tag}
+                      to={`/products?tag=${tag}`}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-3 py-1 rounded-full text-sm"
+                    >
+                      {tag}
+                    </Link>
+                  ))}
               </div>
             </div>
 
@@ -365,36 +412,20 @@ const ProductDetailPage: React.FC = () => {
       <div className="mb-16">
         <div className="border-b border-gray-200">
           <nav className="flex space-x-8">
-            <button
-              onClick={() => setActiveTab("description")}
-              className={`py-4 text-sm font-medium border-b-2 -mb-px ${
-                activeTab === "description"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Description
-            </button>
-            <button
-              onClick={() => setActiveTab("specifications")}
-              className={`py-4 text-sm font-medium border-b-2 -mb-px ${
-                activeTab === "specifications"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Specifications
-            </button>
-            <button
-              onClick={() => setActiveTab("reviews")}
-              className={`py-4 text-sm font-medium border-b-2 -mb-px ${
-                activeTab === "reviews"
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              Reviews ({reviewCount})
-            </button>
+            {["description", "specifications", "reviews"].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as ProductTab)}
+                className={`py-4 text-sm font-medium border-b-2 -mb-px ${
+                  activeTab === tab
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "reviews" && ` (${reviewCount})`}
+              </button>
+            ))}
           </nav>
         </div>
 
@@ -417,7 +448,7 @@ const ProductDetailPage: React.FC = () => {
           )}
 
           {activeTab === "specifications" && (
-            <div className="overflow-hidden">
+            <div className="bg-white rounded-lg overflow-hidden border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200">
                 <tbody className="divide-y divide-gray-200">
                   <tr>
@@ -477,18 +508,6 @@ const ProductDetailPage: React.FC = () => {
             />
           )}
         </div>
-      </div>
-
-      {/* Related Products */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">
-          You May Also Like
-        </h2>
-        <RelatedProducts
-          currentProductId={product.id}
-          category={product.category.id}
-          tags={product.tags}
-        />
       </div>
     </div>
   );

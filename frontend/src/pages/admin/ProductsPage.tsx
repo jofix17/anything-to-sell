@@ -6,9 +6,10 @@ import {
   useApproveProduct,
   useRejectProduct,
   usePendingProductsCount,
-  useAdminVendors
+  useAdminVendors,
 } from "../../services/adminService";
 import { useCategories } from "../../services/productService";
+import { ProductFilterParams } from "../../types";
 
 const AdminProductsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -26,7 +27,7 @@ const AdminProductsPage: React.FC = () => {
 
   // Prepare query parameters
   const getQueryParams = () => {
-    const params: any = {
+    const params: ProductFilterParams = {
       page: currentPage,
       perPage: 10,
     };
@@ -71,26 +72,22 @@ const AdminProductsPage: React.FC = () => {
     data: productsResponse,
     isLoading: isProductsLoading,
     error: productsError,
-    refetch: refetchProducts
+    refetch: refetchProducts,
   } = useAdminProducts(getQueryParams());
 
   // Fetch categories with React Query
-  const {
-    data: categoriesResponse,
-    isLoading: isCategoriesLoading
-  } = useCategories();
-
+  const { data: categoriesResponse, isLoading: isCategoriesLoading } =
+    useCategories();
+  console.log({ categoriesResponse });
   // Fetch vendors with React Query
-  const {
-    data: vendorsResponse,
-    isLoading: isVendorsLoading
-  } = useAdminVendors();
+  const { data: vendorsResponse, isLoading: isVendorsLoading } =
+    useAdminVendors();
 
   // Fetch pending products count with React Query
   const {
     data: pendingCountResponse,
     isLoading: isPendingCountLoading,
-    refetch: refetchPendingCount
+    refetch: refetchPendingCount,
   } = usePendingProductsCount();
 
   // Mutations for product approval and rejection
@@ -101,7 +98,7 @@ const AdminProductsPage: React.FC = () => {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to approve product");
-    }
+    },
   });
 
   const rejectProductMutation = useRejectProduct({
@@ -111,15 +108,16 @@ const AdminProductsPage: React.FC = () => {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to reject product");
-    }
+    },
   });
 
   // Extract data from query responses
   const products = productsResponse?.data || [];
   const totalPages = productsResponse?.totalPages || 1;
-  const categories = categoriesResponse?.data || [];
-  const vendors = vendorsResponse?.data || [];
-  const pendingCount = pendingCountResponse?.data?.total || 0;
+  const categories = categoriesResponse || [];
+  console.log({ categories });
+  const vendors = vendorsResponse || [];
+  const pendingCount = pendingCountResponse?.total || 0;
 
   // Handle filter changes
   const handleFilterChange = (
@@ -128,6 +126,7 @@ const AdminProductsPage: React.FC = () => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
 
+    console.log({ name, value, type, checked });
     setFilters((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -185,6 +184,7 @@ const AdminProductsPage: React.FC = () => {
       refetchProducts();
       refetchPendingCount();
     } catch (error) {
+      console.log({ error });
       // Error is already handled by the mutation's onError
     }
   };
@@ -196,6 +196,7 @@ const AdminProductsPage: React.FC = () => {
       refetchProducts();
       refetchPendingCount();
     } catch (error) {
+      console.log({ error });
       // Error is already handled by the mutation's onError
     }
   };
@@ -205,18 +206,21 @@ const AdminProductsPage: React.FC = () => {
     if (selectedProducts.length === 0) return;
 
     toast.info(`Approving ${selectedProducts.length} products...`);
-    
+
     try {
       // Process products one by one to avoid overwhelming the server
       for (const id of selectedProducts) {
         await approveProductMutation.mutateAsync(id);
       }
 
-      toast.success(`${selectedProducts.length} products approved successfully`);
+      toast.success(
+        `${selectedProducts.length} products approved successfully`
+      );
       setSelectedProducts([]);
       refetchProducts();
       refetchPendingCount();
     } catch (error) {
+      console.log({ error });
       toast.error("Failed to approve some products");
     }
   };
@@ -225,23 +229,29 @@ const AdminProductsPage: React.FC = () => {
     if (selectedProducts.length === 0) return;
 
     // Simple reason for bulk rejection
-    const reason = prompt("Please enter a reason for rejecting these products:", "Does not meet guidelines");
-    
+    const reason = prompt(
+      "Please enter a reason for rejecting these products:",
+      "Does not meet guidelines"
+    );
+
     if (!reason) return;
 
     toast.info(`Rejecting ${selectedProducts.length} products...`);
-    
+
     try {
       // Process products one by one
       for (const id of selectedProducts) {
         await rejectProductMutation.mutateAsync({ id, reason });
       }
 
-      toast.success(`${selectedProducts.length} products rejected successfully`);
+      toast.success(
+        `${selectedProducts.length} products rejected successfully`
+      );
       setSelectedProducts([]);
       refetchProducts();
       refetchPendingCount();
     } catch (error) {
+      console.log({ error });
       toast.error("Failed to reject some products");
     }
   };
@@ -253,9 +263,14 @@ const AdminProductsPage: React.FC = () => {
   };
 
   // Determine loading and error states
-  const isLoading = isProductsLoading || isCategoriesLoading || isVendorsLoading || isPendingCountLoading;
+  const isLoading =
+    isProductsLoading ||
+    isCategoriesLoading ||
+    isVendorsLoading ||
+    isPendingCountLoading;
   const error = productsError;
-  const isMutating = approveProductMutation.isPending || rejectProductMutation.isPending;
+  const isMutating =
+    approveProductMutation.isPending || rejectProductMutation.isPending;
 
   return (
     <div className="px-4 py-6">
@@ -552,7 +567,10 @@ const AdminProductsPage: React.FC = () => {
                         <div className="h-10 w-10 flex-shrink-0">
                           <img
                             className="h-10 w-10 rounded-md object-cover"
-                            src={product.images[0]?.imageUrl || "/api/placeholder/40/40"}
+                            src={
+                              product.images[0]?.imageUrl ||
+                              "/api/placeholder/40/40"
+                            }
                             alt={product.name}
                           />
                         </div>
@@ -582,15 +600,15 @@ const AdminProductsPage: React.FC = () => {
                       {product.salePrice ? (
                         <div>
                           <span className="text-sm text-gray-900 font-medium">
-                            ${product.salePrice.toFixed(2)}
+                            ${product.salePrice}
                           </span>
                           <span className="text-sm text-gray-500 line-through ml-2">
-                            ${product.price.toFixed(2)}
+                            ${product.price}
                           </span>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-900">
-                          ${product.price.toFixed(2)}
+                          ${product.price}
                         </span>
                       )}
                     </td>
@@ -631,8 +649,8 @@ const AdminProductsPage: React.FC = () => {
                             disabled={isMutating}
                             className="text-green-600 hover:text-green-900 mr-2 disabled:opacity-50"
                           >
-                            {approveProductMutation.isPending && 
-                             approveProductMutation.variables === product.id
+                            {approveProductMutation.isPending &&
+                            approveProductMutation.variables === product.id
                               ? "Approving..."
                               : "Approve"}
                           </button>
@@ -648,11 +666,12 @@ const AdminProductsPage: React.FC = () => {
                             disabled={isMutating}
                             className="text-red-600 hover:text-red-900 disabled:opacity-50"
                           >
-                            {rejectProductMutation.isPending && 
-                             typeof rejectProductMutation.variables === 'object' &&
-                             rejectProductMutation.variables !== null &&
-                             'id' in rejectProductMutation.variables &&
-                             rejectProductMutation.variables.id === product.id
+                            {rejectProductMutation.isPending &&
+                            typeof rejectProductMutation.variables ===
+                              "object" &&
+                            rejectProductMutation.variables !== null &&
+                            "id" in rejectProductMutation.variables &&
+                            rejectProductMutation.variables.id === product.id
                               ? "Rejecting..."
                               : "Reject"}
                           </button>

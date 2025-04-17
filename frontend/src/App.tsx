@@ -143,10 +143,7 @@ const App: React.FC = () => {
                         path="profile"
                         element={<ProtectedRoute element={<ProfilePage />} />}
                       />
-                      <Route
-                        path="cart"
-                        element={<ProtectedRoute element={<CartPage />} />}
-                      />
+                      <Route path="cart" element={<CartPage />} />
                       <Route
                         path="checkout"
                         element={<ProtectedRoute element={<CheckoutPage />} />}

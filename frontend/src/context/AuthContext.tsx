@@ -157,6 +157,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         error instanceof Error ? error.message : "Login failed";
 
       console.log({ errorMessage });
+      
+      // Important: Set isLoading to false when error occurs
       setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
@@ -199,6 +201,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       const errorMessage =
         error instanceof Error ? error.message : "Registration failed";
 
+      // Important: Set isLoading to false when error occurs
       setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,
@@ -271,6 +274,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       const errorMessage =
         error instanceof Error ? error.message : "Profile update failed";
 
+      // Important: Set isLoading to false when error occurs
       setAuthState((prevState) => ({
         ...prevState,
         isLoading: false,

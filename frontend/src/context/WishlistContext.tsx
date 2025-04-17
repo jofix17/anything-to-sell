@@ -64,7 +64,8 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({
       setWishlistState((prevState) => ({
         ...prevState,
         isLoading: false,
-        error: error instanceof Error ? error.message : "Failed to load wishlist",
+        error:
+          error instanceof Error ? error.message : "Failed to load wishlist",
       }));
     },
   });
@@ -193,7 +194,9 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({
             ? error.message
             : "Failed to remove item from wishlist",
       }));
-      showNotification("Failed to remove item from wishlist", { type: "error" });
+      showNotification("Failed to remove item from wishlist", {
+        type: "error",
+      });
       throw error;
     }
   };
@@ -216,7 +219,7 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({
 
       const result = await toggleWishlistMutation.mutateAsync(productId);
       const { added, item } = result.data;
-
+      console.log({ added });
       if (added && item) {
         // Item was added
         setWishlistState((prevState) => ({
@@ -239,16 +242,14 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({
 
       // Invalidate wishlist query to ensure consistency
       invalidateQueries(QueryKeys.user.wishlist);
-      
+
       return added;
     } catch (error) {
       setWishlistState((prevState) => ({
         ...prevState,
         isLoading: false,
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update wishlist",
+          error instanceof Error ? error.message : "Failed to update wishlist",
       }));
       showNotification("Failed to update wishlist", { type: "error" });
       throw error;

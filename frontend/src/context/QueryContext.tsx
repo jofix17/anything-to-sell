@@ -10,6 +10,7 @@ const queryClient = new QueryClient({
       retry: 1, // Only retry failed queries once
       staleTime: 5 * 60 * 1000, // Data considered fresh for 5 minutes
       gcTime: 10 * 60 * 1000, // Amount of time unused/inactive cache data remains in memory
+      refetchOnMount: true,
     },
   },
 });

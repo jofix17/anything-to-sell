@@ -30,7 +30,7 @@ const CategoriesSection = () => {
           <ErrorCard message="Failed to load categories. Please try again." />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
-            {categoriesQuery.data?.data.slice(0, 6).map((category) => (
+            {categoriesQuery.data?.slice(0, 6).map((category) => (
               <Link
                 key={category.id}
                 to={`/products?category=${category.id}`}

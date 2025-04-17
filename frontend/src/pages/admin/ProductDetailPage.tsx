@@ -25,7 +25,7 @@ const AdminProductDetailPage: React.FC = () => {
     error: productError,
   } = useProductDetail(id || "");
 
-  const product = productResponse?.data || null;
+  const product = productResponse || null;
 
   // Fetch categories for reference
   const { data: categoriesResponse, isLoading: isCategoriesLoading } =
@@ -36,8 +36,8 @@ const AdminProductDetailPage: React.FC = () => {
     useProductReviews(id || "");
 
   // Extract data from responses
-  const categories = categoriesResponse?.data || [];
-  const reviews = reviewsResponse?.data || [];
+  const categories = categoriesResponse || [];
+  const reviews = reviewsResponse || [];
 
   // Product approval/rejection mutations
   const approveProductMutation = useApproveProduct({
@@ -353,21 +353,21 @@ const AdminProductDetailPage: React.FC = () => {
                   {product.salePrice ? (
                     <div className="flex items-center">
                       <span className="text-lg font-bold text-gray-900">
-                        ${product.salePrice.toFixed(2)}
+                        ${product.salePrice}
                       </span>
                       <span className="ml-2 text-sm text-gray-500 line-through">
-                        ${product.price.toFixed(2)}
+                        ${product.price}
                       </span>
                       <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
                         {Math.round(
-                          (1 - product.salePrice / product.price) * 100
+                          (1 - Number(product.salePrice) / Number(product.price)) * 100
                         )}
                         % OFF
                       </span>
                     </div>
                   ) : (
                     <span className="text-lg font-bold text-gray-900">
-                      ${product.price.toFixed(2)}
+                      ${product.price}
                     </span>
                   )}
                 </div>

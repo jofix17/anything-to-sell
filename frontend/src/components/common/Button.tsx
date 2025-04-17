@@ -11,7 +11,7 @@ interface ButtonProps {
   loading?: boolean;
   className?: string;
   ariaLabel?: string;
-  [key: string]: any; // Allow any other props to be passed through
+  [key: string]: unknown; // Allow any other props to be passed through
 }
 
 const Button: React.FC<ButtonProps> = ({

@@ -141,7 +141,7 @@ const CheckoutPage: React.FC = () => {
 
   // Use React Query hooks
   const addressesQuery = useAddresses();
-  const addresses = addressesQuery.data?.data || [];
+  const addresses = addressesQuery.data || [];
 
   const createAddressMutation = useCreateAddress();
   const createOrderMutation = useCreateOrder();
@@ -295,7 +295,7 @@ const CheckoutPage: React.FC = () => {
   // Calculate totals if not provided by API
   const subtotal = cart.items.reduce((total, item) => {
     const itemPrice = item.product.salePrice || item.product.price;
-    return total + itemPrice * item.quantity;
+    return total + Number(itemPrice) * Number(item.quantity);
   }, 0);
 
   const shippingCost = cart.shippingCost || 0;
@@ -384,7 +384,7 @@ const CheckoutPage: React.FC = () => {
                     <p className="text-sm font-medium text-gray-900">
                       $
                       {(
-                        (item.product.salePrice || item.product.price) *
+                        (Number(item.product.salePrice) || Number(item.product.price)) *
                         item.quantity
                       ).toFixed(2)}
                     </p>

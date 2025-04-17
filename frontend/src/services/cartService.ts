@@ -38,6 +38,11 @@ class CartService {
     return await apiService.delete<ApiResponse<null>>('/cart/clear');
   }
   
+  // Transfer guest cart to user cart after login
+  async transferCart(): Promise<ApiResponse<Cart>> {
+    return await apiService.post<ApiResponse<Cart>>('/cart/transfer');
+  }
+  
   // Address methods
   async getAddresses(): Promise<ApiResponse<Address[]>> {
     return await apiService.get<ApiResponse<Address[]>>('/addresses');
@@ -109,35 +114,80 @@ export const useCart = (options = {}) => {
   );
 };
 
+export const useTransferCart = (options = {}) => {
+  return useApiMutation(
+    () => cartService.transferCart(),
+    {
+      onSuccess: (response, variables, context) => {
+        // Clear guest cart token after successful transfer
+        apiService.clearGuestCartToken();
+        
+        if (options && "onSuccess" in options && typeof options.onSuccess === "function") {
+          options.onSuccess(response, variables, context);
+        }
+      },
+      ...options
+    }
+  );
+};
+
 export const useAddToCart = (options = {}) => {
   return useApiMutation(
     (data: AddToCartData) => cartService.addToCart(data),
-    options
+    {
+      onSuccess: (response, variables, context) => {
+        if (options && "onSuccess" in options && typeof options.onSuccess === "function") {
+          options.onSuccess(response, variables, context);
+        }
+      },
+      ...options
+    }
   );
 };
 
 export const useUpdateCartItem = (options = {}) => {
   return useApiMutation(
     (data: UpdateCartItemData) => cartService.updateCartItem(data),
-    options
+    {
+      onSuccess: (response, variables, context) => {
+        if (options && "onSuccess" in options && typeof options.onSuccess === "function") {
+          options.onSuccess(response, variables, context);
+        }
+      },
+      ...options
+    }
   );
 };
 
 export const useRemoveCartItem = (options = {}) => {
   return useApiMutation(
     (cartItemId: string) => cartService.removeCartItem(cartItemId),
-    options
+    {
+      onSuccess: (response, variables, context) => {
+        if (options && "onSuccess" in options && typeof options.onSuccess === "function") {
+          options.onSuccess(response, variables, context);
+        }
+      },
+      ...options
+    }
   );
 };
 
 export const useClearCart = (options = {}) => {
   return useApiMutation(
     () => cartService.clearCart(),
-    options
+    {
+      onSuccess: (response, variables, context) => {
+        if (options && "onSuccess" in options && typeof options.onSuccess === "function") {
+          options.onSuccess(response, variables, context);
+        }
+      },
+      ...options
+    }
   );
 };
 
-export const useAddresses = (options = {}) => {
+export const useAddresses = (options: { enabled?: boolean } = {}) => {
   return useApiQuery(
     QueryKeys.user.addresses,
     () => cartService.getAddresses(),
@@ -173,7 +223,7 @@ export const useSetDefaultAddress = (options = {}) => {
   );
 };
 
-export const useOrders = (options = {}) => {
+export const useOrders = (options: { enabled?: boolean } = {}) => {
   return useApiQuery(
     QueryKeys.orders.all,
     () => cartService.getOrders(),
@@ -181,13 +231,13 @@ export const useOrders = (options = {}) => {
   );
 };
 
-export const useOrderDetail = (id: string, options = {}) => {
+export const useOrderDetail = (id: string, options: { enabled?: boolean } = {}) => {
   return useApiQuery(
     QueryKeys.orders.detail(id),
     () => cartService.getOrderById(id),
     {
       ...options,
-      enabled: !!id, // Only run query if id is provided
+      enabled: !!id && (options.enabled !== false) // Only run query if id is provided and not explicitly disabled
     }
   );
 };
@@ -195,7 +245,17 @@ export const useOrderDetail = (id: string, options = {}) => {
 export const useCreateOrder = (options = {}) => {
   return useApiMutation(
     (data: CreateOrderData) => cartService.createOrder(data),
-    options
+    {
+      onSuccess: (response, variables, context) => {
+        // Clear guest cart token after successful order creation
+        apiService.clearGuestCartToken();
+        
+        if (options && "onSuccess" in options && typeof options.onSuccess === "function") {
+          options.onSuccess(response, variables, context);
+        }
+      },
+      ...options
+    }
   );
 };
 

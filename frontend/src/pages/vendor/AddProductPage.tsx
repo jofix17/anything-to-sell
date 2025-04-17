@@ -34,7 +34,7 @@ const VendorAddProductPage: React.FC = () => {
   } = useCategories();
 
   // Extract categories from response
-  const categories: Category[] = categoriesResponse?.data || [];
+  const categories: Category[] = categoriesResponse || [];
 
   // Create product mutation
   const createProductMutation = useCreateProduct({

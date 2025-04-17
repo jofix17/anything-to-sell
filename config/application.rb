@@ -51,5 +51,12 @@ module AnythingToSell
     config.generators do |g|
       g.orm(:active_record, primary_key_type: :uuid)
     end
+
+    config.middleware.use ActionDispatch::Cookies
+    config.middleware.use ActionDispatch::Session::CookieStore,
+                          key: "_anything_to_sell_session",
+                          secure: Rails.env.production?,
+                          httponly: true
+    config.middleware.insert_after ActionDispatch::Cookies, ActionDispatch::Session::CookieStore
   end
 end

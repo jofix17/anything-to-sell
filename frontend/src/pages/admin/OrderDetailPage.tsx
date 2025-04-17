@@ -20,7 +20,7 @@ const AdminOrderDetailPage: React.FC = () => {
     refetch,
   } = useAdminOrderDetail(id || "");
 
-  const order = orderResponse?.data;
+  const order = orderResponse;
 
   // Set initial status once data is loaded
   React.useEffect(() => {

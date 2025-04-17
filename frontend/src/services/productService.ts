@@ -7,12 +7,13 @@ import {
   PaginatedResponse,
   ProductCreateData,
   ProductFilterParams,
-  ReviewCreateData
+  ReviewCreateData,
 } from "../types";
 import queryHooks from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
 
-const { useApiQuery, useApiMutation, usePrefetchQuery, usePaginatedQuery } = queryHooks;
+const { useApiQuery, useApiMutation, usePrefetchQuery, usePaginatedQuery } =
+  queryHooks;
 
 // Traditional API service methods
 class ProductService {
@@ -21,24 +22,24 @@ class ProductService {
     params: ProductFilterParams = {}
   ): Promise<ApiResponse<PaginatedResponse<Product>>> {
     return await apiService.get<ApiResponse<PaginatedResponse<Product>>>(
-      "/api/v1/products",
+      "/products",
       params
     );
   }
 
   async getProductById(id: string): Promise<ApiResponse<Product>> {
-    return await apiService.get<ApiResponse<Product>>(`/api/v1/products/${id}`);
+    return await apiService.get<ApiResponse<Product>>(`/products/${id}`);
   }
 
   async getFeaturedProducts(limit = 8): Promise<ApiResponse<Product[]>> {
-    return await apiService.get<ApiResponse<Product[]>>("/api/v1/products/featured", {
+    return await apiService.get<ApiResponse<Product[]>>("/products/featured", {
       limit,
     });
   }
 
   async getNewArrivals(limit = 8): Promise<ApiResponse<Product[]>> {
     return await apiService.get<ApiResponse<Product[]>>(
-      "/api/v1/products/new-arrivals",
+      "/products/new_arrivals",
       { limit }
     );
   }
@@ -48,7 +49,7 @@ class ProductService {
     limit = 4
   ): Promise<ApiResponse<Product[]>> {
     return await apiService.get<ApiResponse<Product[]>>(
-      `/api/v1/products/${productId}/related`,
+      `/products/${productId}/related`,
       { limit }
     );
   }
@@ -58,7 +59,7 @@ class ProductService {
     productData: ProductCreateData
   ): Promise<ApiResponse<Product>> {
     return await apiService.post<ApiResponse<Product>>(
-      "/api/v1/vendor/products",
+      "/vendor/products",
       productData
     );
   }
@@ -68,13 +69,13 @@ class ProductService {
     productData: Partial<ProductCreateData>
   ): Promise<ApiResponse<Product>> {
     return await apiService.put<ApiResponse<Product>>(
-      `/api/v1/vendor/products/${id}`,
+      `/vendor/products/${id}`,
       productData
     );
   }
 
   async deleteProduct(id: string): Promise<ApiResponse<null>> {
-    return await apiService.delete<ApiResponse<null>>(`/api/v1/vendor/products/${id}`);
+    return await apiService.delete<ApiResponse<null>>(`/vendor/products/${id}`);
   }
 
   async uploadProductImage(
@@ -87,7 +88,7 @@ class ProductService {
     formData.append("isPrimary", isPrimary.toString());
 
     return await apiService.post<ApiResponse<{ id: string; imageUrl: string }>>(
-      `/api/v1/vendor/products/${productId}/images`,
+      `/vendor/products/${productId}/images`,
       formData
     );
   }
@@ -97,7 +98,7 @@ class ProductService {
     imageId: string
   ): Promise<ApiResponse<null>> {
     return await apiService.delete<ApiResponse<null>>(
-      `/api/v1/vendor/products/${productId}/images/${imageId}`
+      `/vendor/products/${productId}/images/${imageId}`
     );
   }
 
@@ -106,41 +107,41 @@ class ProductService {
     imageId: string
   ): Promise<ApiResponse<null>> {
     return await apiService.patch<ApiResponse<null>>(
-      `/api/v1/vendor/products/${productId}/images/${imageId}/set-primary`
+      `/vendor/products/${productId}/images/${imageId}/set-primary`
     );
   }
 
   // Category methods
   async getCategories(): Promise<ApiResponse<Category[]>> {
-    return await apiService.get<ApiResponse<Category[]>>("/api/v1/categories");
+    return await apiService.get<ApiResponse<Category[]>>("/categories");
   }
 
   async getCategoryById(id: string): Promise<ApiResponse<Category>> {
-    return await apiService.get<ApiResponse<Category>>(`/api/v1/categories/${id}`);
+    return await apiService.get<ApiResponse<Category>>(`/categories/${id}`);
   }
 
   // Review methods
   async getProductReviews(productId: string): Promise<ApiResponse<Review[]>> {
     return await apiService.get<ApiResponse<Review[]>>(
-      `/api/v1/products/${productId}/reviews`
+      `/products/${productId}/reviews`
     );
   }
 
   async createReview(
     reviewData: ReviewCreateData
   ): Promise<ApiResponse<Review>> {
-    return await apiService.post<ApiResponse<Review>>("/api/v1/reviews", reviewData);
+    return await apiService.post<ApiResponse<Review>>("/reviews", reviewData);
   }
 
   async updateReview(
     id: string,
     data: Partial<ReviewCreateData>
   ): Promise<ApiResponse<Review>> {
-    return await apiService.put<ApiResponse<Review>>(`/api/v1/reviews/${id}`, data);
+    return await apiService.put<ApiResponse<Review>>(`/reviews/${id}`, data);
   }
 
   async deleteReview(id: string): Promise<ApiResponse<null>> {
-    return await apiService.delete<ApiResponse<null>>(`/api/v1/reviews/${id}`);
+    return await apiService.delete<ApiResponse<null>>(`/reviews/${id}`);
   }
 }
 
@@ -275,7 +276,7 @@ export const useDeleteReview = (options = {}) => {
 
 export const useUploadProductImage = (productId: string, options = {}) => {
   return useApiMutation(
-    ({ file, isPrimary = false }: { file: File; isPrimary?: boolean }) => 
+    ({ file, isPrimary = false }: { file: File; isPrimary?: boolean }) =>
       productService.uploadProductImage(productId, file, isPrimary),
     options
   );
@@ -283,7 +284,7 @@ export const useUploadProductImage = (productId: string, options = {}) => {
 
 export const useDeleteProductImage = (options = {}) => {
   return useApiMutation(
-    ({ productId, imageId }: { productId: string; imageId: string }) => 
+    ({ productId, imageId }: { productId: string; imageId: string }) =>
       productService.deleteProductImage(productId, imageId),
     options
   );
@@ -291,7 +292,7 @@ export const useDeleteProductImage = (options = {}) => {
 
 export const useSetPrimaryImage = (options = {}) => {
   return useApiMutation(
-    ({ productId, imageId }: { productId: string; imageId: string }) => 
+    ({ productId, imageId }: { productId: string; imageId: string }) =>
       productService.setPrimaryImage(productId, imageId),
     options
   );
@@ -300,11 +301,10 @@ export const useSetPrimaryImage = (options = {}) => {
 // Hook for prefetching product details
 export const usePrefetchProductDetail = () => {
   const prefetchQuery = usePrefetchQuery<Product>();
-  
+
   return (id: string) => {
-    return prefetchQuery(
-      QueryKeys.products.detail(id),
-      () => productService.getProductById(id)
+    return prefetchQuery(QueryKeys.products.detail(id), () =>
+      productService.getProductById(id)
     );
   };
 };

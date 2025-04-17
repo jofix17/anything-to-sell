@@ -19,7 +19,7 @@ const VendorOrderDetailPage: React.FC = () => {
   });
 
   // Extract order data from response
-  const order: Order | null = orderResponse?.data || null;
+  const order: Order | null = orderResponse || null;
 
   // Update order status mutation
   const updateOrderStatusMutation = useUpdateOrderStatus({
