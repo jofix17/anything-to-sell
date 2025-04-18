@@ -1,31 +1,72 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   useCart,
   useUpdateCartItem,
   useRemoveCartItem,
+  useClearCart,
 } from "../services/cartService";
+import { QueryKeys } from "../utils/queryKeys";
+import { useInvalidateQueries } from "../hooks/useQueryHooks";
 
 const CartPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const invalidateQueries = useInvalidateQueries();
 
-  // Use the React Query hook for cart - guest carts are now supported
-  const { data: cart, isLoading, error } = useCart();
+  // Use the React Query hook for cart - properly handling guest & user carts
+  const {
+    data: cartResponse,
+    isLoading,
+    error,
+  } = useCart({
+    // Retry cart loading twice
+    retry: 2,
+    // Don't consider this stale immediately, reduces redundant fetches
+    staleTime: 30000,
+  });
 
-  // Use mutation hooks for cart operations
+  // Extract the actual cart from the response
+  const cart = cartResponse;
+
+  // Use mutation hooks for cart operations with proper error handling
   const updateCartItemMutation = useUpdateCartItem({
+    onSuccess: () => {
+      invalidateQueries(QueryKeys.cart.current);
+    },
     onError: (error: Error) => {
       console.error("Failed to update quantity:", error);
     },
   });
 
   const removeCartItemMutation = useRemoveCartItem({
+    onSuccess: () => {
+      invalidateQueries(QueryKeys.cart.current);
+    },
     onError: (error: Error) => {
       console.error("Failed to remove item:", error);
     },
   });
+
+  const clearCartMutation = useClearCart({
+    onSuccess: () => {
+      invalidateQueries(QueryKeys.cart.current);
+    },
+    onError: (error: Error) => {
+      console.error("Failed to clear cart:", error);
+    },
+  });
+
+  // Ensure we have the current guest token on component mount
+  useEffect(() => {
+    const guestCartToken = localStorage.getItem("guest_cart_token");
+
+    // If there's a stored token but cart is empty, refetch to try loading the cart
+    if (guestCartToken && (!cart || cart.items.length === 0) && !isLoading) {
+      invalidateQueries(QueryKeys.cart.current);
+    }
+  }, [cart, isLoading, isAuthenticated, invalidateQueries]);
 
   const handleQuantityChange = async (
     cartItemId: string,
@@ -46,6 +87,14 @@ const CartPage: React.FC = () => {
   const handleRemoveItem = async (cartItemId: string) => {
     try {
       await removeCartItemMutation.mutateAsync(cartItemId);
+    } catch {
+      // Error is handled by the onError callback
+    }
+  };
+
+  const handleClearCart = async () => {
+    try {
+      await clearCartMutation.mutateAsync({});
     } catch {
       // Error is handled by the onError callback
     }
@@ -111,7 +160,7 @@ const CartPage: React.FC = () => {
     );
   }
 
-  if (!cart || !cart || cart.items.length === 0) {
+  if (!cart || cart.items.length === 0) {
     return (
       <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
         <div className="text-center">
@@ -134,17 +183,15 @@ const CartPage: React.FC = () => {
     );
   }
 
-  const cartData = cart;
-
   // Calculate subtotal from items
-  const subtotal = cartData.items.reduce((total, item) => {
+  const subtotal = cart.items.reduce((total, item) => {
     const itemPrice = item.product.salePrice || item.product.price;
     return total + Number(itemPrice) * Number(item.quantity);
   }, 0);
 
   // Set default values if not provided by API
-  const shippingCost = cartData.shippingCost || 0;
-  const taxAmount = cartData.taxAmount || 0;
+  const shippingCost = cart.shippingCost || 0;
+  const taxAmount = cart.taxAmount || 0;
   const total = subtotal + shippingCost + taxAmount;
 
   return (
@@ -197,7 +244,7 @@ const CartPage: React.FC = () => {
             role="list"
             className="border-t border-b border-gray-200 divide-y divide-gray-200"
           >
-            {cartData.items.map((item) => (
+            {cart.items.map((item) => (
               <li key={item.id} className="py-6 flex">
                 <div className="flex-shrink-0 w-24 h-24 border border-gray-200 rounded-md overflow-hidden">
                   {item.product.images && item.product.images.length > 0 ? (
@@ -284,6 +331,19 @@ const CartPage: React.FC = () => {
               </li>
             ))}
           </ul>
+
+          {/* Clear cart button */}
+          {cart.items.length > 0 && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleClearCart}
+                className="text-sm text-red-600 hover:text-red-500"
+              >
+                Clear all items
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Order summary */}

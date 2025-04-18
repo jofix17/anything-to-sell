@@ -110,8 +110,8 @@ const App: React.FC = () => {
       <Router>
         <NotificationProvider>
           <ThemeProvider>
-            <AuthProvider>
-              <CartProvider>
+            <CartProvider>
+              <AuthProvider>
                 <WishlistProvider>
                   <NotificationToast />
                   <Routes>
@@ -247,8 +247,8 @@ const App: React.FC = () => {
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
                 </WishlistProvider>
-              </CartProvider>
-            </AuthProvider>
+              </AuthProvider>
+            </CartProvider>
           </ThemeProvider>
         </NotificationProvider>
       </Router>

@@ -74,13 +74,16 @@ export const useRemoveFromWishlist = (options = {}) => {
   );
 };
 
-export const useIsProductInWishlist = (productId: string, options = {}) => {
+export const useIsProductInWishlist = (
+  productId: string,
+  options: { enabled?: boolean } = {}
+) => {
   return useApiQuery(
     [...QueryKeys.user.wishlist, "check", productId],
     () => wishlistService.isProductInWishlist(productId),
     {
       ...options,
-      enabled: !!productId, // Only run query if productId is provided
+      enabled: !!productId && options.enabled, // Only run query if productId is provided
     }
   );
 };

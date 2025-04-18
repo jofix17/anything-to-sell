@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  ShoppingCartIcon,
   UserIcon,
   HeartIcon,
   Bars3Icon as MenuIcon,
@@ -10,9 +9,9 @@ import {
   XMarkIcon as XIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../../context/AuthContext";
-import { useCart } from "../../context/CartContext";
 import { useCategories } from "../../services/productService";
 import { APP_NAME } from "../../utils/appName";
+import CartMini from "../cart/CartMini";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
@@ -29,7 +28,6 @@ const Header: React.FC<HeaderProps> = ({
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuth();
-  const { cart } = useCart();
   const navigate = useNavigate();
 
   // Fetch categories using the React Query hook
@@ -77,6 +75,13 @@ const Header: React.FC<HeaderProps> = ({
     } catch (error) {
       console.error("Logout failed:", error);
     }
+  };
+
+  // Determine the text and hover color classes based on scroll state
+  const getColorClasses = () => {
+    return isScrolled
+      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+      : "text-primary-600 hover:text-gray-600 hover:bg-gray-100";
   };
 
   return (
@@ -259,11 +264,7 @@ const Header: React.FC<HeaderProps> = ({
             {/* Search button */}
             <button
               onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className={`p-2 rounded-md ${
-                isScrolled
-                  ? "text-gray-600 hover:text-gray-900"
-                  : "text-primary-600 hover:text-gray-600"
-              } hover:bg-gray-100`}
+              className={`p-2 rounded-md ${getColorClasses()}`}
             >
               <SearchIcon className="w-5 h-5" />
             </button>
@@ -272,43 +273,21 @@ const Header: React.FC<HeaderProps> = ({
             {isAuthenticated && (
               <Link
                 to="/wishlist"
-                className={`p-2 rounded-md ${
-                  isScrolled
-                    ? "text-gray-600 hover:text-gray-900"
-                    : "text-primary-600"
-                } hover:bg-gray-100`}
+                className={`p-2 rounded-md ${getColorClasses()}`}
               >
                 <HeartIcon className="w-5 h-5" />
               </Link>
             )}
 
-            {/* Cart */}
-            <Link
-              to="/cart"
-              className={`p-2 rounded-md ${
-                isScrolled
-                  ? "text-gray-600 hover:text-gray-900"
-                  : "text-primary-600 hover:text-gray-600"
-              } hover:bg-gray-100 relative`}
-            >
-              <ShoppingCartIcon className="w-5 h-5" />
-              {cart && cart.totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 bg-primary-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {cart.totalItems > 9 ? "9+" : cart.totalItems}
-                </span>
-              )}
-            </Link>
+            {/* Cart - direct use of CartMini with proper className */}
+            <CartMini className={getColorClasses()} />
 
             {/* User dropdown */}
             {isAuthenticated ? (
               <div className="relative">
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                  className={`flex items-center space-x-1 p-2 rounded-md ${
-                    isScrolled
-                      ? "text-gray-600 hover:text-gray-900"
-                      : "text-primary-600"
-                  } hover:bg-gray-100`}
+                  className={`flex items-center space-x-1 p-2 rounded-md ${getColorClasses()}`}
                   aria-expanded={isUserDropdownOpen}
                   aria-haspopup="true"
                 >
@@ -383,11 +362,7 @@ const Header: React.FC<HeaderProps> = ({
             ) : (
               <Link
                 to="/login"
-                className={`p-2 rounded-md ${
-                  isScrolled
-                    ? "text-gray-600 hover:text-gray-900"
-                    : "text-primary-600 hover:text-gray-600"
-                } hover:bg-gray-100 flex items-center space-x-1`}
+                className={`p-2 rounded-md ${getColorClasses()} flex items-center space-x-1`}
               >
                 <span className="hidden sm:block text-sm font-medium">
                   Login
