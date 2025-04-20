@@ -44,16 +44,6 @@ class ProductService {
     );
   }
 
-  async getRelatedProducts(
-    productId: string,
-    limit = 4
-  ): Promise<ApiResponse<Product[]>> {
-    return await apiService.get<ApiResponse<Product[]>>(
-      `/products/${productId}/related`,
-      { limit }
-    );
-  }
-
   // Vendor product management
   async createProduct(
     productData: ProductCreateData
@@ -181,21 +171,6 @@ export const useNewArrivals = (limit = 8, options = {}) => {
     QueryKeys.products.newArrivals,
     () => productService.getNewArrivals(limit),
     options
-  );
-};
-
-export const useRelatedProducts = (
-  productId: string,
-  limit = 4,
-  options = {}
-) => {
-  return useApiQuery(
-    QueryKeys.products.related(productId),
-    () => productService.getRelatedProducts(productId, limit),
-    {
-      ...options,
-      enabled: !!productId, // Only run query if productId is provided
-    }
   );
 };
 

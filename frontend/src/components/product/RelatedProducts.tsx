@@ -1,139 +1,51 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { useCart } from "../../context/CartContext";
-import StarRating from "../common/StarRating";
 import Button from "../common/Button";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { toast } from "react-toastify";
-
-interface RelatedProduct {
-  id: string;
-  name: string;
-  price: number;
-  discountedPrice?: number;
-  image: string;
-  rating: number;
-  reviewCount: number;
-  category: string;
-  vendor: {
-    id: string;
-    name: string;
-  };
-}
+import { Category, Product, ProductFilterParams } from "../../types";
+import { useProducts } from "../../services/productService";
 
 interface RelatedProductsProps {
   currentProductId: string;
-  category: string;
-  tags?: string[];
+  category: Category;
   limit?: number;
 }
 
 const RelatedProducts: React.FC<RelatedProductsProps> = ({
   currentProductId,
   category,
-  tags = [],
   limit = 4,
 }) => {
   const { addToCart } = useCart();
-  const [products, setProducts] = useState<RelatedProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Create filter params to get products from the same category
+  const filterParams: ProductFilterParams = {
+    categoryId: category.id,
+    perPage: limit + 1, // Fetch one extra to account for potential current product
+    page: 1
+  };
+  
+  // Fetch products in the same category using the standard products endpoint
+  const {
+    data: relatedProductsResponse,
+    isLoading,
+    error,
+  } = useProducts(filterParams, {
+    enabled: !!category?.id, // Only run query if category ID exists
+  });
 
-  useEffect(() => {
-    const fetchRelatedProducts = async () => {
-      try {
-        setLoading(true);
-        // In a real app, this would be an API call
-        // const response = await api.get('/products', {
-        //   params: {
-        //     category,
-        //     tags: tags.join(','),
-        //     exclude: currentProductId,
-        //     limit,
-        //   },
-        // });
+  // Extract products from the API response and filter out the current product
+  const productsData = relatedProductsResponse?.data || [];
+  const products = productsData.filter(product => product.id !== currentProductId).slice(0, limit);
 
-        // For now, simulate API call with timeout
-        setTimeout(() => {
-          // Generate mock related products
-          const mockProducts: RelatedProduct[] = [
-            {
-              id: "2",
-              name: "Portable Bluetooth Speaker",
-              price: 129.99,
-              discountedPrice: 99.99,
-              image:
-                "https://via.placeholder.com/300x300?text=Bluetooth+Speaker",
-              rating: 4.6,
-              reviewCount: 87,
-              category: "Electronics",
-              vendor: {
-                id: "v123",
-                name: "AudioTech Pro",
-              },
-            },
-            {
-              id: "3",
-              name: "Noise Cancelling Earbuds",
-              price: 179.99,
-              image:
-                "https://via.placeholder.com/300x300?text=Wireless+Earbuds",
-              rating: 4.4,
-              reviewCount: 142,
-              category: "Electronics",
-              vendor: {
-                id: "v123",
-                name: "AudioTech Pro",
-              },
-            },
-            {
-              id: "4",
-              name: "Premium Wired Headphones",
-              price: 249.99,
-              discountedPrice: 199.99,
-              image:
-                "https://via.placeholder.com/300x300?text=Wired+Headphones",
-              rating: 4.8,
-              reviewCount: 65,
-              category: "Electronics",
-              vendor: {
-                id: "v456",
-                name: "SoundMasters",
-              },
-            },
-            {
-              id: "5",
-              name: "Bluetooth Headphone Adapter",
-              price: 39.99,
-              image:
-                "https://via.placeholder.com/300x300?text=Headphone+Adapter",
-              rating: 4.1,
-              reviewCount: 29,
-              category: "Electronics",
-              vendor: {
-                id: "v789",
-                name: "TechGadgets",
-              },
-            },
-          ];
-
-          setProducts(mockProducts);
-          setLoading(false);
-        }, 600);
-      } catch (err) {
-        console.error("Error fetching related products:", err);
-        setLoading(false);
-      }
-    };
-
-    fetchRelatedProducts();
-  }, [currentProductId, category, tags, limit]);
-
-  const handleAddToCart = (product: RelatedProduct) => {
+  const handleAddToCart = (product: Product) => {
     addToCart(product.id, 1);
     toast.success(`Added ${product.name} to cart!`);
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex justify-center py-8">
         <LoadingSpinner />
@@ -141,94 +53,87 @@ const RelatedProducts: React.FC<RelatedProductsProps> = ({
     );
   }
 
-  if (products.length === 0) {
-    return null;
+  if (error || products.length === 0) {
+    return null; // Don't show the section if there's an error or no products
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {products.map((product) => (
-        <div
-          key={product.id}
-          className="group relative border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
-        >
-          {/* Product Image with Link */}
-          <Link
-            to={`/products/${product.id}`}
-            className="block aspect-square overflow-hidden bg-gray-100"
+    <div className="mt-12 mb-16">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">You may also like</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {products.map((product) => (
+          <div
+            key={product.id}
+            className="bg-white rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300"
           >
-            <img
-              src={product.image}
-              alt={product.name}
-              className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
-            />
-          </Link>
-
-          {/* Discount Badge */}
-          {product.discountedPrice && (
-            <div className="absolute top-2 right-2 bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded">
-              {Math.round(
-                ((product.price - product.discountedPrice) / product.price) *
-                  100
-              )}
-              % OFF
-            </div>
-          )}
-
-          {/* Product Info */}
-          <div className="p-4">
+            {/* Product Image with Link */}
             <Link
-              to={`/vendor/${product.vendor.id}`}
-              className="text-gray-600 hover:text-blue-600 text-xs font-medium mb-1 block"
+              to={`/products/${product.id}`}
+              className="block aspect-square overflow-hidden"
             >
-              {product.vendor.name}
-            </Link>
-
-            <Link to={`/products/${product.id}`} className="block">
-              <h3 className="text-sm font-medium text-gray-900 mb-1 hover:text-blue-600 transition-colors line-clamp-2">
-                {product.name}
-              </h3>
-            </Link>
-
-            <div className="flex items-center gap-1 mb-2">
-              <StarRating
-                rating={product.rating}
-                size="small"
-                showLabel={false}
-              />
-              <span className="text-xs text-gray-500">
-                ({product.reviewCount})
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between mb-3">
-              {product.discountedPrice ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-bold text-gray-900">
-                    ${product.discountedPrice.toFixed(2)}
-                  </span>
-                  <span className="text-xs text-gray-500 line-through">
-                    ${product.price.toFixed(2)}
-                  </span>
-                </div>
+              {product.images && product.images.length > 0 ? (
+                <img
+                  src={product.images[0].imageUrl}
+                  alt={product.name}
+                  className="h-full w-full object-cover object-center transition-transform duration-300 hover:scale-105"
+                />
               ) : (
-                <span className="text-sm font-bold text-gray-900">
-                  ${product.price.toFixed(2)}
-                </span>
+                <div className="h-full w-full flex items-center justify-center bg-gray-200 text-gray-500">
+                  No Image
+                </div>
               )}
-            </div>
+            </Link>
 
-            <Button
-              onClick={() => handleAddToCart(product)}
-              variant="primary"
-              size="small"
-              fullWidth
-            >
-              Add to Cart
-            </Button>
+            <div className="p-4">
+              {/* Vendor Name */}
+              {product.vendor && (
+                <Link
+                  to={`/vendor/${product.vendor.id}`}
+                  className="text-gray-600 hover:text-blue-600 text-xs font-medium mb-1 block"
+                >
+                  {product.vendor.name}
+                </Link>
+              )}
+
+              {/* Product Name */}
+              <Link to={`/products/${product.id}`} className="block">
+                <h3 className="text-base font-semibold text-gray-800 mb-2 hover:text-blue-600 transition-colors line-clamp-2">
+                  {product.name}
+                </h3>
+              </Link>
+
+              {/* Price */}
+              <div className="mb-3">
+                {product.salePrice ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-gray-900">
+                      ${product.salePrice}
+                    </span>
+                    <span className="text-sm text-gray-500 line-through">
+                      ${product.price}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-lg font-bold text-gray-900">
+                    ${product.price}
+                  </span>
+                )}
+              </div>
+
+              {/* Add to Cart Button */}
+              <Button
+                onClick={() => handleAddToCart(product)}
+                variant="primary"
+                size="medium"
+                fullWidth
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2"
+              >
+                Add to Cart
+              </Button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };

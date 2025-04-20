@@ -16,6 +16,7 @@ import {
   useIsProductInWishlist,
 } from "../services/wishlistService";
 import { ApiResponse, WishlistItem } from "../types";
+import RelatedProducts from "../components/product/RelatedProducts";
 
 type ProductTab = "description" | "specifications" | "reviews";
 
@@ -499,6 +500,8 @@ const ProductDetailPage: React.FC = () => {
               </table>
             </div>
           )}
+
+          <RelatedProducts currentProductId={product.id} category={product.category} />
 
           {activeTab === "reviews" && (
             <ProductReviews
