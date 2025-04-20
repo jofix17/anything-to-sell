@@ -15,7 +15,7 @@ module Api
           # For guest users, create a new cart
           if !user_signed_in?
             # Create a new guest cart with a secure random token
-            new_token = SecureRandom.uuid
+            new_token = session[:guest_cart_token] || SecureRandom.uuid
             @cart = Cart.create(guest_token: new_token)
             Rails.logger.info "SHOW: Created new guest cart with token: #{new_token}"
             # Store the guest token in session instead of header
@@ -27,7 +27,7 @@ module Api
           else
             # Edge case: user_signed_in? is true but current_user is nil
             # Create a guest cart as fallback
-            new_token = SecureRandom.uuid
+            new_token = session[:guest_cart_token] || SecureRandom.uuid
             @cart = Cart.create(guest_token: new_token)
             Rails.logger.info "SHOW: Created fallback guest cart with token: #{new_token}"
             # Store the guest token in session instead of header
