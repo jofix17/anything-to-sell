@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   UserIcon,
@@ -12,6 +12,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../services/productService";
 import { APP_NAME } from "../../utils/appName";
 import CartMini from "../cart/CartMini";
+import useOutsideClick from "../../hooks/useOutsideClick";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
@@ -29,6 +30,24 @@ const Header: React.FC<HeaderProps> = ({
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Refs for dropdown containers
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Use our custom hook to handle outside clicks
+  useOutsideClick(categoryDropdownRef, () => {
+    if (isCategoryDropdownOpen) setIsCategoryDropdownOpen(false);
+  });
+
+  useOutsideClick(userDropdownRef, () => {
+    if (isUserDropdownOpen) setIsUserDropdownOpen(false);
+  });
+
+  useOutsideClick(searchRef, () => {
+    if (isSearchOpen) setIsSearchOpen(false);
+  });
 
   // Fetch categories using the React Query hook
   const {
@@ -133,7 +152,7 @@ const Header: React.FC<HeaderProps> = ({
             </Link>
 
             {/* Categories dropdown */}
-            <div className="relative">
+            <div ref={categoryDropdownRef} className="relative">
               <button
                 className={`flex items-center text-sm font-semibold ${
                   isScrolled
@@ -169,7 +188,6 @@ const Header: React.FC<HeaderProps> = ({
                       No categories found
                     </div>
                   ) : (
-                    // Filter to only show parent categories (where parentId is null)
                     categories
                       .filter((category) => category.parentId === null)
                       .map((category) => {
@@ -261,13 +279,43 @@ const Header: React.FC<HeaderProps> = ({
 
           {/* Right side icons */}
           <div className="flex items-center space-x-4">
-            {/* Search button */}
-            <button
-              onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className={`p-2 rounded-md ${getColorClasses()}`}
-            >
-              <SearchIcon className="w-5 h-5" />
-            </button>
+            {/* Search button and dropdown */}
+            <div ref={searchRef} className="relative">
+              <button
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className={`p-2 rounded-md ${getColorClasses()}`}
+              >
+                <SearchIcon className="w-5 h-5" />
+              </button>
+              
+              {/* Search bar */}
+              {isSearchOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 sm:w-80 bg-white rounded-md shadow-lg p-2 z-50">
+                  <form onSubmit={handleSearch}>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search for products..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="absolute inset-y-0 left-0 flex items-center pl-3">
+                        <SearchIcon className="w-5 h-5 text-gray-400" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsSearchOpen(false)}
+                        className="absolute inset-y-0 right-0 flex items-center pr-3"
+                      >
+                        <XIcon className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
 
             {/* Wishlist */}
             {isAuthenticated && (
@@ -279,12 +327,12 @@ const Header: React.FC<HeaderProps> = ({
               </Link>
             )}
 
-            {/* Cart - direct use of CartMini with proper className */}
+            {/* Cart */}
             <CartMini className={getColorClasses()} />
 
             {/* User dropdown */}
             {isAuthenticated ? (
-              <div className="relative">
+              <div ref={userDropdownRef} className="relative">
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
                   className={`flex items-center space-x-1 p-2 rounded-md ${getColorClasses()}`}
@@ -372,34 +420,6 @@ const Header: React.FC<HeaderProps> = ({
             )}
           </div>
         </div>
-
-        {/* Search bar */}
-        {isSearchOpen && (
-          <div className="pt-4 pb-2">
-            <form onSubmit={handleSearch}>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search for products..."
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  autoFocus
-                />
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3">
-                  <SearchIcon className="w-5 h-5 text-gray-400" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsSearchOpen(false)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3"
-                >
-                  <XIcon className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
       </div>
 
       {/* Mobile menu overlay */}
