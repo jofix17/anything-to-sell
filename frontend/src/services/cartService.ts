@@ -15,173 +15,33 @@ const { useApiQuery, useApiMutation, usePrefetchQuery } = queryHooks;
 
 /**
  * Handles all cart-related API operations and provides React Query hooks
- * for cart data management with proper token handling for guest carts
+ * for cart data management leveraging Rails session cookies
  */
 class CartService {
-  // Guest cart token storage key
-  private readonly GUEST_CART_TOKEN_KEY = "guest_cart_token";
-
-  // Get the current guest cart token
-  getGuestCartToken(): string | null {
-    return localStorage.getItem(this.GUEST_CART_TOKEN_KEY);
-  }
-
-  // Save guest cart token to localStorage
-  saveGuestCartToken(token: string): void {
-    if (token && token.trim() !== "") {
-      localStorage.setItem(this.GUEST_CART_TOKEN_KEY, token);
-      console.debug("Guest cart token saved:", token);
-    }
-  }
-
-  // Clear guest cart token
-  clearGuestCartToken(): void {
-    localStorage.removeItem(this.GUEST_CART_TOKEN_KEY);
-    console.debug("Guest cart token cleared");
-  }
-
   // Cart methods
   async getCart(): Promise<ApiResponse<Cart>> {
-    try {
-      const response = await apiService.get<ApiResponse<Cart>>("/cart");
-
-      // Check if there's a guest cart token in the response headers
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      return response;
-    } catch (error) {
-      // Still try to save guest cart token even on error
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      throw error;
-    }
+    return await apiService.get<ApiResponse<Cart>>("/cart");
   }
 
   async addToCart(data: AddToCartData): Promise<ApiResponse<Cart>> {
-    try {
-      const response = await apiService.post<ApiResponse<Cart>>(
-        "/cart/items",
-        data
-      );
-
-      // Check for and save guest cart token from response
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      return response;
-    } catch (error) {
-      // Still try to save guest cart token even on error
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      throw error;
-    }
+    return await apiService.post<ApiResponse<Cart>>("/cart/items", data);
   }
 
   async updateCartItem(data: UpdateCartItemData): Promise<ApiResponse<Cart>> {
-    try {
-      const response = await apiService.put<ApiResponse<Cart>>(
-        `/cart/items/${data.cartItemId}`,
-        {
-          quantity: data.quantity,
-        }
-      );
-
-      // Check for and save guest cart token from response
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
+    return await apiService.put<ApiResponse<Cart>>(
+      `/cart/items/${data.cartItemId}`,
+      {
+        quantity: data.quantity,
       }
-
-      return response;
-    } catch (error) {
-      // Still try to save guest cart token even on error
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      throw error;
-    }
+    );
   }
 
   async removeCartItem(cartItemId: string): Promise<ApiResponse<Cart>> {
-    try {
-      const response = await apiService.delete<ApiResponse<Cart>>(
-        `/cart/items/${cartItemId}`
-      );
-
-      // Check for and save guest cart token from response
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      return response;
-    } catch (error) {
-      // Still try to save guest cart token even on error
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      throw error;
-    }
+    return await apiService.delete<ApiResponse<Cart>>(`/cart/items/${cartItemId}`);
   }
 
   async clearCart(): Promise<ApiResponse<Cart>> {
-    try {
-      const response = await apiService.delete<ApiResponse<Cart>>(
-        "/cart/clear"
-      );
-
-      // Check for and save guest cart token from response
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      return response;
-    } catch (error) {
-      // Still try to save guest cart token even on error
-      const tokenFromHeaders = apiService.getGuestCartToken();
-      if (tokenFromHeaders) {
-        this.saveGuestCartToken(tokenFromHeaders);
-      }
-
-      throw error;
-    }
-  }
-
-  // Transfer guest cart to user cart after login
-  async transferCart(): Promise<ApiResponse<Cart>> {
-    const guestCartToken = this.getGuestCartToken();
-    if (!guestCartToken) {
-      return {
-        success: true,
-        message: "No guest cart to transfer",
-        data: {} as Cart,
-      };
-    }
-
-    const response = await apiService.post<ApiResponse<Cart>>("/cart/transfer");
-
-    // After successful transfer, clear the guest cart token
-    if (response.success) {
-      this.clearGuestCartToken();
-    }
-
-    return response;
+    return await apiService.delete<ApiResponse<Cart>>("/cart/clear");
   }
 
   // Address methods
@@ -220,14 +80,7 @@ class CartService {
 
   // Order methods
   async createOrder(data: CreateOrderData): Promise<ApiResponse<Order>> {
-    const response = await apiService.post<ApiResponse<Order>>("/orders", data);
-
-    // Clear guest cart token after successful order creation
-    if (response.success) {
-      this.clearGuestCartToken();
-    }
-
-    return response;
+    return await apiService.post<ApiResponse<Order>>("/orders", data);
   }
 
   async getOrders(): Promise<ApiResponse<Order[]>> {
@@ -269,33 +122,11 @@ const cartService = new CartService();
 
 /**
  * Hook for accessing the current cart data
- * Automatically handles guest cart token persistence
  */
-export const useCart = (options = {}) => {
+export const useGetCart = (options = {}) => {
   return useApiQuery(QueryKeys.cart.current, () => cartService.getCart(), {
     refetchOnWindowFocus: false,
     staleTime: 30000, // 30 seconds
-    ...options,
-  });
-};
-
-/**
- * Hook for transferring a guest cart to a user cart after login
- */
-export const useTransferCart = (options = {}) => {
-  return useApiMutation(() => cartService.transferCart(), {
-    onSuccess: (response, variables, context) => {
-      // Clear guest cart token after successful transfer
-      cartService.clearGuestCartToken();
-
-      if (
-        options &&
-        "onSuccess" in options &&
-        typeof options.onSuccess === "function"
-      ) {
-        options.onSuccess(response, variables, context);
-      }
-    },
     ...options,
   });
 };
@@ -438,21 +269,7 @@ export const useOrderDetail = (
 export const useCreateOrder = (options = {}) => {
   return useApiMutation(
     (data: CreateOrderData) => cartService.createOrder(data),
-    {
-      onSuccess: (response, variables, context) => {
-        // Clear guest cart token after successful order creation
-        cartService.clearGuestCartToken();
-
-        if (
-          options &&
-          "onSuccess" in options &&
-          typeof options.onSuccess === "function"
-        ) {
-          options.onSuccess(response, variables, context);
-        }
-      },
-      ...options,
-    }
+    options
   );
 };
 

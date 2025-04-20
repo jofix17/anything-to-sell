@@ -5,6 +5,7 @@ import {
   EyeSlashIcon as EyeOffIcon,
 } from "@heroicons/react/24/outline";
 import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
 import { useNotification } from "../context/NotificationContext";
 import Button from "../components/common/Button";
 import { LoginCredentials } from "../types";
@@ -18,13 +19,14 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // We'll avoid using localError state to prevent multiple notifications
   const errorRef = useRef<string | null>(null);
   const notificationShownRef = useRef(false);
 
   // Context hooks
   const { login, isAuthenticated, error, clearError, isLoading } = useAuth();
+  const { refreshCart } = useCart();
   const { showNotification } = useNotification();
 
   // Navigation hooks
@@ -35,6 +37,15 @@ const LoginPage: React.FC = () => {
   // Refs to manage component state
   const isMountedRef = useRef(true);
   const loginAttemptedRef = useRef(false);
+
+  // Get redirect from URL if present
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const redirectPath = searchParams.get("redirect");
+    if (redirectPath) {
+      sessionStorage.setItem("redirectAfterLogin", redirectPath);
+    }
+  }, [location.search]);
 
   // Cleanup function to prevent memory leaks
   useEffect(() => {
@@ -62,18 +73,18 @@ const LoginPage: React.FC = () => {
     if (error && !notificationShownRef.current) {
       errorRef.current = error;
       notificationShownRef.current = true;
-      
+
       // Show notification without updating state
       showNotification(error, { type: "error" });
-      
+
       // Clear the global error to prevent interference
       clearError();
-      
+
       // Reset notification tracking after a delay
       setTimeout(() => {
         notificationShownRef.current = false;
       }, 1000);
-      
+
       // Important: Reset submitting state when error is detected
       setIsSubmitting(false);
     }
@@ -87,12 +98,29 @@ const LoginPage: React.FC = () => {
       !errorRef.current &&
       loginAttemptedRef.current
     ) {
-      // We successfully logged in, now navigate
-      navigate(from, { replace: true });
+      // After successful login, try to refresh the cart to get the transferred items
+      refreshCart()
+        .then(() => {
+          console.log("LoginPage: Cart refreshed after login");
+          // Navigate after a short delay to ensure cart is loaded
+          setTimeout(() => navigate(from, { replace: true }), 500);
+        })
+        .catch((err) => {
+          console.error("LoginPage: Failed to refresh cart:", err);
+          // Still navigate even if cart refresh fails
+          navigate(from, { replace: true });
+        });
+
       // Reset the login attempted flag
       loginAttemptedRef.current = false;
     }
-  }, [isAuthenticated, isLoading, navigate, from]);
+  }, [
+    isAuthenticated,
+    isLoading,
+    navigate,
+    from,
+    refreshCart,
+  ]);
 
   const handleLoginClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -110,13 +138,15 @@ const LoginPage: React.FC = () => {
       return;
     }
 
+    console.log("LoginPage: Attempting login");
+
     // Set flag to indicate login was attempted
     loginAttemptedRef.current = true;
     // Clear error ref
     errorRef.current = null;
     // Reset notification tracking
     notificationShownRef.current = false;
-    
+
     setIsSubmitting(true);
 
     try {
@@ -127,7 +157,8 @@ const LoginPage: React.FC = () => {
       await login(credentials.email, credentials.password);
 
       // If we get here, login was successful
-      // Navigation will happen through the useEffect
+      // The server will automatically handle cart transfer via session
+      // Navigation and cart refresh will happen through the useEffect
     } catch (err) {
       // Handle errors manually to prevent automatic redirects
       if (isMountedRef.current) {
@@ -137,21 +168,19 @@ const LoginPage: React.FC = () => {
             : "Login failed. Please check your credentials.";
 
         errorRef.current = errorMessage;
-        
+
         // Only show if not already shown by the useEffect
         if (!notificationShownRef.current) {
           showNotification(errorMessage, { type: "error" });
           notificationShownRef.current = true;
         }
-        
+
         loginAttemptedRef.current = false; // Reset the flag on error
-        
+
         // Explicitly reset submitting state on error
         setIsSubmitting(false);
       }
     }
-    // Note: We removed the finally block since we're handling state reset in both
-    // the try and catch blocks and in the error effect
   };
 
   return (

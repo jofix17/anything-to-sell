@@ -5,7 +5,21 @@ class Cart < ApplicationRecord
   has_many :cart_items, dependent: :destroy
   has_many :products, through: :cart_items
 
+  # Scopes
+  scope :guest_carts, -> { where.not(guest_token: nil) }
+  scope :user_carts, -> { where(guest_token: nil).where.not(user_id: nil) }
+  scope :inactive, -> { where("updated_at < ?", 30.days.ago) }
+
+  # Validations
+  validate :guest_token_or_user_id_present
+
+  # Callbacks
+  before_validation :ensure_unique_guest_token, if: -> { guest_token.present? }
+
   # Methods
+  def is_empty?
+    cart_items.empty?
+  end
 
   # Add a product to the cart
   def add_product(product, quantity = 1)
@@ -17,7 +31,8 @@ class Cart < ApplicationRecord
       current_item.save
     else
       # If product doesn't exist in cart, create new cart item
-      current_item = cart_items.create(product_id: product.id, quantity: quantity)
+      price = product.sale_price || product.price
+      current_item = cart_items.create(product_id: product.id, quantity: quantity, price: price)
     end
 
     current_item
@@ -61,15 +76,29 @@ class Cart < ApplicationRecord
     cart_items.sum { |item| item.product.current_price * item.quantity }
   end
 
-  # Merge guest cart with user cart after login
+  # Merge another cart into this one
   def merge_with(other_cart)
-    return unless other_cart
+    return unless other_cart && other_cart.cart_items.any?
 
     other_cart.cart_items.each do |item|
-      add_product(item.product, item.quantity)
+      existing_item = cart_items.find_by(product_id: item.product_id)
+
+      if existing_item
+        # Update quantity if product already exists
+        existing_item.update(quantity: existing_item.quantity + item.quantity)
+      else
+        # Move item to this cart
+        item.update(cart_id: id)
+      end
     end
 
-    other_cart.destroy
+    # Return the other cart for potential deletion by caller
+    other_cart
+  end
+
+  # Convert to user cart
+  def convert_to_user_cart(user_id)
+    update(user_id: user_id, guest_token: nil)
   end
 
   # Convert cart to order
@@ -98,6 +127,11 @@ class Cart < ApplicationRecord
     order
   end
 
+  # Class method to clean up abandoned guest carts
+  def self.cleanup_abandoned_carts(days_old = 30)
+    guest_carts.where("updated_at < ?", days_old.days.ago).destroy_all
+  end
+
   private
 
   # Calculate shipping cost (simplified implementation)
@@ -112,5 +146,19 @@ class Cart < ApplicationRecord
     # In a real application, this would consider tax rates by location
     # For now, we'll use a simple percentage
     total_price * 0.07 # 7% tax rate
+  end
+
+  # Validation: either guest_token or user_id must be present
+  def guest_token_or_user_id_present
+    if guest_token.blank? && user_id.blank?
+      errors.add(:base, "Cart must belong to a guest or a user")
+    end
+  end
+
+  # Ensure guest token is unique
+  def ensure_unique_guest_token
+    if guest_token.present? && Cart.where(guest_token: guest_token).where.not(id: id).exists?
+      self.guest_token = SecureRandom.uuid
+    end
   end
 end

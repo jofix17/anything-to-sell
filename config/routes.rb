@@ -103,7 +103,6 @@ Rails.application.routes.draw do
         put "items/:id", to: "carts#update_item"
         delete "items/:id", to: "carts#remove_item"
         delete "clear", to: "carts#clear"
-        post "transfer", to: "carts#transfer"
       end
 
       resources :orders, only: [ :index, :show, :create ]

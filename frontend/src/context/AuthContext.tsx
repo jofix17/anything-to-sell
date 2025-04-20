@@ -136,6 +136,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         error: null,
       }));
 
+      console.log("AuthContext login: Attempting login");
+
       const result = await loginMutation.mutateAsync({ email, password });
 
       // Extract user and token from the result
@@ -156,8 +158,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       const errorMessage =
         error instanceof Error ? error.message : "Login failed";
 
-      console.log({ errorMessage });
-      
       // Important: Set isLoading to false when error occurs
       setAuthState((prevState) => ({
         ...prevState,
@@ -181,6 +181,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         error: null,
       }));
 
+      console.log("AuthContext register: Attempting registration");
+
       const result = await registerMutation.mutateAsync(userData);
 
       // Extract user and token from the result
@@ -195,7 +197,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
-
       showNotification("Registration successful!", { type: "success" });
     } catch (error) {
       const errorMessage =

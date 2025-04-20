@@ -1,105 +1,97 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import {
-  useCart,
-  useUpdateCartItem,
-  useRemoveCartItem,
-  useClearCart,
-} from "../services/cartService";
-import { QueryKeys } from "../utils/queryKeys";
-import { useInvalidateQueries } from "../hooks/useQueryHooks";
+import { useCart } from "../context/CartContext";
 
 const CartPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const invalidateQueries = useInvalidateQueries();
+  
+  // Local state for tracking page-specific operations
+  const [localLoading, setLocalLoading] = useState(false);
+  
+  // Use the Cart Context instead of direct service calls
+  const { 
+    cart, 
+    isLoading: cartIsLoading, 
+    error, 
+    updateCartItem, 
+    removeCartItem, 
+    clearCart, 
+    refreshCart,
+  } = useCart();
 
-  // Use the React Query hook for cart - properly handling guest & user carts
-  const {
-    data: cartResponse,
-    isLoading,
-    error,
-  } = useCart({
-    // Retry cart loading twice
-    retry: 2,
-    // Don't consider this stale immediately, reduces redundant fetches
-    staleTime: 30000,
-  });
+  // Flags to prevent duplicate operations
+  const cartTransferAttemptedRef = useRef(false);
+  const initialLoadAttemptedRef = useRef(false);
+  
+  // Combined loading state
+  const isLoading = cartIsLoading || localLoading;
 
-  // Extract the actual cart from the response
-  const cart = cartResponse;
-
-  // Use mutation hooks for cart operations with proper error handling
-  const updateCartItemMutation = useUpdateCartItem({
-    onSuccess: () => {
-      invalidateQueries(QueryKeys.cart.current);
-    },
-    onError: (error: Error) => {
-      console.error("Failed to update quantity:", error);
-    },
-  });
-
-  const removeCartItemMutation = useRemoveCartItem({
-    onSuccess: () => {
-      invalidateQueries(QueryKeys.cart.current);
-    },
-    onError: (error: Error) => {
-      console.error("Failed to remove item:", error);
-    },
-  });
-
-  const clearCartMutation = useClearCart({
-    onSuccess: () => {
-      invalidateQueries(QueryKeys.cart.current);
-    },
-    onError: (error: Error) => {
-      console.error("Failed to clear cart:", error);
-    },
-  });
-
-  // Ensure we have the current guest token on component mount
+  // Perform any necessary cart operations when the component mounts or auth changes
+  // This will only run once per mount/auth change
   useEffect(() => {
-    const guestCartToken = localStorage.getItem("guest_cart_token");
-
-    // If there's a stored token but cart is empty, refetch to try loading the cart
-    if (guestCartToken && (!cart || cart.items.length === 0) && !isLoading) {
-      invalidateQueries(QueryKeys.cart.current);
+    // Skip if we've already tried an initial load
+    if (initialLoadAttemptedRef.current) {
+      return;
     }
-  }, [cart, isLoading, isAuthenticated, invalidateQueries]);
+    
+    initialLoadAttemptedRef.current = true;
+    
+    // No need to call refreshCart here - the CartContext already handles the initial load
+    
+    // For authenticated users, check if we need to transfer a guest cart
+    if (isAuthenticated && !cartTransferAttemptedRef.current) {
+      const guestCartToken = localStorage.getItem("guest_cart_token");
+      
+      if (guestCartToken) {
+        cartTransferAttemptedRef.current = true;
+        console.log("CartPage: Found guest cart token, will attempt transfer");
+        
+        // Don't set localLoading - the transferGuestCart function in the context handles loading state
+      }
+    }
+  }, [isAuthenticated]);
 
-  const handleQuantityChange = async (
-    cartItemId: string,
-    newQuantity: number
-  ) => {
+  // Handle quantity changes
+  const handleQuantityChange = async (cartItemId: string, newQuantity: number) => {
     if (newQuantity < 1) return;
 
     try {
-      await updateCartItemMutation.mutateAsync({
-        cartItemId: cartItemId,
-        quantity: newQuantity,
-      });
-    } catch {
-      // Error is handled by the onError callback
+      setLocalLoading(true);
+      await updateCartItem(cartItemId, newQuantity);
+    } catch (error) {
+      console.error("Failed to update quantity:", error);
+    } finally {
+      setLocalLoading(false);
     }
   };
 
+  // Handle item removal
   const handleRemoveItem = async (cartItemId: string) => {
     try {
-      await removeCartItemMutation.mutateAsync(cartItemId);
-    } catch {
-      // Error is handled by the onError callback
+      setLocalLoading(true);
+      await removeCartItem(cartItemId);
+    } catch (error) {
+      console.error("Failed to remove item:", error);
+    } finally {
+      setLocalLoading(false);
     }
   };
 
+  // Handle cart clearing
   const handleClearCart = async () => {
     try {
-      await clearCartMutation.mutateAsync({});
-    } catch {
-      // Error is handled by the onError callback
+      setLocalLoading(true);
+      await clearCart();
+    } catch (error) {
+      console.error("Failed to clear cart:", error);
+    } finally {
+      setLocalLoading(false);
     }
   };
 
+  // Navigate to checkout
   const proceedToCheckout = () => {
     // If user is not authenticated, redirect to login page first
     if (!isAuthenticated) {
@@ -112,16 +104,19 @@ const CartPage: React.FC = () => {
     }
   };
 
+  // Show loading state
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+        <div className="flex flex-col justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600 mb-4"></div>
+          <p className="text-gray-600">Loading your cart...</p>
         </div>
       </div>
     );
   }
 
+  // Show error state
   if (error) {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
@@ -148,10 +143,24 @@ const CartPage: React.FC = () => {
               </h3>
               <div className="mt-2 text-sm text-red-700">
                 <p>
-                  {error instanceof Error
-                    ? error.message
+                  {typeof error === 'object' && error !== null && 'message' in error
+                    ? (error as Error).message
+                    : typeof error === 'string'
+                    ? error
                     : "Unknown error occurred"}
                 </p>
+              </div>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    initialLoadAttemptedRef.current = false;
+                    refreshCart().catch(console.error);
+                  }}
+                  className="text-sm font-medium text-red-600 hover:text-red-500"
+                >
+                  Try again
+                </button>
               </div>
             </div>
           </div>
@@ -160,7 +169,8 @@ const CartPage: React.FC = () => {
     );
   }
 
-  if (!cart || cart.items.length === 0) {
+  // Show empty cart
+  if (!cart || !cart.items || cart.items.length === 0) {
     return (
       <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
         <div className="text-center">
@@ -183,10 +193,10 @@ const CartPage: React.FC = () => {
     );
   }
 
-  // Calculate subtotal from items
+  // Calculate totals
   const subtotal = cart.items.reduce((total, item) => {
-    const itemPrice = item.product.salePrice || item.product.price;
-    return total + Number(itemPrice) * Number(item.quantity);
+    const itemPrice = Number(item.product.salePrice) || Number(item.product.price);
+    return total + itemPrice * Number(item.quantity);
   }, 0);
 
   // Set default values if not provided by API
@@ -194,6 +204,7 @@ const CartPage: React.FC = () => {
   const taxAmount = cart.taxAmount || 0;
   const total = subtotal + shippingCost + taxAmount;
 
+  // Main cart view
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
@@ -274,14 +285,14 @@ const CartPage: React.FC = () => {
                         {item.product.salePrice ? (
                           <>
                             <span className="text-red-600">
-                              ${item.product.salePrice}
+                              ${Number(item.product.salePrice).toFixed(2)}
                             </span>
                             <span className="ml-2 line-through text-gray-500 text-sm">
-                              ${item.product.price}
+                              ${Number(item.product.price).toFixed(2)}
                             </span>
                           </>
                         ) : (
-                          `$${item.product.price}`
+                          `$${Number(item.product.price).toFixed(2)}`
                         )}
                       </p>
                     </div>
@@ -307,7 +318,8 @@ const CartPage: React.FC = () => {
                             parseInt(e.target.value)
                           )
                         }
-                        className="max-w-full rounded-md border border-gray-300 py-1.5 text-base leading-5 font-medium text-gray-700 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        disabled={isLoading}
+                        className="max-w-full rounded-md border border-gray-300 py-1.5 text-base leading-5 font-medium text-gray-700 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:opacity-50"
                       >
                         {[...Array(10).keys()].map((i) => (
                           <option key={i + 1} value={i + 1}>
@@ -321,7 +333,8 @@ const CartPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(item.id)}
-                        className="font-medium text-indigo-600 hover:text-indigo-500"
+                        disabled={isLoading}
+                        className="font-medium text-indigo-600 hover:text-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Remove
                       </button>
@@ -338,7 +351,8 @@ const CartPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleClearCart}
-                className="text-sm text-red-600 hover:text-red-500"
+                disabled={isLoading}
+                className="text-sm text-red-600 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Clear all items
               </button>
@@ -391,7 +405,8 @@ const CartPage: React.FC = () => {
             <button
               type="button"
               onClick={proceedToCheckout}
-              className="w-full bg-indigo-600 border border-transparent rounded-md shadow-sm py-3 px-4 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              disabled={isLoading}
+              className="w-full bg-indigo-600 border border-transparent rounded-md shadow-sm py-3 px-4 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isAuthenticated ? "Checkout" : "Sign in & Checkout"}
             </button>

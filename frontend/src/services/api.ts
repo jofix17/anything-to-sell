@@ -11,15 +11,13 @@ const API_BASE_URL =
 
 // Constants for localStorage keys
 const TOKEN_KEY = "token";
-const GUEST_CART_TOKEN_KEY = "guest_cart_token";
 
 /**
- * Enhanced API client that properly handles guest cart tokens
- * and provides consistent error handling and data transformation
+ * Enhanced API client with consistent error handling and data transformation
+ * that works with Rails session cookies instead of manual token management
  */
 class ApiService {
   private api: AxiosInstance;
-  private guestCartToken: string | null = null;
 
   constructor() {
     this.api = axios.create({
@@ -27,18 +25,11 @@ class ApiService {
       headers: {
         "Content-Type": "application/json",
       },
+      // Important: Allow axios to send and receive cookies
+      withCredentials: true,
     });
 
-    // Initialize guest cart token from localStorage
-    this.loadGuestCartToken();
-
     this.setupInterceptors();
-  }
-
-  // Load guest cart token from localStorage
-  private loadGuestCartToken(): void {
-    this.guestCartToken = localStorage.getItem(GUEST_CART_TOKEN_KEY);
-    console.debug("Guest cart token loaded:", this.guestCartToken);
   }
 
   // Set up request and response interceptors
@@ -50,19 +41,6 @@ class ApiService {
         const token = localStorage.getItem(TOKEN_KEY);
         if (token && config.headers) {
           config.headers.Authorization = `Bearer ${token}`;
-        }
-
-        // Add guest cart token if available either from instance var or localStorage
-        if (!this.guestCartToken) {
-          this.loadGuestCartToken();
-        }
-
-        if (this.guestCartToken && config.headers) {
-          config.headers["X-Guest-Cart-Token"] = this.guestCartToken;
-          console.debug(
-            "Adding guest cart token to request:",
-            this.guestCartToken
-          );
         }
 
         // Transform request data from camelCase to snake_case
@@ -89,17 +67,6 @@ class ApiService {
     // Response interceptor for handling common errors and transforming snake_case to camelCase
     this.api.interceptors.response.use(
       (response: AxiosResponse) => {
-        // Check for guest cart token in response headers and save it
-        const guestCartToken = response.headers["x-guest-cart-token"];
-        if (guestCartToken) {
-          this.guestCartToken = guestCartToken;
-          localStorage.setItem(GUEST_CART_TOKEN_KEY, guestCartToken);
-          console.log(
-            "Guest cart token saved from response headers:",
-            guestCartToken
-          );
-        }
-
         // Transform response data from snake_case to camelCase
         if (response.data && typeof response.data === "object") {
           response.data = objectToCamelCase(response.data);
@@ -107,21 +74,9 @@ class ApiService {
         return response;
       },
       (error) => {
-        // Still check for guest cart token in error responses
-        if (error.response?.headers?.["x-guest-cart-token"]) {
-          const guestCartToken = error.response.headers["x-guest-cart-token"];
-          this.guestCartToken = guestCartToken;
-          localStorage.setItem(GUEST_CART_TOKEN_KEY, guestCartToken);
-          console.debug(
-            "Guest cart token saved from error response:",
-            guestCartToken
-          );
-        }
-
         // Handle unauthorized errors (401)
         if (error.response?.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
-          // Don't remove guest cart token on auth failure
         }
 
         // Transform error response data if it exists
@@ -212,40 +167,6 @@ class ApiService {
     } catch (error) {
       throw this.handleError(error);
     }
-  }
-
-  /**
-   * Get the current guest cart token from localStorage and instance variable
-   */
-  public getGuestCartToken(): string | null {
-    // First check instance variable, then localStorage as fallback
-    if (this.guestCartToken) {
-      return this.guestCartToken;
-    }
-
-    // Try to load from localStorage
-    this.loadGuestCartToken();
-    return this.guestCartToken;
-  }
-
-  /**
-   * Save guest cart token to localStorage and instance variable
-   */
-  public saveGuestCartToken(token: string): void {
-    if (token && token.trim() !== "") {
-      this.guestCartToken = token;
-      localStorage.setItem(GUEST_CART_TOKEN_KEY, token);
-      console.debug("Guest cart token saved:", token);
-    }
-  }
-
-  /**
-   * Clear guest cart token from localStorage and instance variable
-   */
-  public clearGuestCartToken(): void {
-    this.guestCartToken = null;
-    localStorage.removeItem(GUEST_CART_TOKEN_KEY);
-    console.debug("Guest cart token cleared");
   }
 
   /**

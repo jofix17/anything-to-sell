@@ -8,9 +8,9 @@ import React, {
   useRef,
   useMemo,
 } from "react";
-import { Cart, ApiResponse, AddToCartData } from "../types";
+import { Cart, AddToCartData } from "../types";
 import {
-  useCart as useCartQuery,
+  useGetCart,
   useAddToCart,
   useUpdateCartItem,
   useRemoveCartItem,
@@ -41,43 +41,26 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
     error: string | null;
   }>({
     cart: null,
-    isLoading: false,
+    isLoading: false, // Don't start with loading true - let the query handle it
     error: null,
   });
-
   const invalidateQueries = useInvalidateQueries();
 
-  // Use refs to prevent stale closures in the refreshCart function
-  const isLoadingRef = useRef(false);
+  // Use refs to track operations and prevent duplicate calls
+  const cartOperationInProgressRef = useRef(false);
 
   // Setup React Query with appropriate options
-  const { isLoading: isCartLoading, refetch } = useCartQuery({
-    // Always fetch cart, even for guest users
+  const {
+    isLoading: queryIsLoading,
+    refetch,
+    data: cartResponse,
+    error: queryError,
+  } = useGetCart({
     refetchOnWindowFocus: false,
     retry: 0,
-    onSuccess: (response: ApiResponse<Cart>) => {
-      if (response && response.success) {
-        setCartState((prevState) => ({
-          ...prevState,
-          cart: response.data,
-          isLoading: false,
-          error: null,
-        }));
-      } else {
-        setCartState((prevState) => ({
-          ...prevState,
-          isLoading: false,
-          error: response?.message || "Failed to load cart",
-        }));
-      }
-    },
-    onError: (error: unknown) => {
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: false,
-        error: error instanceof Error ? error.message : "Failed to load cart",
-      }));
-    },
+    staleTime: 30000, // Consider data fresh for 30 seconds to reduce flickering
+    // Important: Don't use the onSuccess/onError callbacks for setting state here
+    // They will compete with the useEffect below
   });
 
   // Set up mutation hooks
@@ -86,52 +69,90 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
   const removeCartItemMutation = useRemoveCartItem();
   const clearCartMutation = useClearCart();
 
-  // Update cart loading state
+  // Update cart state from query response
   useEffect(() => {
-    isLoadingRef.current = isCartLoading;
-
+    // Set loading state based on query loading state
     setCartState((prevState) => ({
       ...prevState,
-      isLoading: isCartLoading,
+      isLoading: queryIsLoading || cartOperationInProgressRef.current,
     }));
-  }, [isCartLoading]);
 
-  // Refresh cart data - memoize with useCallback to prevent recreation on each render
+    // Update cart data when it changes
+    if (cartResponse && !queryIsLoading) {
+      setCartState((prevState) => ({
+        ...prevState,
+        cart: cartResponse,
+        error: null,
+        isLoading: cartOperationInProgressRef.current,
+      }));
+    }
+
+    // Handle query errors
+    if (queryError && !queryIsLoading) {
+      setCartState((prevState) => ({
+        ...prevState,
+        error:
+          queryError instanceof Error
+            ? queryError.message
+            : "Failed to load cart",
+        isLoading: false,
+      }));
+    }
+  }, [cartResponse, queryIsLoading, queryError]);
+
+  // Refresh cart data
   const refreshCart = useCallback(async (): Promise<void> => {
-    // Prevent refresh if already loading
-    if (isLoadingRef.current) {
+    if (cartOperationInProgressRef.current) {
+      console.log(
+        "CartContext: Cart operation already in progress, skipping refresh"
+      );
       return Promise.resolve();
     }
 
     try {
+      cartOperationInProgressRef.current = true;
+
       setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
-        error: null,
       }));
 
-      isLoadingRef.current = true;
+      console.log("CartContext: Refreshing cart");
       await refetch();
+      console.log("CartContext: Cart refresh complete");
       return Promise.resolve();
     } catch (error) {
+      console.error("CartContext: Error refreshing cart:", error);
+
       setCartState((prevState) => ({
         ...prevState,
-        isLoading: false,
         error:
           error instanceof Error ? error.message : "Failed to refresh cart",
+        isLoading: false,
       }));
+
       return Promise.reject(error);
+    } finally {
+      cartOperationInProgressRef.current = false;
     }
-  }, [refetch]); // Only depend on refetch
+  }, [refetch]);
 
   // Add item to cart
   const addToCart = useCallback(
-    async (productId: string, quantity: number) => {
+    async (productId: string, quantity: number): Promise<void> => {
+      if (cartOperationInProgressRef.current) {
+        console.log(
+          "CartContext: Cart operation already in progress, skipping add to cart"
+        );
+        return Promise.resolve();
+      }
+
       try {
+        cartOperationInProgressRef.current = true;
+
         setCartState((prevState) => ({
           ...prevState,
           isLoading: true,
-          error: null,
         }));
 
         const data: AddToCartData = {
@@ -141,41 +162,52 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
 
         const result = await addToCartMutation.mutateAsync(data);
 
-        if (result && result.success) {
+        if (result.success) {
           setCartState({
             cart: result.data,
             isLoading: false,
             error: null,
           });
 
-          // Invalidate cart query to ensure consistency
+          // Invalidate cart query
           invalidateQueries(QueryKeys.cart.current);
         } else {
-          throw new Error(result?.message || "Failed to add item to cart");
+          throw new Error(result.message || "Failed to add item to cart");
         }
       } catch (error) {
+        console.error("CartContext: Error adding to cart:", error);
+
         setCartState((prevState) => ({
           ...prevState,
-          isLoading: false,
           error:
             error instanceof Error
               ? error.message
               : "Failed to add item to cart",
+          isLoading: false,
         }));
+
         throw error;
+      } finally {
+        cartOperationInProgressRef.current = false;
       }
     },
     [addToCartMutation, invalidateQueries]
   );
 
-  // Update cart item quantity
+  // Update cart item
   const updateCartItem = useCallback(
-    async (cartItemId: string, quantity: number) => {
+    async (cartItemId: string, quantity: number): Promise<void> => {
+      if (cartOperationInProgressRef.current) {
+        console.log("CartContext: Cart operation in progress, skipping update");
+        return Promise.resolve();
+      }
+
       try {
+        cartOperationInProgressRef.current = true;
+
         setCartState((prevState) => ({
           ...prevState,
           isLoading: true,
-          error: null,
         }));
 
         const result = await updateCartItemMutation.mutateAsync({
@@ -183,113 +215,133 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
           quantity,
         });
 
-        if (result && result.success) {
+        if (result.success) {
           setCartState({
             cart: result.data,
             isLoading: false,
             error: null,
           });
 
-          // Invalidate cart query to ensure consistency
+          // Invalidate cart query
           invalidateQueries(QueryKeys.cart.current);
         } else {
-          throw new Error(result?.message || "Failed to update cart item");
+          throw new Error(result.message || "Failed to update cart item");
         }
       } catch (error) {
+        console.error("CartContext: Error updating cart item:", error);
+
         setCartState((prevState) => ({
           ...prevState,
-          isLoading: false,
           error:
             error instanceof Error
               ? error.message
               : "Failed to update cart item",
+          isLoading: false,
         }));
+
         throw error;
+      } finally {
+        cartOperationInProgressRef.current = false;
       }
     },
     [updateCartItemMutation, invalidateQueries]
   );
 
-  // Remove item from cart
+  // Remove cart item
   const removeCartItem = useCallback(
-    async (cartItemId: string) => {
+    async (cartItemId: string): Promise<void> => {
+      if (cartOperationInProgressRef.current) {
+        console.log("CartContext: Cart operation in progress, skipping remove");
+        return Promise.resolve();
+      }
+
       try {
+        cartOperationInProgressRef.current = true;
+
         setCartState((prevState) => ({
           ...prevState,
           isLoading: true,
-          error: null,
         }));
 
         const result = await removeCartItemMutation.mutateAsync(cartItemId);
 
-        if (result && result.success) {
+        if (result.success) {
           setCartState({
             cart: result.data,
             isLoading: false,
             error: null,
           });
 
-          // Invalidate cart query to ensure consistency
+          // Invalidate cart query
           invalidateQueries(QueryKeys.cart.current);
         } else {
-          throw new Error(result?.message || "Failed to remove item from cart");
+          throw new Error(result.message || "Failed to remove cart item");
         }
       } catch (error) {
+        console.error("CartContext: Error removing cart item:", error);
+
         setCartState((prevState) => ({
           ...prevState,
-          isLoading: false,
           error:
             error instanceof Error
               ? error.message
-              : "Failed to remove item from cart",
+              : "Failed to remove cart item",
+          isLoading: false,
         }));
+
         throw error;
+      } finally {
+        cartOperationInProgressRef.current = false;
       }
     },
     [removeCartItemMutation, invalidateQueries]
   );
 
-  // Clear entire cart
-  const clearCart = useCallback(async () => {
+  // Clear cart
+  const clearCart = useCallback(async (): Promise<void> => {
+    if (cartOperationInProgressRef.current) {
+      console.log("CartContext: Cart operation in progress, skipping clear");
+      return Promise.resolve();
+    }
+
     try {
+      cartOperationInProgressRef.current = true;
+
       setCartState((prevState) => ({
         ...prevState,
         isLoading: true,
-        error: null,
       }));
 
       const result = await clearCartMutation.mutateAsync({});
 
-      if (result && result.success) {
+      if (result.success) {
         setCartState({
-          cart: null,
+          cart: result.data,
           isLoading: false,
           error: null,
         });
 
-        // Invalidate cart query to ensure consistency
+        // Invalidate cart query
         invalidateQueries(QueryKeys.cart.current);
       } else {
-        throw new Error(result?.message || "Failed to clear cart");
+        throw new Error(result.message || "Failed to clear cart");
       }
     } catch (error) {
+      console.error("CartContext: Error clearing cart:", error);
+
       setCartState((prevState) => ({
         ...prevState,
-        isLoading: false,
         error: error instanceof Error ? error.message : "Failed to clear cart",
+        isLoading: false,
       }));
+
       throw error;
+    } finally {
+      cartOperationInProgressRef.current = false;
     }
   }, [clearCartMutation, invalidateQueries]);
 
-  // Fetch cart data on initial load
-  useEffect(() => {
-    refreshCart().catch((error) => {
-      console.error("Failed to fetch initial cart data:", error);
-    });
-  }, [refreshCart]);
-
-  // Memoize context value to prevent unnecessary re-renders of consumers
+  // Create memoized context value
   const contextValue = useMemo(
     () => ({
       ...cartState,

@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ShoppingCartIcon } from "@heroicons/react/24/outline";
-import { useCart } from "../../services/cartService";
 import { QueryKeys } from "../../utils/queryKeys";
 import { useInvalidateQueries } from "../../hooks/useQueryHooks";
+import { useCart } from "../../context/CartContext";
 
 /**
  * CartMini component displays a cart icon with item count in the header
@@ -11,12 +11,8 @@ import { useInvalidateQueries } from "../../hooks/useQueryHooks";
  */
 const CartMini: React.FC<{ className?: string }> = ({ className = "" }) => {
   // Use the React Query cart hook that handles guest carts properly
-  const { data: cartResponse, isLoading } = useCart({
-    // Reduce refetches for better performance
-    staleTime: 30000, // 30 seconds
-  });
+  const { cart, isLoading } = useCart();
   const invalidateQueries = useInvalidateQueries();
-  const cart = cartResponse;
 
   // Ensure we have the guest cart token on component mount
   useEffect(() => {

@@ -1,4 +1,3 @@
-# app/controllers/api/v1/auth_controller.rb
 module Api
   module V1
     module Auth
@@ -6,12 +5,24 @@ module Api
         before_action :authenticate_user!, only: [ :me, :logout, :change_password, :update_profile ]
 
         # POST /api/v1/auth/login
+        # In auth_controller.rb, login method
         def login
-          user = User.find_by(email: login_params[:email].downcase)
+          user = User.find_by(email: login_params[:email]&.downcase)
           if user&.authenticate(login_params[:password])
             if user.active?
               token = JsonWebToken.encode(user_id: user.id)
               user.update(last_login_at: Time.current)
+
+              unless user.cart&.is_empty?
+                # Get guest cart token from session and handle it BEFORE returning response
+                guest_token = session[:guest_cart_token]
+                if guest_token.present?
+                  handle_guest_cart(guest_token, user.id)
+                  # Important: Make sure the session is saved
+                  session.delete(:guest_cart_token)
+                end
+              end
+
               success_response({ user: UserSerializer.new(user), token: token }, "Login successful")
             else
               error_response("Your account is suspended or inactive", :unauthorized)
@@ -35,9 +46,32 @@ module Api
           if user.save
             token = JsonWebToken.encode(user_id: user.id)
             user.update(last_login_at: Time.current)
+
+            # Get guest cart token from session
+            guest_token = session[:guest_cart_token]
+
+            # If there's a guest cart, transfer/convert it to the user's cart
+            if guest_token.present?
+              handle_guest_cart(guest_token, user.id)
+            else
+              # If no guest cart but user needs a cart, create one
+              Cart.create(user_id: user.id) unless Cart.exists?(user_id: user.id)
+            end
+
             success_response({ user: UserSerializer.new(user), token: token }, "Registration successful", :created)
           else
             error_response("Registration failed", :unprocessable_entity, user.errors.full_messages)
+          end
+        end
+
+        # GET /api/v1/auth/me
+        def me
+          # Make sure current_user is not nil before trying to serialize it
+          if current_user
+            success_response(UserSerializer.new(current_user), "User profile retrieved")
+          else
+            # If current_user is nil, this means authentication failed
+            error_response("Authentication failed", :unauthorized)
           end
         end
 
@@ -45,12 +79,8 @@ module Api
         def logout
           # We don't actually invalidate the token since it's JWT
           # In a production app, you might maintain a token blacklist
+          session.delete(:guest_cart_token)
           success_response(nil, "Logout successful")
-        end
-
-        # GET /api/v1/auth/me
-        def me
-          success_response(UserSerializer.new(current_user), "User profile retrieved")
         end
 
         # PUT /api/v1/auth/profile
@@ -118,6 +148,54 @@ module Api
 
         def password_params
           params.permit(:current_password, :new_password, :password_confirmation)
+        end
+
+        # Optimized method to handle guest cart conversion or transfer
+        def handle_guest_cart(guest_token, user_id)
+          return unless guest_token.present? && user_id.present?
+
+          Rails.logger.info "AUTH CONTROLLER: Processing guest cart with token: #{guest_token} for user: #{user_id}"
+
+          begin
+            guest_cart = Cart.find_by(guest_token: guest_token)
+            return unless guest_cart && guest_cart.cart_items.any?
+
+            # Check if user already has a cart
+            user_cart = Cart.find_by(user_id: user_id)
+
+            if user_cart
+              # User already has a cart, merge items and delete guest cart
+              Rails.logger.info "AUTH CONTROLLER: User already has a cart, merging items"
+              merge_carts(guest_cart, user_cart)
+              guest_cart.destroy
+            else
+              # Simply convert guest cart to user cart by updating attributes
+              Rails.logger.info "AUTH CONTROLLER: Converting guest cart to user cart"
+              guest_cart.update(user_id: user_id, guest_token: nil)
+            end
+
+            # Clear the guest token from session after successful transfer
+            session.delete(:guest_cart_token)
+
+            Rails.logger.info "AUTH CONTROLLER: Successfully processed guest cart"
+          rescue => e
+            Rails.logger.error "AUTH CONTROLLER: Error processing cart: #{e.message}"
+          end
+        end
+
+        # Helper method to merge cart items
+        def merge_carts(source_cart, target_cart)
+          source_cart.cart_items.each do |item|
+            existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+
+            if existing_item
+              # Update quantity for existing item
+              existing_item.update(quantity: existing_item.quantity + item.quantity)
+            else
+              # Move item to target cart
+              item.update(cart_id: target_cart.id)
+            end
+          end
         end
       end
     end

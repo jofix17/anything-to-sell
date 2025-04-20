@@ -2,6 +2,8 @@ class UserSerializer < ActiveModel::Serializer
   attributes :id, :email, :first_name, :last_name, :name, :role, :phone,
   :avatar_url, :is_active, :created_at, :updated_at, :last_login_at, :status
 
+  has_one :cart, serializer: CartSerializer
+
   def name
     object.name
   end

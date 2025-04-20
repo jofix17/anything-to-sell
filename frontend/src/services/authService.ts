@@ -10,14 +10,13 @@ import {
 } from "../types";
 import { useApiQuery, useApiMutation } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
-import cartService from "./cartService";
 
 // Traditional API service methods
 class AuthService {
   async login(
     credentials: LoginCredentials
   ): Promise<ApiResponse<AuthResponse>> {
-    // The case transformation now happens in the API service interceptors
+    // The login endpoint will automatically handle cart transfer via session
     const response = await apiService.post<ApiResponse<AuthResponse>>(
       "/auth/login",
       credentials
@@ -27,23 +26,13 @@ class AuthService {
     if (response.data && response.data.token) {
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-      
-      // Transfer guest cart to user cart if exists
-      try {
-        await cartService.transferCart();
-        // Clear guest cart token after successful transfer
-        apiService.clearGuestCartToken();
-      } catch (error) {
-        console.error('Failed to transfer cart:', error);
-        // Continue with login process even if cart transfer fails
-      }
     }
 
     return response;
   }
 
   async register(userData: RegisterData): Promise<ApiResponse<AuthResponse>> {
-    // The case transformation now happens in the API service interceptors
+    // The register endpoint will automatically handle cart transfer via session
     const response = await apiService.post<ApiResponse<AuthResponse>>(
       "/auth/register",
       userData
@@ -53,16 +42,6 @@ class AuthService {
     if (response.data && response.data.token) {
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-      
-      // Transfer guest cart to user cart if exists
-      try {
-        await cartService.transferCart();
-        // Clear guest cart token after successful transfer
-        apiService.clearGuestCartToken();
-      } catch (error) {
-        console.error('Failed to transfer cart:', error);
-        // Continue with registration process even if cart transfer fails
-      }
     }
 
     return response;
@@ -71,12 +50,14 @@ class AuthService {
   async logout(): Promise<ApiResponse<null>> {
     try {
       const response = await apiService.post<ApiResponse<null>>("/auth/logout");
+
       // Always clear local storage regardless of API response
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+
       return response;
     } catch (error) {
-      // Always clear local storage regardless of API response
+      // Always clear local storage even if the API call fails
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       throw error;
@@ -148,13 +129,13 @@ class AuthService {
     const user = this.getStoredUser();
     return user ? user.role === role : false;
   }
-  
+
   // Handle redirect after login
   handleLoginRedirect(): void {
-    const redirectPath = sessionStorage.getItem('redirectAfterLogin');
-    
+    const redirectPath = sessionStorage.getItem("redirectAfterLogin");
+
     if (redirectPath) {
-      sessionStorage.removeItem('redirectAfterLogin');
+      sessionStorage.removeItem("redirectAfterLogin");
       window.location.href = redirectPath;
     }
   }
@@ -183,7 +164,7 @@ export const useLogin = (options = {}) => {
       onSuccess: (data, variables, context) => {
         // Handle redirect if needed
         authService.handleLoginRedirect();
-        
+
         if (
           options &&
           "onSuccess" in options &&
@@ -214,7 +195,7 @@ export const useRegister = (options = {}) => {
       onSuccess: (data, variables, context) => {
         // Handle redirect if needed
         authService.handleLoginRedirect();
-        
+
         if (
           options &&
           "onSuccess" in options &&
