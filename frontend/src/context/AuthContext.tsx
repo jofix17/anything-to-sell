@@ -219,9 +219,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   // Logout function
   const logout = async () => {
     try {
+      setAuthState((prevState) => ({
+        ...prevState,
+        isLoading: true,
+      }));
+
       // Pass a parameter to mutateAsync to match the expected signature
       await logoutMutation.mutateAsync({});
 
+      // Explicitly invalidate the cart query cache
+      queryClient.invalidateQueries({ queryKey: ['cart'] });
+      
       // Clear all queries from the cache on logout
       queryClient.clear();
 
@@ -240,6 +248,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       // Still clear state and local storage even if the API call fails
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+
+      // Ensure cart queries are invalidated
+      queryClient.invalidateQueries({ queryKey: ['cart'] });
 
       setAuthState({
         user: null,

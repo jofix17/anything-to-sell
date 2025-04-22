@@ -10,6 +10,7 @@ import {
 } from "../types";
 import queryHooks from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
+import { queryClient } from "../context/QueryContext";
 
 const { useApiQuery, useApiMutation, usePrefetchQuery } = queryHooks;
 
@@ -115,6 +116,12 @@ class CartService {
       }
     );
   }
+
+  // Helper method to reset cart query cache
+  resetCartCache(): void {
+    queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+    queryClient.removeQueries({ queryKey: QueryKeys.cart.current });
+  }
 }
 
 // Create the standard service instance
@@ -127,6 +134,8 @@ export const useGetCart = (options = {}) => {
   return useApiQuery(QueryKeys.cart.current, () => cartService.getCart(), {
     refetchOnWindowFocus: false,
     staleTime: 30000, // 30 seconds
+    refetchOnMount: true, // Always refetch when mounted
+    retryOnMount: true, // Retry if failed on mount
     ...options,
   });
 };
@@ -137,6 +146,9 @@ export const useGetCart = (options = {}) => {
 export const useAddToCart = (options = {}) => {
   return useApiMutation((data: AddToCartData) => cartService.addToCart(data), {
     onSuccess: (response, variables, context) => {
+      // Invalidate the cart query to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+      
       if (
         options &&
         "onSuccess" in options &&
@@ -157,6 +169,9 @@ export const useUpdateCartItem = (options = {}) => {
     (data: UpdateCartItemData) => cartService.updateCartItem(data),
     {
       onSuccess: (response, variables, context) => {
+        // Invalidate the cart query to ensure fresh data
+        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+        
         if (
           options &&
           "onSuccess" in options &&
@@ -178,6 +193,9 @@ export const useRemoveCartItem = (options = {}) => {
     (cartItemId: string) => cartService.removeCartItem(cartItemId),
     {
       onSuccess: (response, variables, context) => {
+        // Invalidate the cart query to ensure fresh data
+        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+        
         if (
           options &&
           "onSuccess" in options &&
@@ -197,6 +215,9 @@ export const useRemoveCartItem = (options = {}) => {
 export const useClearCart = (options = {}) => {
   return useApiMutation(() => cartService.clearCart(), {
     onSuccess: (response, variables, context) => {
+      // Invalidate the cart query to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+      
       if (
         options &&
         "onSuccess" in options &&

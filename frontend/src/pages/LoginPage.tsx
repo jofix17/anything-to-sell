@@ -102,13 +102,27 @@ const LoginPage: React.FC = () => {
       refreshCart()
         .then(() => {
           console.log("LoginPage: Cart refreshed after login");
+          
+          // Get redirect path from session storage
+          const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
+          
+          // Clear the redirect path from session storage
+          sessionStorage.removeItem("redirectAfterLogin");
+          
           // Navigate after a short delay to ensure cart is loaded
-          setTimeout(() => navigate(from, { replace: true }), 500);
+          setTimeout(() => navigate(redirectPath, { replace: true }), 500);
         })
         .catch((err) => {
           console.error("LoginPage: Failed to refresh cart:", err);
+          
+          // Get redirect path from session storage
+          const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
+          
+          // Clear the redirect path from session storage
+          sessionStorage.removeItem("redirectAfterLogin");
+          
           // Still navigate even if cart refresh fails
-          navigate(from, { replace: true });
+          navigate(redirectPath, { replace: true });
         });
 
       // Reset the login attempted flag

@@ -18,6 +18,7 @@ import {
 } from "../services/cartService";
 import { useInvalidateQueries } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
+import { useAuth } from "./AuthContext";
 
 interface CartContextType {
   cart: Cart | null;
@@ -28,6 +29,7 @@ interface CartContextType {
   removeCartItem: (cartItemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
   refreshCart: () => Promise<void>;
+  resetCartState: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -44,10 +46,13 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
     isLoading: false, // Don't start with loading true - let the query handle it
     error: null,
   });
+  
+  const { isAuthenticated } = useAuth();
   const invalidateQueries = useInvalidateQueries();
 
   // Use refs to track operations and prevent duplicate calls
   const cartOperationInProgressRef = useRef(false);
+  const previousAuthStateRef = useRef(isAuthenticated);
 
   // Setup React Query with appropriate options
   const {
@@ -68,6 +73,35 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
   const updateCartItemMutation = useUpdateCartItem();
   const removeCartItemMutation = useRemoveCartItem();
   const clearCartMutation = useClearCart();
+
+  // Reset cart state function
+  const resetCartState = useCallback(() => {
+    setCartState({
+      cart: null,
+      isLoading: false,
+      error: null,
+    });
+  }, []);
+
+  // When auth state changes, handle cart state
+  useEffect(() => {
+    // Check if auth state changed
+    if (previousAuthStateRef.current !== isAuthenticated) {
+      console.log("CartContext: Auth state changed, refreshing cart");
+      
+      // If user logged out, reset the cart state first
+      if (!isAuthenticated && previousAuthStateRef.current) {
+        resetCartState();
+      }
+      
+      // Then refresh to get the appropriate cart (guest or user)
+      invalidateQueries(QueryKeys.cart.current);
+      refetch().catch(console.error);
+      
+      // Update the previous auth state ref
+      previousAuthStateRef.current = isAuthenticated;
+    }
+  }, [isAuthenticated, invalidateQueries, refetch, resetCartState]);
 
   // Update cart state from query response
   useEffect(() => {
@@ -350,6 +384,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
       removeCartItem,
       clearCart,
       refreshCart,
+      resetCartState,
     }),
     [
       cartState,
@@ -358,6 +393,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
       removeCartItem,
       clearCart,
       refreshCart,
+      resetCartState,
     ]
   );
 
