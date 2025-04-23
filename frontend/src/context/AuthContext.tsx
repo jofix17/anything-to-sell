@@ -227,9 +227,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       // Pass a parameter to mutateAsync to match the expected signature
       await logoutMutation.mutateAsync({});
 
-      // Explicitly invalidate the cart query cache
-      queryClient.invalidateQueries({ queryKey: ['cart'] });
-      
       // Clear all queries from the cache on logout
       queryClient.clear();
 

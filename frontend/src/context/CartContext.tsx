@@ -203,8 +203,6 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
             error: null,
           });
 
-          // Invalidate cart query
-          invalidateQueries(QueryKeys.cart.current);
         } else {
           throw new Error(result.message || "Failed to add item to cart");
         }
