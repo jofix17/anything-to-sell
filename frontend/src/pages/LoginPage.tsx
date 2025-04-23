@@ -8,7 +8,9 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { useNotification } from "../context/NotificationContext";
 import Button from "../components/common/Button";
+import CartMergeModal from "../components/cart/CartMergeModal"
 import { LoginCredentials } from "../types";
+import { CartMergeAction } from "../components/cart/CartMergeModal";
 
 const LoginPage: React.FC = () => {
   // Form state
@@ -26,7 +28,15 @@ const LoginPage: React.FC = () => {
 
   // Context hooks
   const { login, isAuthenticated, error, clearError, isLoading } = useAuth();
-  const { refreshCart } = useCart();
+  const { 
+    refreshCart, 
+    showCartMergeModal, 
+    setShowCartMergeModal, 
+    handleCartMergeAction, 
+    guestCartItemCount,
+    cart,
+    isCartMerging
+  } = useCart();
   const { showNotification } = useNotification();
 
   // Navigation hooks
@@ -37,6 +47,7 @@ const LoginPage: React.FC = () => {
   // Refs to manage component state
   const isMountedRef = useRef(true);
   const loginAttemptedRef = useRef(false);
+  const cartMergeHandledRef = useRef(false);
 
   // Get redirect from URL if present
   useEffect(() => {
@@ -90,6 +101,41 @@ const LoginPage: React.FC = () => {
     }
   }, [error, clearError, showNotification]);
 
+  // Handle cart merge action
+  const handleMergeAction = async (action: CartMergeAction) => {
+    if (cartMergeHandledRef.current) return;
+    cartMergeHandledRef.current = true;
+    
+    try {
+      // Handle the selected action
+      await handleCartMergeAction(action);
+      
+      // Refresh cart after merge action
+      await refreshCart();
+      
+      // Redirect after cart merge is handled
+      performRedirectAfterLogin();
+    } catch (err) {
+      console.error("Error handling cart merge:", err);
+      showNotification("Failed to process cart items", { type: "error" });
+      
+      // Still redirect even if cart merge fails
+      performRedirectAfterLogin();
+    }
+  };
+
+  // Separate function for redirect logic to avoid duplication
+  const performRedirectAfterLogin = () => {
+    // Get redirect path from session storage
+    const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
+    
+    // Clear the redirect path from session storage
+    sessionStorage.removeItem("redirectAfterLogin");
+    
+    // Navigate after a short delay
+    setTimeout(() => navigate(redirectPath, { replace: true }), 300);
+  };
+
   // Handle navigation only when authenticated and a login was attempted
   useEffect(() => {
     if (
@@ -98,31 +144,26 @@ const LoginPage: React.FC = () => {
       !errorRef.current &&
       loginAttemptedRef.current
     ) {
-      // After successful login, try to refresh the cart to get the transferred items
+      // After successful login, refresh the cart to get the transferred items
       refreshCart()
         .then(() => {
           console.log("LoginPage: Cart refreshed after login");
           
-          // Get redirect path from session storage
-          const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
+          // If there's a cart merge modal to show, don't redirect yet
+          // The redirect will happen after cart merge action is handled
+          if (showCartMergeModal) {
+            console.log("LoginPage: Showing cart merge modal");
+            return;
+          }
           
-          // Clear the redirect path from session storage
-          sessionStorage.removeItem("redirectAfterLogin");
-          
-          // Navigate after a short delay to ensure cart is loaded
-          setTimeout(() => navigate(redirectPath, { replace: true }), 500);
+          // No cart merge needed, proceed with normal redirect
+          performRedirectAfterLogin();
         })
         .catch((err) => {
           console.error("LoginPage: Failed to refresh cart:", err);
           
-          // Get redirect path from session storage
-          const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
-          
-          // Clear the redirect path from session storage
-          sessionStorage.removeItem("redirectAfterLogin");
-          
-          // Still navigate even if cart refresh fails
-          navigate(redirectPath, { replace: true });
+          // Still redirect even if cart refresh fails
+          performRedirectAfterLogin();
         });
 
       // Reset the login attempted flag
@@ -134,6 +175,7 @@ const LoginPage: React.FC = () => {
     navigate,
     from,
     refreshCart,
+    showCartMergeModal,
   ]);
 
   const handleLoginClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -156,6 +198,8 @@ const LoginPage: React.FC = () => {
 
     // Set flag to indicate login was attempted
     loginAttemptedRef.current = true;
+    // Reset cart merge handling flag
+    cartMergeHandledRef.current = false;
     // Clear error ref
     errorRef.current = null;
     // Reset notification tracking
@@ -171,7 +215,7 @@ const LoginPage: React.FC = () => {
       await login(credentials.email, credentials.password);
 
       // If we get here, login was successful
-      // The server will automatically handle cart transfer via session
+      // The server will store the guest cart in session
       // Navigation and cart refresh will happen through the useEffect
     } catch (err) {
       // Handle errors manually to prevent automatic redirects
@@ -197,181 +241,198 @@ const LoginPage: React.FC = () => {
     }
   };
 
+  // Calculate existing cart item count
+  const existingCartItemCount = cart?.items?.length || 0;
+
   return (
-    <div className="pt-16 min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign in to your account
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Or{" "}
-          <Link
-            to="/register"
-            className="font-medium text-primary-600 hover:text-primary-500"
-          >
-            create a new account
-          </Link>
-        </p>
-      </div>
+    <>
+      {/* Cart Merge Modal */}
+      {showCartMergeModal && (
+        <CartMergeModal
+          isOpen={showCartMergeModal}
+          onClose={() => setShowCartMergeModal(false)}
+          onAction={handleMergeAction}
+          existingCartItemCount={existingCartItemCount}
+          guestCartItemCount={guestCartItemCount}
+          isLoading={isCartMerging}
+        />
+      )}
+      
+      <div className="pt-16 min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Sign in to your account
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Or{" "}
+            <Link
+              to="/register"
+              className="font-medium text-primary-600 hover:text-primary-500"
+            >
+              create a new account
+            </Link>
+          </p>
+        </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {/* Explicitly prevent form submission with onSubmit handler */}
-          <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-            {/* Email input */}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Email address
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={credentials.email}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                />
-              </div>
-            </div>
-
-            {/* Password input */}
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Password
-              </label>
-              <div className="mt-1 relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={credentials.password}
-                  onChange={handleInputChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOffIcon className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <EyeIcon className="h-5 w-5 text-gray-400" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Remember me and forgot password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={handleInputChange}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+            {/* Explicitly prevent form submission with onSubmit handler */}
+            <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+              {/* Email input */}
+              <div>
                 <label
-                  htmlFor="remember-me"
-                  className="ml-2 block text-sm text-gray-700"
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700"
                 >
-                  Remember me
+                  Email address
                 </label>
+                <div className="mt-1">
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={credentials.email}
+                    onChange={handleInputChange}
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
               </div>
 
-              <div className="text-sm">
-                <Link
-                  to="/forgot-password"
-                  className="font-medium text-primary-600 hover:text-primary-500"
+              {/* Password input */}
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
                 >
-                  Forgot your password?
-                </Link>
+                  Password
+                </label>
+                <div className="mt-1 relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    required
+                    value={credentials.password}
+                    onChange={handleInputChange}
+                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOffIcon className="h-5 w-5 text-gray-400" />
+                    ) : (
+                      <EyeIcon className="h-5 w-5 text-gray-400" />
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Login button */}
-            <div>
-              <Button
-                type="button"
-                variant="primary"
-                size="medium"
-                fullWidth
-                disabled={isSubmitting || isLoading}
-                loading={isSubmitting || isLoading}
-                onClick={handleLoginClick}
-                ariaLabel="Sign in to your account"
-              >
-                Sign in
-              </Button>
-            </div>
-          </form>
+              {/* Remember me and forgot password */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember-me"
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label
+                    htmlFor="remember-me"
+                    className="ml-2 block text-sm text-gray-700"
+                  >
+                    Remember me
+                  </label>
+                </div>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
+                <div className="text-sm">
+                  <Link
+                    to="/forgot-password"
+                    className="font-medium text-primary-600 hover:text-primary-500"
+                  >
+                    Forgot your password?
+                  </Link>
+                </div>
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  Or continue with
-                </span>
-              </div>
-            </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
+              {/* Login button */}
               <div>
                 <Button
-                  variant="outline"
+                  type="button"
+                  variant="primary"
+                  size="medium"
                   fullWidth
-                  onClick={() => (window.location.href = "/auth/google")}
-                  ariaLabel="Sign in with Google"
+                  disabled={isSubmitting || isLoading}
+                  loading={isSubmitting || isLoading}
+                  onClick={handleLoginClick}
+                  ariaLabel="Sign in to your account"
                 >
-                  <svg
-                    className="w-5 h-5"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z" />
-                  </svg>
-                  <span className="ml-2">Google</span>
+                  Sign in
                 </Button>
               </div>
+            </form>
 
-              <div>
-                <Button
-                  variant="outline"
-                  fullWidth
-                  onClick={() => (window.location.href = "/auth/facebook")}
-                  ariaLabel="Sign in with Facebook"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">
+                    Or continue with
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <div>
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    onClick={() => (window.location.href = "/auth/google")}
+                    ariaLabel="Sign in with Google"
                   >
-                    <path d="M22,12c0-5.52-4.48-10-10-10S2,6.48,2,12c0,4.84,3.44,8.87,8,9.8V15H8v-3h2V9.5C10,7.57,11.57,6,13.5,6H16v3h-2c-0.55,0-1,0.45-1,1v2h3v3h-3v6.95C18.05,21.45,22,17.19,22,12z" />
-                  </svg>
-                  <span className="ml-2">Facebook</span>
-                </Button>
+                    <svg
+                      className="w-5 h-5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z" />
+                    </svg>
+                    <span className="ml-2">Google</span>
+                  </Button>
+                </div>
+
+                <div>
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    onClick={() => (window.location.href = "/auth/facebook")}
+                    ariaLabel="Sign in with Facebook"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M22,12c0-5.52-4.48-10-10-10S2,6.48,2,12c0,4.84,3.44,8.87,8,9.8V15H8v-3h2V9.5C10,7.57,11.57,6,13.5,6H16v3h-2c-0.55,0-1,0.45-1,1v2h3v3h-3v6.95C18.05,21.45,22,17.19,22,12z" />
+                    </svg>
+                    <span className="ml-2">Facebook</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

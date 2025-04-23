@@ -515,3 +515,9 @@ export interface PaginatedResponse<T> {
   perPage: number;
   totalPages: number;
 }
+
+export interface GuestCartInfo {
+  hasGuestCart: boolean;
+  itemCount: number;
+  total?: number;
+}

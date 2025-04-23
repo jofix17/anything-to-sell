@@ -7,6 +7,7 @@ import {
   AddToCartData,
   UpdateCartItemData,
   CreateOrderData,
+  GuestCartInfo,
 } from "../types";
 import queryHooks from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
@@ -43,6 +44,29 @@ class CartService {
 
   async clearCart(): Promise<ApiResponse<Cart>> {
     return await apiService.delete<ApiResponse<Cart>>("/cart/clear");
+  }
+
+  // New methods for guest cart handling
+  async checkGuestCart(): Promise<ApiResponse<GuestCartInfo>> {
+    return await apiService.get<ApiResponse<GuestCartInfo>>("/cart/check-guest-cart");
+  }
+
+  async mergeCart(): Promise<ApiResponse<Cart>> {
+    return await apiService.post<ApiResponse<Cart>>("/cart/merge-guest-cart", {
+      action: "merge"
+    });
+  }
+
+  async replaceCart(): Promise<ApiResponse<Cart>> {
+    return await apiService.post<ApiResponse<Cart>>("/cart/merge-guest-cart", {
+      action: "replace"
+    });
+  }
+
+  async keepUserCart(): Promise<ApiResponse<Cart>> {
+    return await apiService.post<ApiResponse<Cart>>("/cart/merge-guest-cart", {
+      action: "keep"
+    });
   }
 
   // Address methods
@@ -141,10 +165,89 @@ export const useGetCart = (options = {}) => {
 };
 
 /**
+ * Hook for checking guest cart info
+ */
+export const useCheckGuestCart = (options = {}) => {
+  return useApiQuery(
+    QueryKeys.cart.guestCheck, 
+    () => cartService.checkGuestCart(), 
+    {
+      refetchOnWindowFocus: false,
+      staleTime: 10000, // 10 seconds
+      enabled: false, // Don't automatically run this query
+      ...options,
+    }
+  );
+};
+
+/**
  * Hook for adding an item to the cart
  */
 export const useAddToCart = (options = {}) => {
   return useApiMutation((data: AddToCartData) => cartService.addToCart(data), {
+    onSuccess: (response, variables, context) => {
+      // Invalidate the cart query to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+      
+      if (
+        options &&
+        "onSuccess" in options &&
+        typeof options.onSuccess === "function"
+      ) {
+        options.onSuccess(response, variables, context);
+      }
+    },
+    ...options,
+  });
+};
+
+/**
+ * Hook for merging guest cart with user cart
+ */
+export const useMergeCart = (options = {}) => {
+  return useApiMutation(() => cartService.mergeCart(), {
+    onSuccess: (response, variables, context) => {
+      // Invalidate the cart query to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+      
+      if (
+        options &&
+        "onSuccess" in options &&
+        typeof options.onSuccess === "function"
+      ) {
+        options.onSuccess(response, variables, context);
+      }
+    },
+    ...options,
+  });
+};
+
+/**
+ * Hook for replacing user cart with guest cart
+ */
+export const useReplaceCart = (options = {}) => {
+  return useApiMutation(() => cartService.replaceCart(), {
+    onSuccess: (response, variables, context) => {
+      // Invalidate the cart query to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+      
+      if (
+        options &&
+        "onSuccess" in options &&
+        typeof options.onSuccess === "function"
+      ) {
+        options.onSuccess(response, variables, context);
+      }
+    },
+    ...options,
+  });
+};
+
+/**
+ * Hook for keeping user cart and discarding guest cart
+ */
+export const useKeepUserCart = (options = {}) => {
+  return useApiMutation(() => cartService.keepUserCart(), {
     onSuccess: (response, variables, context) => {
       // Invalidate the cart query to ensure fresh data
       queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
@@ -222,7 +325,7 @@ export const useClearCart = (options = {}) => {
         options &&
         "onSuccess" in options &&
         typeof options.onSuccess === "function"
-      ) {
+        ) {
         options.onSuccess(response, variables, context);
       }
     },

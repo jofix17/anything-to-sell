@@ -67,6 +67,7 @@ export const QueryKeys = {
   cart: {
     current: ['cart'],
     items: ['cart', 'items'],
+    guestCheck: ['cart', 'guestCheck']
   },
   orders: {
     all: ['orders'],

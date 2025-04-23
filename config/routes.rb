@@ -103,6 +103,9 @@ Rails.application.routes.draw do
         put "items/:id", to: "carts#update_item"
         delete "items/:id", to: "carts#remove_item"
         delete "clear", to: "carts#clear"
+
+        get "check-guest-cart", to: "carts#check_guest_cart"
+        post "merge-guest-cart", to: "carts#merge_guest_cart"
       end
 
       resources :orders, only: [ :index, :show, :create ]
