@@ -18,6 +18,7 @@ export interface User {
   lastLoginAt?: string; // matches Rails last_login_at
   status: UserStatus;
   suspensionReason?: string;
+  cart: Cart;
 }
 
 export interface UserCreateInput {
@@ -516,8 +517,9 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-export interface GuestCartInfo {
-  hasGuestCart: boolean;
+export interface CheckExistingCart {
+  hasExistingCart: boolean;
   itemCount: number;
   total?: number;
+  cartId?: string;
 }

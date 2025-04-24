@@ -9,6 +9,9 @@ import {
 } from "@tanstack/react-query";
 import { ApiResponse, PaginatedResponse } from "../types";
 
+// Track in-flight requests to prevent duplicates
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
 /**
  * Utility function to hash query parameters to a stable string
  * This helps ensure consistent cache keys even with object parameters
@@ -32,49 +35,72 @@ export const hashQueryKey = (key: unknown): string => {
 };
 
 /**
- * Enhanced query function to handle API requests with proper error handling and retries
+ * Enhanced query function to handle API requests with proper error handling,
+ * retries, and deduplication of in-flight requests
  */
 export const createQueryFn = <TData>(
   fn: (context: QueryFunctionContext) => Promise<ApiResponse<TData>>
 ) => {
   return async (context: QueryFunctionContext): Promise<ApiResponse<TData>> => {
     try {
-      // Add request tracking to aid in debugging and performance monitoring
-      const requestId = Math.random().toString(36).substring(2, 9);
-      console.debug(
-        `[Query ${requestId}] Started: ${hashQueryKey(context.queryKey)}`
-      );
+      // Generate a unique request ID based on the query key
+      const requestKey = hashQueryKey(context.queryKey);
+      const requestId = `${requestKey}_${Math.random()
+        .toString(36)
+        .substring(2, 9)}`;
+      console.debug(`[Query ${requestId}] Started: ${requestKey}`);
 
+      // Check if there's already an in-flight request for this query key
+      const existingRequest = inFlightRequests.get(requestKey);
+      if (existingRequest) {
+        console.debug(
+          `[Query ${requestId}] Reusing in-flight request for ${requestKey}`
+        );
+        return existingRequest as Promise<ApiResponse<TData>>;
+      }
+
+      // Create and track the new request
       const startTime = performance.now();
-      const result = await fn(context);
-      const duration = performance.now() - startTime;
+      const promise = fn(context);
+      inFlightRequests.set(requestKey, promise);
 
-      console.debug(
-        `[Query ${requestId}] Completed in ${duration.toFixed(2)}ms`
-      );
-      return result;
+      // When the request completes, remove it from tracking and log performance
+      promise.finally(() => {
+        inFlightRequests.delete(requestKey);
+        const duration = performance.now() - startTime;
+        console.debug(
+          `[Query ${requestId}] Completed in ${duration.toFixed(2)}ms`
+        );
+      });
+
+      return await promise;
     } catch (error) {
-      console.error(`[Query Error] ${context.queryKey.join("/")}:`, error);
+      console.error(`[Query Error] ${context.queryKey.join("/")}: `, error);
       throw error;
     }
   };
 };
 
+// Types for query options
+type ApiQueryOptions<TData, TError> = UseQueryOptions<
+  ApiResponse<TData>,
+  TError,
+  TData,
+  QueryKey
+>;
+
 /**
- * Enhanced hook for generic API queries with improved caching
+ * Enhanced hook for generic API queries with improved caching and deduplication
  */
 export function useApiQuery<TData, TError = Error>(
   queryKey: QueryKey,
   queryFn: () => Promise<ApiResponse<TData>>,
-  options: Omit<
-    UseQueryOptions<ApiResponse<TData>, TError, TData>,
-    "queryKey" | "queryFn"
-  > = {}
+  options: Omit<ApiQueryOptions<TData, TError>, "queryKey" | "queryFn"> = {}
 ) {
   // Create a default selector to extract data from API response
   const defaultSelect = (response: ApiResponse<TData>) => response.data;
 
-  return useQuery<ApiResponse<TData>, TError, TData>({
+  return useQuery<ApiResponse<TData>, TError, TData, QueryKey>({
     queryKey,
     queryFn: createQueryFn(() => queryFn()),
     select: options.select || defaultSelect,
@@ -82,22 +108,26 @@ export function useApiQuery<TData, TError = Error>(
   });
 }
 
+// Types for paginated query options
+type PaginatedQueryOptions<TData, TError> = Omit<
+  UseQueryOptions<
+    ApiResponse<PaginatedResponse<TData>>,
+    TError,
+    PaginatedResponse<TData>,
+    QueryKey
+  >,
+  "queryKey" | "queryFn" | "placeholderData"
+> & {
+  keepPreviousData?: boolean;
+};
+
 /**
  * Enhanced hook for paginated queries with cursor-based pagination support
  */
 export function usePaginatedQuery<TData, TError = Error>(
   queryKey: QueryKey,
   queryFn: () => Promise<ApiResponse<PaginatedResponse<TData>>>,
-  options: Omit<
-    UseQueryOptions<
-      ApiResponse<PaginatedResponse<TData>>,
-      TError,
-      PaginatedResponse<TData>
-    >,
-    "queryKey" | "queryFn" | "placeholderData"
-  > & {
-    keepPreviousData?: boolean;
-  } = {}
+  options: PaginatedQueryOptions<TData, TError> = {}
 ) {
   // Create a default selector to extract paginated data from API response
   const defaultSelect = (response: ApiResponse<PaginatedResponse<TData>>) =>
@@ -115,7 +145,8 @@ export function usePaginatedQuery<TData, TError = Error>(
   return useQuery<
     ApiResponse<PaginatedResponse<TData>>,
     TError,
-    PaginatedResponse<TData>
+    PaginatedResponse<TData>,
+    QueryKey
   >({
     queryKey,
     queryFn: createQueryFn(() => queryFn()),
@@ -126,15 +157,22 @@ export function usePaginatedQuery<TData, TError = Error>(
   });
 }
 
+// Define types for meta information
+interface InvalidateQueriesMetaInfo {
+  invalidateQueries: QueryKey[] | ((variables: unknown) => QueryKey[]);
+}
+
 /**
  * Enhanced hook for API mutations with optimistic updates and rollbacks
  */
 export function useApiMutation<TData, TVariables, TError = Error>(
   mutationFn: (variables: TVariables) => Promise<ApiResponse<TData>>,
   options: Omit<
-    UseMutationOptions<ApiResponse<TData>, TError, TVariables>,
+    UseMutationOptions<ApiResponse<TData>, TError, TVariables, unknown>,
     "mutationFn"
-  > = {}
+  > & {
+    meta?: InvalidateQueriesMetaInfo;
+  } = {}
 ) {
   const queryClient = useQueryClient();
 

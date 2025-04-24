@@ -1,18 +1,30 @@
 import React from "react";
-import { Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
+import {
+  Dialog,
+  DialogPanel,
+  DialogTitle,
+  Transition,
+  TransitionChild,
+} from "@headlessui/react";
+import { XMarkIcon, ShoppingCartIcon } from "@heroicons/react/24/outline";
 import Button from "../common/Button";
 
+// Define the action types for cart merging
 export type CartMergeAction = "merge" | "replace" | "keep";
 
 interface CartMergeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAction: (action: CartMergeAction) => void;
+  onAction: (action: CartMergeAction) => Promise<void>;
   existingCartItemCount: number;
   guestCartItemCount: number;
   isLoading: boolean;
 }
 
+/**
+ * Modal component that appears when a user logs in with both a guest cart
+ * and an existing user cart, allowing them to choose how to handle the merge.
+ */
 const CartMergeModal: React.FC<CartMergeModalProps> = ({
   isOpen,
   onClose,
@@ -22,76 +34,127 @@ const CartMergeModal: React.FC<CartMergeModalProps> = ({
   isLoading,
 }) => {
   return (
-    <Dialog
-      open={isOpen}
-      onClose={() => {
-        // Only allow closing if not loading
-        if (!isLoading) onClose();
-      }}
-      className="relative z-50"
-    >
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+    <Transition show={isOpen} as={React.Fragment}>
+      <Dialog
+        as="div"
+        className="relative z-50"
+        onClose={() => !isLoading && onClose()}
+      >
+        <TransitionChild
+          as={React.Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black/30" />
+        </TransitionChild>
 
-      {/* Full-screen container to center the panel */}
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <DialogPanel className="mx-auto max-w-md rounded-lg bg-white p-6 shadow-xl w-full">
-          <DialogTitle className="text-lg font-medium text-gray-900">
-            Your Cart Items
-          </DialogTitle>
-
-          <div className="mt-4">
-            <p className="text-sm text-gray-500">
-              You have {guestCartItemCount} item(s) in your guest cart and{" "}
-              {existingCartItemCount} item(s) in your existing cart. What would
-              you like to do?
-            </p>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => onAction("merge")}
-              fullWidth
-              disabled={isLoading}
-              loading={isLoading}
-              ariaLabel="Merge guest cart items with my existing cart"
+        <div className="fixed inset-0 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4 text-center">
+            <TransitionChild
+              as={React.Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0 scale-95"
+              enterTo="opacity-100 scale-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100 scale-100"
+              leaveTo="opacity-0 scale-95"
             >
-              Merge items from both carts
-            </Button>
+              <DialogPanel className="w-full max-w-md transform overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all">
+                <div className="flex items-center justify-between mb-4">
+                  <DialogTitle
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-gray-900"
+                  >
+                    We found your shopping carts
+                  </DialogTitle>
+                  <button
+                    type="button"
+                    className="text-gray-400 hover:text-gray-500"
+                    onClick={() => !isLoading && onClose()}
+                    disabled={isLoading}
+                  >
+                    <span className="sr-only">Close</span>
+                    <XMarkIcon className="h-6 w-6" aria-hidden="true" />
+                  </button>
+                </div>
 
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => onAction("replace")}
-              fullWidth
-              disabled={isLoading}
-              loading={isLoading}
-              ariaLabel="Replace my existing cart with guest cart items"
-            >
-              Use only guest cart items
-            </Button>
+                <div className="mt-2">
+                  <div className="text-sm text-gray-600">
+                    <p className="mb-4">
+                      We found items in your guest cart and in your existing
+                      account cart. What would you like to do?
+                    </p>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onAction("keep")}
-              fullWidth
-              disabled={isLoading}
-              loading={isLoading}
-              ariaLabel="Keep my existing cart and discard guest cart items"
-            >
-              Keep my existing cart items only
-            </Button>
+                    <div className="flex items-center justify-between mb-2 p-3 bg-indigo-50 rounded-md">
+                      <div className="flex items-center">
+                        <ShoppingCartIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                        <span>Your account cart</span>
+                      </div>
+                      <span className="font-medium">
+                        {existingCartItemCount} items
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-md">
+                      <div className="flex items-center">
+                        <ShoppingCartIcon className="h-5 w-5 text-green-600 mr-2" />
+                        <span>Your guest cart</span>
+                      </div>
+                      <span className="font-medium">
+                        {guestCartItemCount} items
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 space-y-3">
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    onClick={() => onAction("merge")}
+                    disabled={isLoading}
+                    loading={isLoading}
+                  >
+                    Merge both carts
+                    <span className="block text-xs opacity-80 font-normal mt-1">
+                      Combine items from both carts
+                    </span>
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    fullWidth
+                    onClick={() => onAction("replace")}
+                    disabled={isLoading}
+                  >
+                    Use guest cart only
+                    <span className="block text-xs opacity-80 font-normal mt-1">
+                      Replace your account cart with guest cart items
+                    </span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    fullWidth
+                    onClick={() => onAction("keep")}
+                    disabled={isLoading}
+                  >
+                    Keep account cart
+                    <span className="block text-xs opacity-80 font-normal mt-1">
+                      Discard guest cart items
+                    </span>
+                  </Button>
+                </div>
+              </DialogPanel>
+            </TransitionChild>
           </div>
-
-          <div className="mt-4 text-xs text-gray-400 text-center">
-            <p>You can always modify your cart items later.</p>
-          </div>
-        </DialogPanel>
-      </div>
-    </Dialog>
+        </div>
+      </Dialog>
+    </Transition>
   );
 };
 

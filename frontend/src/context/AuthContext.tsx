@@ -5,7 +5,7 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { User, AuthState, RegisterData, ApiResponse } from "../types";
+import { User, AuthState, RegisterData } from "../types";
 import {
   useCurrentUser,
   useLogin,
@@ -15,6 +15,7 @@ import {
 } from "../services/authService";
 import { queryClient } from "./QueryContext";
 import { useNotification } from "./NotificationContext";
+import { QueryKeys } from "../utils/queryKeys";
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
@@ -44,31 +45,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
   // Use the React Query hook for current user
   const { isLoading: isUserLoading } = useCurrentUser({
-    onSuccess: (data: ApiResponse<User>) => {
-      setAuthState((prevState) => ({
-        ...prevState,
-        user: data.data,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      }));
-    },
-    onError: (error: unknown) => {
-      // Clear localStorage on error (token might be invalid)
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-
-      setAuthState({
-        user: null,
-        token: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Authentication failed. Please login again.",
-      });
-    },
+    // We don't pass onSuccess directly to avoid TypeScript errors
+    enabled: authState.isAuthenticated,
   });
 
   // Initialize from localStorage if available but API check is pending
@@ -145,6 +123,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         data: { user, token },
       } = result;
 
+      // Store the user with their cart data
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("token", token);
+
       setAuthState({
         user,
         token,
@@ -152,6 +134,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
+
+      // Update cart query data with the user's cart if it exists
+      if (user.cart) {
+        queryClient.setQueryData(QueryKeys.cart.current, {
+          data: user.cart,
+          success: true,
+          message: "Cart loaded from user data",
+        });
+      }
 
       showNotification("Login successful!", { type: "success" });
     } catch (error) {
@@ -190,6 +181,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         data: { user, token },
       } = result;
 
+      // Store the user with their cart data
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("token", token);
+
       setAuthState({
         user,
         token,
@@ -197,6 +192,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         isLoading: false,
         error: null,
       });
+
+      // Update cart query data with the user's cart if it exists
+      if (user.cart) {
+        queryClient.setQueryData(QueryKeys.cart.current, {
+          data: user.cart,
+          success: true,
+          message: "Cart loaded from user data",
+        });
+      }
+
       showNotification("Registration successful!", { type: "success" });
     } catch (error) {
       const errorMessage =
@@ -230,6 +235,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       // Clear all queries from the cache on logout
       queryClient.clear();
 
+      // Remove localStorage items
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
       setAuthState({
         user: null,
         token: null,
@@ -247,7 +256,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       localStorage.removeItem("user");
 
       // Ensure cart queries are invalidated
-      queryClient.invalidateQueries({ queryKey: ['cart'] });
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
 
       setAuthState({
         user: null,
@@ -271,6 +280,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       }));
 
       const result = await updateProfileMutation.mutateAsync(userData);
+
+      // Update the stored user data
+      if (result.data) {
+        const updatedUser = { ...authState.user!, ...result.data };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      }
 
       setAuthState((prevState) => ({
         ...prevState,

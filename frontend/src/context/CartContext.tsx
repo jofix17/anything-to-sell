@@ -3,7 +3,6 @@ import React, {
   useContext,
   useState,
   useEffect,
-  ReactNode,
   useCallback,
   useRef,
   useMemo,
@@ -18,7 +17,7 @@ import {
   useMergeCart,
   useReplaceCart,
   useKeepUserCart,
-  useCheckGuestCart,
+  useCheckExistingCart,
 } from "../services/cartService";
 import { useInvalidateQueries } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
@@ -44,16 +43,20 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-export const CartProvider: React.FC<{ children: ReactNode }> = ({
+/**
+ * Provider for cart functionality with optimized fetching
+ */
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  // State management
   const [cartState, setCartState] = useState<{
     cart: Cart | null;
     isLoading: boolean;
     error: string | null;
   }>({
     cart: null,
-    isLoading: false, // Start with loading false and let React Query handle it
+    isLoading: false,
     error: null,
   });
 
@@ -64,13 +67,15 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
   const { isAuthenticated, user } = useAuth();
   const invalidateQueries = useInvalidateQueries();
 
-  // Use refs to track operations and prevent duplicate calls
+  // Refs to track operations and prevent duplicate calls
   const cartOperationInProgressRef = useRef(false);
   const previousAuthStateRef = useRef(isAuthenticated);
   const cartMergeCheckDoneRef = useRef(false);
   const initialCartLoadedRef = useRef(false);
+  const cartRefreshInProgressRef = useRef(false);
+  const autoMergePerformedRef = useRef(false);
 
-  // Setup React Query with appropriate options
+  // Setup React Query with appropriate options, enabling manual control
   const {
     refetch,
     isLoading: isCartQueryLoading,
@@ -81,10 +86,11 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
     refetchOnWindowFocus: false,
     retry: 1,
     staleTime: 30000, // Consider data fresh for 30 seconds to reduce flickering
+    enabled: false, // Disable automatic fetching, we'll control it manually
   });
 
   // Add the guest cart check query
-  const { refetch: checkGuestCart } = useCheckGuestCart({
+  const { refetch: checkExistingCart } = useCheckExistingCart({
     enabled: false, // Don't run automatically
     retry: 1, // Allow one retry on failure
     cacheTime: 0, // Don't cache this result
@@ -125,6 +131,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
 
     // Handle errors
     if (cartQueryError && !isCartQueryLoading && !isCartQueryFetching) {
+      console.error("Cart query error:", cartQueryError);
       setCartState((prevState) => ({
         ...prevState,
         error:
@@ -158,39 +165,51 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
     try {
       console.log("Checking for guest cart after login");
 
-      // Get the current cart after login
-      const currentCart = await refetch();
+      // Get the current cart after login - first check if the user has a cart in the user object
+      const userHasCart = user.cart && user.cart.id;
+      const userCartHasItems =
+        userHasCart && user.cart.items && user.cart.items.length > 0;
 
-      // Use React Query to check for guest cart
-      const guestCartResponse = await checkGuestCart();
+      console.log("User cart check:", { userHasCart, userCartHasItems });
 
-      // Extract the data from the nested structure
-      const guestCartData = guestCartResponse?.data;
+      // Check if there's a guest cart
+      const checkExistingCartResponse = await checkExistingCart();
+      const checkExistingCartData = checkExistingCartResponse?.data;
+      const guestHasItems =
+        checkExistingCartData &&
+        checkExistingCartData.hasExistingCart &&
+        checkExistingCartData.itemCount > 0;
 
-      if (guestCartData && guestCartData.hasGuestCart) {
-        const guestItemCount = guestCartData.itemCount || 0;
+      if (guestHasItems) {
+        const guestItemCount = checkExistingCartData.itemCount || 0;
         setGuestCartItemCount(guestItemCount);
-
         console.log(`Found guest cart with ${guestItemCount} items`);
 
-        // Only show merge modal if both carts have items
+        // If user has no cart or empty cart but guest cart has items, auto-merge
         if (
+          !userCartHasItems &&
           guestItemCount > 0 &&
-          currentCart.data &&
-          currentCart.data.items &&
-          currentCart.data.items.length > 0
+          !autoMergePerformedRef.current
         ) {
           console.log(
-            "Both guest and user carts have items, showing merge modal"
+            "User has no cart or empty cart but guest has items - auto replacing"
+          );
+          autoMergePerformedRef.current = true;
+          await handleCartMergeAction("replace");
+        }
+        // If both user and guest have cart items, show merge modal
+        else if (userCartHasItems && guestItemCount > 0) {
+          console.log(
+            "Both user and guest carts have items, showing merge modal"
           );
           setShowCartMergeModal(true);
         }
-        // If only guest cart has items, automatically merge
-        else if (guestItemCount > 0) {
-          console.log("Only guest cart has items, auto-merging");
-          await handleCartMergeAction("merge");
-        }
       } else {
+        // If user has a cart already, ensure it's loaded
+        if (userHasCart) {
+          console.log("No guest cart, but user has a cart - refreshing");
+          await refetch();
+        }
         console.log("No guest cart found or guest cart is empty");
       }
 
@@ -201,9 +220,9 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
       // Mark as done even on error to prevent repeated attempts
       cartMergeCheckDoneRef.current = true;
     }
-  }, [isAuthenticated, user, refetch, checkGuestCart]);
+  }, [isAuthenticated, user, refetch, checkExistingCart]);
 
-  // Handle the handleCartMergeAction separately to avoid circular dependency
+  // Handle cart merge action
   const handleCartMergeAction = useCallback(
     async (action: CartMergeAction): Promise<void> => {
       try {
@@ -240,71 +259,16 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
     [mergeCartMutation, replaceCartMutation, keepUserCartMutation]
   );
 
-  // When auth state changes, handle cart state
-  useEffect(() => {
-    // Check if auth state changed
-    if (previousAuthStateRef.current !== isAuthenticated) {
-      console.log(
-        `Auth state changed: ${previousAuthStateRef.current} -> ${isAuthenticated}`
-      );
-
-      // If user logged out, reset the cart state first
-      if (!isAuthenticated && previousAuthStateRef.current) {
-        console.log("User logged out, resetting cart state");
-        resetCartState();
-        // Reset merge check flag when logging out
-        cartMergeCheckDoneRef.current = false;
-      }
-
-      // If user logged in, we need to check for guest cart merging
-      if (isAuthenticated && !previousAuthStateRef.current) {
-        console.log("User logged in, checking for guest cart to merge");
-        // First get their user cart
-        invalidateQueries(QueryKeys.cart.current);
-        refetch()
-          .then(() => {
-            // Then check if there's a guest cart that needs merging
-            checkForGuestCartMerge();
-          })
-          .catch(console.error);
-      } else {
-        // Regular refresh for other state changes
-        console.log("Regular cart refresh due to auth state change");
-        invalidateQueries(QueryKeys.cart.current);
-        refetch().catch(console.error);
-      }
-
-      // Update the previous auth state ref
-      previousAuthStateRef.current = isAuthenticated;
-    }
-  }, [
-    isAuthenticated,
-    invalidateQueries,
-    refetch,
-    resetCartState,
-    checkForGuestCartMerge,
-  ]);
-
-  // Initial load effect - runs once when component mounts
-  useEffect(() => {
-    if (
-      !initialCartLoadedRef.current &&
-      !isCartQueryLoading &&
-      !isCartQueryFetching
-    ) {
-      console.log("Initial cart load");
-      refetch().catch(console.error);
-    }
-  }, [refetch, isCartQueryLoading, isCartQueryFetching]);
-
-  // Refresh cart data
+  // Controlled cart refresh function to prevent duplicate fetches
   const refreshCart = useCallback(async (): Promise<void> => {
-    if (cartOperationInProgressRef.current) {
-      console.log("Cart operation already in progress, skipping refresh");
+    // Skip if there's already a cart refresh in progress
+    if (cartRefreshInProgressRef.current) {
+      console.log("Cart refresh already in progress, skipping");
       return Promise.resolve();
     }
 
     try {
+      cartRefreshInProgressRef.current = true;
       cartOperationInProgressRef.current = true;
 
       setCartState((prevState) => ({
@@ -328,9 +292,96 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({
 
       return Promise.reject(error);
     } finally {
+      cartRefreshInProgressRef.current = false;
       cartOperationInProgressRef.current = false;
     }
   }, [refetch]);
+
+  // When auth state changes, handle cart state
+  useEffect(() => {
+    // Check if auth state changed
+    if (previousAuthStateRef.current !== isAuthenticated) {
+      console.log(
+        `Auth state changed: ${previousAuthStateRef.current} -> ${isAuthenticated}`
+      );
+
+      // If user logged out, reset the cart state first
+      if (!isAuthenticated && previousAuthStateRef.current) {
+        console.log("User logged out, resetting cart state");
+        resetCartState();
+
+        // Reset flags when logging out
+        cartMergeCheckDoneRef.current = false;
+        autoMergePerformedRef.current = false;
+      }
+
+      // If user logged in, we need to check for guest cart merging
+      if (isAuthenticated && !previousAuthStateRef.current) {
+        console.log("User logged in, will check for guest cart to merge");
+
+        // When the user logs in, their cart data is already in the user object
+        // Set cart from user data while we figure out if we need to merge
+        if (user && user.cart) {
+          console.log("Setting cart from user data initially");
+          setCartState((prevState) => ({
+            ...prevState,
+            cart: user.cart,
+            isLoading: false,
+          }));
+        }
+
+        // Check if there's a guest cart that needs merging
+        checkForGuestCartMerge();
+      } else {
+        // Regular refresh for other state changes
+        console.log("Regular cart refresh due to auth state change");
+        invalidateQueries(QueryKeys.cart.current);
+        refetch().catch(console.error);
+      }
+
+      // Update the previous auth state ref
+      previousAuthStateRef.current = isAuthenticated;
+    }
+  }, [
+    isAuthenticated,
+    invalidateQueries,
+    refetch,
+    resetCartState,
+    checkForGuestCartMerge,
+    user,
+  ]);
+
+  // Initial load effect - runs once when component mounts
+  useEffect(() => {
+    if (
+      !initialCartLoadedRef.current &&
+      !isCartQueryLoading &&
+      !isCartQueryFetching &&
+      !cartRefreshInProgressRef.current // Ensure no refresh is in progress
+    ) {
+      console.log("Initial cart load");
+      cartRefreshInProgressRef.current = true; // Prevent duplicate fetches
+
+      // If user is authenticated and has a cart in the user object, use that initially
+      if (isAuthenticated && user?.cart) {
+        console.log("Setting initial cart from user data");
+        setCartState((prevState) => ({
+          ...prevState,
+          cart: user.cart,
+          isLoading: false,
+        }));
+        initialCartLoadedRef.current = true;
+        cartRefreshInProgressRef.current = false;
+      } else {
+        // Otherwise fetch the cart
+        refetch()
+          .catch(console.error)
+          .finally(() => {
+            cartRefreshInProgressRef.current = false;
+          });
+      }
+    }
+  }, [refetch, isCartQueryLoading, isCartQueryFetching, isAuthenticated, user]);
 
   // Add item to cart
   const addToCart = useCallback(

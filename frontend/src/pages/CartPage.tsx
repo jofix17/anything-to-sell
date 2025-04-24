@@ -1,95 +1,26 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
+import CartItemList from "../components/cart/CartItemList";
+import CartSummary from "../components/cart/CartSummary";
+import { ShoppingCartIcon } from "@heroicons/react/24/outline";
 
+/**
+ * Cart page with optimized loading and improved UX
+ */
 const CartPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  
-  // Local state for tracking page-specific operations
-  const [localLoading, setLocalLoading] = useState(false);
-  
-  // Use the Cart Context instead of direct service calls
-  const { 
-    cart, 
-    isLoading: cartIsLoading, 
-    error, 
-    updateCartItem, 
-    removeCartItem, 
-    clearCart, 
-    refreshCart,
-  } = useCart();
 
-  // Flags to prevent duplicate operations
-  const cartTransferAttemptedRef = useRef(false);
-  const initialLoadAttemptedRef = useRef(false);
-  
+  // Use the Cart Context with enhanced fetch prevention
+  const { cart, isLoading: cartIsLoading, error, refreshCart } = useCart();
+
+  // Local loading state for page-specific operations
+  const [localLoading, setLocalLoading] = useState(false);
+
   // Combined loading state
   const isLoading = cartIsLoading || localLoading;
-
-  // Perform any necessary cart operations when the component mounts or auth changes
-  // This will only run once per mount/auth change
-  useEffect(() => {
-    // Skip if we've already tried an initial load
-    if (initialLoadAttemptedRef.current) {
-      return;
-    }
-    
-    initialLoadAttemptedRef.current = true;
-    
-    // No need to call refreshCart here - the CartContext already handles the initial load
-    
-    // For authenticated users, check if we need to transfer a guest cart
-    if (isAuthenticated && !cartTransferAttemptedRef.current) {
-      const guestCartToken = localStorage.getItem("guest_cart_token");
-      
-      if (guestCartToken) {
-        cartTransferAttemptedRef.current = true;
-        console.log("CartPage: Found guest cart token, will attempt transfer");
-        
-        // Don't set localLoading - the transferGuestCart function in the context handles loading state
-      }
-    }
-  }, [isAuthenticated]);
-
-  // Handle quantity changes
-  const handleQuantityChange = async (cartItemId: string, newQuantity: number) => {
-    if (newQuantity < 1) return;
-
-    try {
-      setLocalLoading(true);
-      await updateCartItem(cartItemId, newQuantity);
-    } catch (error) {
-      console.error("Failed to update quantity:", error);
-    } finally {
-      setLocalLoading(false);
-    }
-  };
-
-  // Handle item removal
-  const handleRemoveItem = async (cartItemId: string) => {
-    try {
-      setLocalLoading(true);
-      await removeCartItem(cartItemId);
-    } catch (error) {
-      console.error("Failed to remove item:", error);
-    } finally {
-      setLocalLoading(false);
-    }
-  };
-
-  // Handle cart clearing
-  const handleClearCart = async () => {
-    try {
-      setLocalLoading(true);
-      await clearCart();
-    } catch (error) {
-      console.error("Failed to clear cart:", error);
-    } finally {
-      setLocalLoading(false);
-    }
-  };
 
   // Navigate to checkout
   const proceedToCheckout = () => {
@@ -143,9 +74,11 @@ const CartPage: React.FC = () => {
               </h3>
               <div className="mt-2 text-sm text-red-700">
                 <p>
-                  {typeof error === 'object' && error !== null && 'message' in error
+                  {typeof error === "object" &&
+                  error !== null &&
+                  "message" in error
                     ? (error as Error).message
-                    : typeof error === 'string'
+                    : typeof error === "string"
                     ? error
                     : "Unknown error occurred"}
                 </p>
@@ -154,8 +87,10 @@ const CartPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    initialLoadAttemptedRef.current = false;
-                    refreshCart().catch(console.error);
+                    setLocalLoading(true);
+                    refreshCart()
+                      .catch(console.error)
+                      .finally(() => setLocalLoading(false));
                   }}
                   className="text-sm font-medium text-red-600 hover:text-red-500"
                 >
@@ -174,7 +109,8 @@ const CartPage: React.FC = () => {
     return (
       <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
         <div className="text-center">
-          <h2 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">
+          <ShoppingCartIcon className="mx-auto h-12 w-12 text-gray-400" />
+          <h2 className="mt-2 text-2xl font-extrabold text-gray-900 sm:text-3xl">
             Your cart is empty
           </h2>
           <p className="mt-4 text-lg text-gray-500">
@@ -193,23 +129,14 @@ const CartPage: React.FC = () => {
     );
   }
 
-  // Calculate totals
-  const subtotal = cart.items.reduce((total, item) => {
-    const itemPrice = Number(item.product.salePrice) || Number(item.product.price);
-    return total + itemPrice * Number(item.quantity);
-  }, 0);
-
-  // Set default values if not provided by API
-  const shippingCost = cart.shippingCost || 0;
-  const taxAmount = cart.taxAmount || 0;
-  const total = subtotal + shippingCost + taxAmount;
-
-  // Main cart view
+  // Main cart view with cart items and summary
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
         Shopping Cart
       </h1>
+
+      {/* Show login notification for guest users */}
       {!isAuthenticated && (
         <div className="mt-4 mb-8 bg-blue-50 p-4 rounded-md">
           <div className="flex">
@@ -245,183 +172,35 @@ const CartPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Use the reusable CartItemList and CartSummary components */}
       <div className="mt-8 lg:grid lg:grid-cols-12 lg:gap-x-12 lg:items-start xl:gap-x-16">
         <section aria-labelledby="cart-heading" className="lg:col-span-7">
           <h2 id="cart-heading" className="sr-only">
             Items in your shopping cart
           </h2>
 
-          <ul
-            role="list"
-            className="border-t border-b border-gray-200 divide-y divide-gray-200"
-          >
-            {cart.items.map((item) => (
-              <li key={item.id} className="py-6 flex">
-                <div className="flex-shrink-0 w-24 h-24 border border-gray-200 rounded-md overflow-hidden">
-                  {item.product.images && item.product.images.length > 0 ? (
-                    <img
-                      src={item.product.images[0].imageUrl}
-                      alt={item.product.name}
-                      className="w-full h-full object-center object-cover"
-                    />
-                  ) : (
-                    <img
-                      src="https://via.placeholder.com/150"
-                      alt={item.product.name}
-                      className="w-full h-full object-center object-cover"
-                    />
-                  )}
-                </div>
-
-                <div className="ml-4 flex-1 flex flex-col">
-                  <div>
-                    <div className="flex justify-between text-base font-medium text-gray-900">
-                      <h3>
-                        <Link to={`/products/${item.productId}`}>
-                          {item.product.name}
-                        </Link>
-                      </h3>
-                      <p className="ml-4">
-                        {item.product.salePrice ? (
-                          <>
-                            <span className="text-red-600">
-                              ${Number(item.product.salePrice).toFixed(2)}
-                            </span>
-                            <span className="ml-2 line-through text-gray-500 text-sm">
-                              ${Number(item.product.price).toFixed(2)}
-                            </span>
-                          </>
-                        ) : (
-                          `$${Number(item.product.price).toFixed(2)}`
-                        )}
-                      </p>
-                    </div>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {item.product.vendor?.name || "Unknown Vendor"}
-                    </p>
-                  </div>
-                  <div className="flex-1 flex items-end justify-between text-sm">
-                    <div className="flex items-center">
-                      <label
-                        htmlFor={`quantity-${item.id}`}
-                        className="mr-2 text-gray-500"
-                      >
-                        Qty
-                      </label>
-                      <select
-                        id={`quantity-${item.id}`}
-                        name={`quantity-${item.id}`}
-                        value={item.quantity}
-                        onChange={(e) =>
-                          handleQuantityChange(
-                            item.id,
-                            parseInt(e.target.value)
-                          )
-                        }
-                        disabled={isLoading}
-                        className="max-w-full rounded-md border border-gray-300 py-1.5 text-base leading-5 font-medium text-gray-700 text-left shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:opacity-50"
-                      >
-                        {[...Array(10).keys()].map((i) => (
-                          <option key={i + 1} value={i + 1}>
-                            {i + 1}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.id)}
-                        disabled={isLoading}
-                        className="font-medium text-indigo-600 hover:text-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {/* Clear cart button */}
-          {cart.items.length > 0 && (
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={handleClearCart}
-                disabled={isLoading}
-                className="text-sm text-red-600 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Clear all items
-              </button>
-            </div>
-          )}
+          <CartItemList
+            cart={cart}
+            showControls={true}
+            showClearCart={true}
+            showCheckoutButton={false}
+          />
         </section>
 
-        {/* Order summary */}
-        <section
-          aria-labelledby="summary-heading"
-          className="mt-16 bg-gray-50 rounded-lg px-4 py-6 sm:p-6 lg:p-8 lg:mt-0 lg:col-span-5"
-        >
-          <h2
-            id="summary-heading"
-            className="text-lg font-medium text-gray-900"
-          >
-            Order summary
-          </h2>
-
-          <dl className="mt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <dt className="text-sm text-gray-600">Subtotal</dt>
-              <dd className="text-sm font-medium text-gray-900">
-                ${subtotal.toFixed(2)}
-              </dd>
-            </div>
-            <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
-              <dt className="text-sm text-gray-600">Shipping estimate</dt>
-              <dd className="text-sm font-medium text-gray-900">
-                ${shippingCost.toFixed(2)}
-              </dd>
-            </div>
-            <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
-              <dt className="text-sm text-gray-600">Tax estimate</dt>
-              <dd className="text-sm font-medium text-gray-900">
-                ${taxAmount.toFixed(2)}
-              </dd>
-            </div>
-            <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
-              <dt className="text-base font-medium text-gray-900">
-                Order total
-              </dt>
-              <dd className="text-base font-medium text-gray-900">
-                ${total.toFixed(2)}
-              </dd>
-            </div>
-          </dl>
-
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={proceedToCheckout}
-              disabled={isLoading}
-              className="w-full bg-indigo-600 border border-transparent rounded-md shadow-sm py-3 px-4 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isAuthenticated ? "Checkout" : "Sign in & Checkout"}
-            </button>
-          </div>
-          <div className="mt-6 text-sm text-center">
-            <p>
-              or{" "}
-              <Link
-                to="/products"
-                className="text-indigo-600 font-medium hover:text-indigo-500"
-              >
-                Continue Shopping<span aria-hidden="true"> &rarr;</span>
-              </Link>
-            </p>
-          </div>
+        <section aria-labelledby="summary-heading" className="lg:col-span-5">
+          <CartSummary
+            subtotal={cart.totalPrice || 0}
+            shippingCost={cart.shippingCost || 0}
+            taxAmount={cart.taxAmount || 0}
+            totalItems={cart.totalItems || 0}
+            onCheckout={proceedToCheckout}
+            showCheckoutButton={true}
+            checkoutButtonText={
+              isAuthenticated ? "Checkout" : "Sign in & Checkout"
+            }
+            isCheckoutDisabled={isLoading}
+          />
         </section>
       </div>
     </div>
