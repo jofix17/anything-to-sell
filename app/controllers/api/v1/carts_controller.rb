@@ -2,37 +2,33 @@ module Api
   module V1
     class CartsController < BaseController
       # Remove authenticate_user! from cart actions
-      before_action :set_cart, except: [ :check_guest_cart, :merge_guest_cart ]
-      before_action :authenticate_user!, only: [ :merge_guest_cart ]
+      before_action :set_cart, except: [ :check_guest_cart, :check_existing_cart, :transfer_cart ]
+      before_action :authenticate_user!, only: [ :check_existing_cart, :transfer_cart ]
 
       # GET /api/v1/cart
       def show
-        Rails.logger.info "SHOW: Cart request for user: #{current_user&.id || 'guest'}"
-        Rails.logger.info "SHOW: Session contains guest token: #{session[:guest_cart_token].present?}"
+        # Force auth_token check if @current_user not already set
+        @current_user = auth_token_user if @current_user.nil?
 
+        Rails.logger.info "SHOW: Cart request for user: #{@current_user&.id || 'guest'}"
+        Rails.logger.info "SHOW: Session contains guest token: #{session[:guest_cart_token].present?}"
+        Rails.logger.info "SHOW: Authorization header present: #{request.headers['Authorization'].present?}"
         Rails.logger.info "CART: #{@cart.inspect}"
+
         # Handle case when @cart is nil - create an empty cart response
         if @cart.nil?
           # For guest users, create a new cart
-          if !user_signed_in?
+          if @current_user.nil?
             # Create a new guest cart with a secure random token or use existing token
             new_token = session[:guest_cart_token] || SecureRandom.uuid
             @cart = Cart.create(guest_token: new_token)
             Rails.logger.info "SHOW: Created new guest cart with token: #{new_token}"
             # Store the guest token in session instead of header
             session[:guest_cart_token] = new_token
-          elsif current_user.present?
-            # For logged-in users, create a user-associated cart
-            @cart = Cart.create(user_id: current_user.id)
-            Rails.logger.info "SHOW: Created new user cart for: #{current_user.id}"
           else
-            # Edge case: user_signed_in? is true but current_user is nil
-            # Create a guest cart as fallback
-            new_token = session[:guest_cart_token] || SecureRandom.uuid
-            @cart = Cart.create(guest_token: new_token)
-            Rails.logger.info "SHOW: Created fallback guest cart with token: #{new_token}"
-            # Store the guest token in session instead of header
-            session[:guest_cart_token] = new_token
+            # For logged-in users, create a user-associated cart
+            @cart = Cart.create(user_id: @current_user.id)
+            Rails.logger.info "SHOW: Created new user cart for: #{@current_user.id}"
           end
         end
 
@@ -143,116 +139,135 @@ module Api
         end
       end
 
-      # POST /api/v1/cart/merge-guest-cart
-      def merge_guest_cart
-        # This endpoint requires authentication (user must be logged in)
-        Rails.logger.info "MERGE_GUEST_CART: Processing guest cart for user: #{current_user.id}"
+      # GET /api/v1/cart/check-existing-cart
+      def check_existing_cart
+        # Force auth_token check if @current_user not already set
+        @current_user = auth_token_user if @current_user.nil?
 
-        # Get the merge action from params
-        merge_action = params[:action_type].to_s.downcase
-        Rails.logger.info "MERGE_GUEST_CART: Action requested: #{merge_action}"
-
-        guest_token = session[:guest_cart_token]
-
-        if guest_token.blank?
-          # No guest cart, just show the user cart
-          Rails.logger.info "MERGE_GUEST_CART: No guest token found in session"
-          @cart = current_user.cart || Cart.create(user_id: current_user.id)
-          return success_response(CartSerializer.new(@cart).as_json, "User cart returned")
+        unless @current_user
+          return error_response("Authentication required", :unauthorized)
         end
 
-        guest_cart = Cart.find_by(guest_token: guest_token)
+        Rails.logger.info "CHECK_EXISTING_CART: Checking for existing user cart for user: #{@current_user.id}"
 
-        if guest_cart.nil? || guest_cart.cart_items.none?
-          # No guest cart or empty cart, just show the user cart
-          Rails.logger.info "MERGE_GUEST_CART: Guest cart not found or empty"
-          @cart = current_user.cart || Cart.create(user_id: current_user.id)
-          return success_response(CartSerializer.new(@cart).as_json, "User cart returned")
+        user_cart = @current_user.cart
+
+        if user_cart && user_cart.cart_items.any?
+          # User has an existing cart with items
+          Rails.logger.info "CHECK_EXISTING_CART: Found user cart with #{user_cart.cart_items.count} items"
+          success_response({
+            hasExistingCart: true,
+            itemCount: user_cart.cart_items.count,
+            total: user_cart.total_price,
+            cartId: user_cart.id
+          }, "User cart found")
+        else
+          # No user cart or empty cart
+          Rails.logger.info "CHECK_EXISTING_CART: No user cart found or cart is empty"
+          success_response({ hasExistingCart: false, itemCount: 0 }, "No user cart found")
+        end
+      end
+
+      # POST /api/v1/cart/transfer-cart
+      def transfer_cart
+        # Force auth_token check if @current_user not already set
+        @current_user = auth_token_user if @current_user.nil?
+
+        unless @current_user
+          return error_response("Authentication required", :unauthorized)
         end
 
-        user_cart = current_user.cart
+        Rails.logger.info "TRANSFER_CART: Transferring cart for user: #{@current_user.id}"
 
-        case merge_action
+        # Get the source and target cart IDs
+        source_cart_id = params[:source_cart_id]
+        target_user_id = params[:target_user_id]
+
+        # Validate parameters
+        if source_cart_id.blank? || target_user_id.blank?
+          return error_response("Source cart ID and target user ID are required", :unprocessable_entity)
+        end
+
+        # Find the source cart
+        source_cart = Cart.find_by(id: source_cart_id)
+        if source_cart.nil?
+          return error_response("Source cart not found", :not_found)
+        end
+
+        # Find or create the target user's cart
+        target_user = User.find_by(id: target_user_id)
+        if target_user.nil?
+          return error_response("Target user not found", :not_found)
+        end
+
+        # Check if target user has a cart, create one if not
+        target_cart = target_user.cart
+        if target_cart.nil?
+          target_cart = Cart.create(user_id: target_user.id)
+          Rails.logger.info "TRANSFER_CART: Created new cart for target user: #{target_user.id}"
+        end
+
+        # Determine transfer action
+        transfer_action = params[:action_type].to_s.downcase
+        Rails.logger.info "TRANSFER_CART: Action requested: #{transfer_action}"
+
+        case transfer_action
         when "merge"
-          Rails.logger.info "MERGE_GUEST_CART: Merging guest cart with user cart"
-
-          if user_cart
-            # Merge items from guest cart into user cart
-            merge_carts(guest_cart, user_cart)
-            @cart = user_cart
-            guest_cart.destroy
-          else
-            # User doesn't have a cart, just convert guest cart to user cart
-            guest_cart.update(user_id: current_user.id, guest_token: nil)
-            @cart = guest_cart
-          end
-
-          message = "Guest cart merged with your existing cart"
+          Rails.logger.info "TRANSFER_CART: Merging source cart into target cart"
+          merge_carts(source_cart, target_cart)
+          message = "Cart successfully merged to target user"
 
         when "replace"
-          Rails.logger.info "MERGE_GUEST_CART: Replacing user cart with guest cart"
+          Rails.logger.info "TRANSFER_CART: Replacing target cart with source cart"
+          # Clear the target cart first
+          target_cart.cart_items.destroy_all
+          # Then merge the source cart items
+          merge_carts(source_cart, target_cart)
+          message = "Target user's cart has been replaced with source cart items"
 
-          if user_cart
-            # Delete existing user cart
-            user_cart.destroy
-          end
-
-          # Convert guest cart to user cart
-          guest_cart.update(user_id: current_user.id, guest_token: nil)
-          @cart = guest_cart
-
-          message = "Your cart has been replaced with guest cart items"
-
-        when "keep"
-          Rails.logger.info "MERGE_GUEST_CART: Keeping user cart and discarding guest cart"
-
-          # Just discard the guest cart
-          guest_cart.destroy
-          @cart = user_cart || Cart.create(user_id: current_user.id)
-
-          message = "Kept your existing cart items"
+        when "copy"
+          Rails.logger.info "TRANSFER_CART: Copying source cart to target cart (keeping both)"
+          # Copy items without destroying the source cart
+          copy_cart_items(source_cart, target_cart)
+          message = "Cart successfully copied to target user"
 
         else
-          # Invalid action, default to merge
-          Rails.logger.warn "MERGE_GUEST_CART: Invalid action '#{merge_action}', defaulting to merge"
-
-          if user_cart
-            # Merge items from guest cart into user cart
-            merge_carts(guest_cart, user_cart)
-            @cart = user_cart
-            guest_cart.destroy
-          else
-            # User doesn't have a cart, just convert guest cart to user cart
-            guest_cart.update(user_id: current_user.id, guest_token: nil)
-            @cart = guest_cart
-          end
-
-          message = "Guest cart merged with your existing cart"
+          # Default to merge
+          Rails.logger.warn "TRANSFER_CART: Invalid action '#{transfer_action}', defaulting to merge"
+          merge_carts(source_cart, target_cart)
+          message = "Cart successfully merged to target user"
         end
 
-        # Clear the guest token from session
-        session.delete(:guest_cart_token)
-
-        success_response(CartSerializer.new(@cart).as_json, message)
+        success_response({
+          sourceCartId: source_cart.id,
+          targetUserId: target_user.id,
+          targetCartId: target_cart.id,
+          itemCount: target_cart.cart_items.count,
+          total: target_cart.total_price
+        }, message)
       end
 
       private
 
       def set_cart
         Rails.logger.info "SET_CART: Starting cart lookup"
-        Rails.logger.info "USER_SIGNED_IN: #{user_signed_in?}"
-        Rails.logger.info "CURRENT_USER: #{current_user&.id || 'nil'}"
-        Rails.logger.info "SESSION TOKEN: #{session[:guest_cart_token]}"
 
-        if user_signed_in?
-          @current_user = auth_token_user if current_user.nil?
-          # User is logged in, get their cart
-          Rails.logger.info "SET_CART: User is logged in: #{current_user.id}"
+        # Force auth_token check first, before using user_signed_in?
+        # This ensures we check for JWT token authentication
+        @current_user = auth_token_user
+
+        Rails.logger.info "AUTH_TOKEN_USER: #{@current_user&.id || 'nil'}"
+        Rails.logger.info "USER_SIGNED_IN: #{@current_user.present?}"
+        Rails.logger.info "SESSION TOKEN: #{session[:guest_cart_token].inspect}"
+
+        if @current_user.present?
+          # User is logged in via JWT token, get their cart
+          Rails.logger.info "SET_CART: User is logged in via JWT: #{@current_user.id}"
 
           # Find existing user cart
-          if current_user.cart
-            Rails.logger.info "SET_CART: Using existing user cart: #{current_user.cart.id}"
-            @cart = current_user.cart
+          if @current_user.cart
+            Rails.logger.info "SET_CART: Using existing user cart: #{@current_user.cart.id}"
+            @cart = @current_user.cart
           else
             Rails.logger.info "SET_CART: User has no cart yet"
             # Don't create a cart here - let the action decide if a cart is needed
@@ -295,10 +310,13 @@ module Api
         Rails.logger.info "ENSURE_CART: Ensuring cart exists"
 
         if @cart.nil?
-          if user_signed_in? && current_user.present?
+          # Force auth_token check if @current_user not already set
+          @current_user = auth_token_user if @current_user.nil?
+
+          if @current_user.present?
             # Create a cart for the user if they don't have one yet
-            @cart = Cart.create(user: current_user)
-            Rails.logger.info "ENSURE_CART: Created new cart for user #{current_user.id}: #{@cart.id}"
+            @cart = Cart.create(user: @current_user)
+            Rails.logger.info "ENSURE_CART: Created new cart for user #{@current_user.id}: #{@cart.id}"
           else
             # For guest users, either use existing token or create new one
             guest_token = session[:guest_cart_token] || SecureRandom.uuid
@@ -329,6 +347,54 @@ module Api
             Rails.logger.info "MERGE_CARTS: Moved item to target cart for product: #{item.product_id}"
           end
         end
+      end
+
+      # Helper method to copy cart items without affecting the source cart
+      def copy_cart_items(source_cart, target_cart)
+        source_cart.cart_items.each do |item|
+          existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+
+          if existing_item
+            # Update quantity for existing item
+            existing_item.update(quantity: existing_item.quantity + item.quantity)
+            Rails.logger.info "COPY_CART_ITEMS: Updated existing item quantity for product: #{item.product_id}"
+          else
+            # Create a new item in the target cart with the same properties
+            target_cart.cart_items.create(
+              product_id: item.product_id,
+              quantity: item.quantity,
+              price: item.price
+            )
+            Rails.logger.info "COPY_CART_ITEMS: Created new item in target cart for product: #{item.product_id}"
+          end
+        end
+      end
+
+      # Override auth methods to properly check JWT token
+      def user_signed_in?
+        auth_token_user.present?
+      end
+
+      def auth_token_user
+        return @current_user if defined?(@current_user) && @current_user
+
+        return unless auth_token.present?
+
+        # Extract user_id from token
+        begin
+          payload = JsonWebToken.decode(auth_token)
+          user = User.find_by(id: payload[:user_id])
+
+          @current_user = user if user&.active?
+          @current_user
+        rescue StandardError => e
+          Rails.logger.error "AUTH ERROR: #{e.message}"
+          nil
+        end
+      end
+
+      def auth_token
+        request.headers["Authorization"]&.split(" ")&.last
       end
     end
   end
