@@ -1,23 +1,24 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
 import CartItemList from "../components/cart/CartItemList";
 import CartSummary from "../components/cart/CartSummary";
 import { ShoppingCartIcon } from "@heroicons/react/24/outline";
+import { useAuthContext } from "../context/AuthContext";
+import { useCartContext } from "../context/CartContext";
 
 /**
  * Cart page with optimized loading and improved UX
  */
 const CartPage: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthContext();
   const navigate = useNavigate();
 
   // Use the Cart Context with enhanced fetch prevention
-  const { cart, isLoading: cartIsLoading, error, refreshCart } = useCart();
+  const { cart, isLoading: cartIsLoading, fetchCart } = useCartContext();
 
   // Local loading state for page-specific operations
   const [localLoading, setLocalLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // Combined loading state
   const isLoading = cartIsLoading || localLoading;
@@ -35,6 +36,24 @@ const CartPage: React.FC = () => {
     }
   };
 
+  // Handle cart refresh when error occurs
+  const handleRefreshCart = async () => {
+    setLocalLoading(true);
+    setLocalError(null);
+
+    try {
+      await fetchCart();
+    } catch (error) {
+      setLocalError(
+        error instanceof Error
+          ? error.message
+          : "Failed to refresh cart. Please try again."
+      );
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
   // Show loading state
   if (isLoading) {
     return (
@@ -48,7 +67,7 @@ const CartPage: React.FC = () => {
   }
 
   // Show error state
-  if (error) {
+  if (localError) {
     return (
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="bg-red-50 p-4 rounded-md">
@@ -73,25 +92,12 @@ const CartPage: React.FC = () => {
                 Error loading cart
               </h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>
-                  {typeof error === "object" &&
-                  error !== null &&
-                  "message" in error
-                    ? (error as Error).message
-                    : typeof error === "string"
-                    ? error
-                    : "Unknown error occurred"}
-                </p>
+                <p>{localError}</p>
               </div>
               <div className="mt-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setLocalLoading(true);
-                    refreshCart()
-                      .catch(console.error)
-                      .finally(() => setLocalLoading(false));
-                  }}
+                  onClick={handleRefreshCart}
                   className="text-sm font-medium text-red-600 hover:text-red-500"
                 >
                   Try again
@@ -190,9 +196,9 @@ const CartPage: React.FC = () => {
 
         <section aria-labelledby="summary-heading" className="lg:col-span-5">
           <CartSummary
-            subtotal={cart.totalPrice || 0}
-            shippingCost={cart.shippingCost || 0}
-            taxAmount={cart.taxAmount || 0}
+            subtotal={cart.totalPrice ? parseFloat(cart.totalPrice) : 0}
+            shippingCost={0}
+            taxAmount={0}
             totalItems={cart.totalItems || 0}
             onCheckout={proceedToCheckout}
             showCheckoutButton={true}

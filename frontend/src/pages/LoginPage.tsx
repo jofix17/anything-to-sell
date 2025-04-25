@@ -1,42 +1,51 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Formik, Form, Field, ErrorMessage } from "formik";
+import * as Yup from "yup";
 import {
   EyeIcon,
   EyeSlashIcon as EyeOffIcon,
 } from "@heroicons/react/24/outline";
-import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
 import { useNotification } from "../context/NotificationContext";
 import Button from "../components/common/Button";
-import CartMergeModal from "../components/cart/CartMergeModal"
-import { LoginCredentials } from "../types";
+import CartMergeModal from "../components/cart/CartMergeModal";
 import { CartMergeAction } from "../components/cart/CartMergeModal";
+import { useCartContext } from "../context/CartContext";
+import { useAuthContext } from "../context/AuthContext";
+import { LoginCredentials } from "../types/auth";
+
+// Login form validation schema
+const LoginSchema = Yup.object().shape({
+  email: Yup.string()
+    .email("Invalid email address")
+    .required("Email is required"),
+  password: Yup.string()
+    .required("Password is required"),
+  rememberMe: Yup.boolean()
+});
 
 const LoginPage: React.FC = () => {
   // Form state
-  const [credentials, setCredentials] = useState<LoginCredentials>({
-    email: "",
-    password: "",
-  });
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCartMergeModal, setShowCartMergeModal] = useState(false);
+  const [isCartMerging, setIsCartMerging] = useState(false);
+  const [guestCartItemCount, setGuestCartItemCount] = useState(0);
 
   // We'll avoid using localError state to prevent multiple notifications
   const errorRef = useRef<string | null>(null);
   const notificationShownRef = useRef(false);
 
   // Context hooks
-  const { login, isAuthenticated, error, clearError, isLoading } = useAuth();
-  const { 
-    refreshCart, 
-    showCartMergeModal, 
-    setShowCartMergeModal, 
-    handleCartMergeAction, 
-    guestCartItemCount,
+  const { login, isAuthenticated, isLoading } = useAuthContext();
+  const {
     cart,
-    isCartMerging
-  } = useCart();
+    hasGuestCart,
+    hasUserCart,
+    transferGuestCartToUser,
+    fetchCart,
+    checkForGuestCart,
+    checkForUserCart,
+  } = useCartContext();
   const { showNotification } = useNotification();
 
   // Navigation hooks
@@ -47,7 +56,18 @@ const LoginPage: React.FC = () => {
   // Refs to manage component state
   const isMountedRef = useRef(true);
   const loginAttemptedRef = useRef(false);
+  const loginSuccessfulRef = useRef(false);
   const cartMergeHandledRef = useRef(false);
+  const redirectTimerRef = useRef<number | null>(null);
+  const postLoginFlowStartedRef = useRef(false);
+  const redirectedRef = useRef(false); // Track if we've already redirected
+
+  // Initial form values
+  const initialFormValues: LoginCredentials & { rememberMe: boolean } = {
+    email: "",
+    password: "",
+    rememberMe: false
+  };
 
   // Get redirect from URL if present
   useEffect(() => {
@@ -57,168 +77,196 @@ const LoginPage: React.FC = () => {
       sessionStorage.setItem("redirectAfterLogin", redirectPath);
     }
   }, [location.search]);
+  
 
-  // Cleanup function to prevent memory leaks
+  // Cleanup function to prevent memory leaks and clear timers
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      // Clear any pending timers
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
     };
   }, []);
 
-  // Handle input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+  // Check for guest cart only once on initial load
+  useEffect(() => {
+    const checkGuestCartOnce = async () => {
+      try {
+        console.log("LoginPage: Initial guest cart check");
+        await checkForGuestCart();
+      } catch (error) {
+        console.error("Error checking guest cart:", error);
+      }
+    };
 
-    if (type === "checkbox") {
-      setRememberMe(checked);
-    } else {
-      setCredentials((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
+    // Only run for guest users
+    if (!isAuthenticated) {
+      checkGuestCartOnce();
+    }
+  }, []); // Empty dependency array - run only once on mount
+
+  // Redirect if already authenticated (handles refresh cases)
+  useEffect(() => {
+    if (isAuthenticated && !isLoading && !redirectedRef.current) {
+      console.log("LoginPage: Already authenticated, redirecting");
+      redirectToDestination();
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Handle authentication state changes
+  useEffect(() => {
+    console.log("Auth state changed:", {
+      isAuthenticated,
+      isLoading,
+      loginAttempted: loginAttemptedRef.current,
+      loginSuccessful: loginSuccessfulRef.current,
+      postLoginFlowStarted: postLoginFlowStartedRef.current
+    });
+
+    // If login was successful and we're now authenticated, handle post-login logic
+    if (isAuthenticated && loginSuccessfulRef.current && !postLoginFlowStartedRef.current) {
+      // Mark that post-login flow has started to prevent duplicate execution
+      postLoginFlowStartedRef.current = true;
+      handlePostLoginFlow();
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Handle post-login flow
+  const handlePostLoginFlow = async () => {
+    console.log("LoginPage: Starting post-login flow");
+
+    try {
+      // Check for user cart after login
+      if (isAuthenticated) {
+        await checkForUserCart();
+      }
+
+      // Refresh cart data
+      await refreshCart();
+
+      // Check if we have both a guest cart and a user cart
+      if (hasGuestCart && hasUserCart) {
+        console.log("LoginPage: Need to handle cart merge");
+        // Set guest cart item count for the modal
+        setGuestCartItemCount(cart?.items?.length || 0);
+        // Show cart merge modal
+        setShowCartMergeModal(true);
+      } else {
+        // No cart merge needed, proceed with normal redirect
+        redirectToDestination();
+      }
+    } catch (err) {
+      console.error("Error in post-login flow:", err);
+      // Still redirect if there's an error
+      redirectToDestination();
     }
   };
 
-  // Handle global auth errors - but don't create a state change that would cause re-renders
-  useEffect(() => {
-    if (error && !notificationShownRef.current) {
-      errorRef.current = error;
-      notificationShownRef.current = true;
-
-      // Show notification without updating state
-      showNotification(error, { type: "error" });
-
-      // Clear the global error to prevent interference
-      clearError();
-
-      // Reset notification tracking after a delay
-      setTimeout(() => {
-        notificationShownRef.current = false;
-      }, 1000);
-
-      // Important: Reset submitting state when error is detected
-      setIsSubmitting(false);
+  // Refresh cart function
+  const refreshCart = async () => {
+    try {
+      await fetchCart();
+      return true;
+    } catch (error) {
+      console.error("Error refreshing cart:", error);
+      return false;
     }
-  }, [error, clearError, showNotification]);
+  };
+
+  // Handle cart merge action
+  const handleCartMergeAction = async (action: CartMergeAction) => {
+    setIsCartMerging(true);
+    try {
+      if (action === "merge" || action === "replace") {
+        await transferGuestCartToUser(action);
+      }
+      // For "keep-separate" we don't need to do anything
+      return true;
+    } catch (error) {
+      console.error("Error handling cart merge:", error);
+      return false;
+    } finally {
+      setIsCartMerging(false);
+    }
+  };
 
   // Handle cart merge action
   const handleMergeAction = async (action: CartMergeAction) => {
     if (cartMergeHandledRef.current) return;
     cartMergeHandledRef.current = true;
-    
+
     try {
       // Handle the selected action
       await handleCartMergeAction(action);
-      
+
       // Refresh cart after merge action
       await refreshCart();
-      
+
       // Redirect after cart merge is handled
-      performRedirectAfterLogin();
+      redirectToDestination();
     } catch (err) {
       console.error("Error handling cart merge:", err);
       showNotification("Failed to process cart items", { type: "error" });
-      
+
       // Still redirect even if cart merge fails
-      performRedirectAfterLogin();
+      redirectToDestination();
+    } finally {
+      setShowCartMergeModal(false);
     }
   };
 
-  // Separate function for redirect logic to avoid duplication
-  const performRedirectAfterLogin = () => {
+  // Get destination path and redirect
+  const redirectToDestination = () => {
+    if (redirectedRef.current) return; // Prevent multiple redirects
+    
+    // Mark as redirected
+    redirectedRef.current = true;
+    
     // Get redirect path from session storage
     const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
     
     // Clear the redirect path from session storage
     sessionStorage.removeItem("redirectAfterLogin");
     
-    // Navigate after a short delay
-    setTimeout(() => navigate(redirectPath, { replace: true }), 300);
+    console.log("LoginPage: Redirecting to", redirectPath);
+    
+    // Navigate immediately
+    navigate(redirectPath, { replace: true });
   };
 
-  // Handle navigation only when authenticated and a login was attempted
-  useEffect(() => {
-    if (
-      isAuthenticated &&
-      !isLoading &&
-      !errorRef.current &&
-      loginAttemptedRef.current
-    ) {
-      // After successful login, refresh the cart to get the transferred items
-      refreshCart()
-        .then(() => {
-          console.log("LoginPage: Cart refreshed after login");
-          
-          // If there's a cart merge modal to show, don't redirect yet
-          // The redirect will happen after cart merge action is handled
-          if (showCartMergeModal) {
-            console.log("LoginPage: Showing cart merge modal");
-            return;
-          }
-          
-          // No cart merge needed, proceed with normal redirect
-          performRedirectAfterLogin();
-        })
-        .catch((err) => {
-          console.error("LoginPage: Failed to refresh cart:", err);
-          
-          // Still redirect even if cart refresh fails
-          performRedirectAfterLogin();
-        });
-
-      // Reset the login attempted flag
-      loginAttemptedRef.current = false;
-    }
-  }, [
-    isAuthenticated,
-    isLoading,
-    navigate,
-    from,
-    refreshCart,
-    showCartMergeModal,
-  ]);
-
-  const handleLoginClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-
-    if (isSubmitting || isLoading) return;
-
-    // Basic client-side validation
-    if (!credentials.email.trim()) {
-      showNotification("Please enter your email address", { type: "error" });
-      return;
-    }
-
-    if (!credentials.password) {
-      showNotification("Please enter your password", { type: "error" });
-      return;
-    }
+  // Form submission handler
+  const handleSubmit = async (values: LoginCredentials & { rememberMe: boolean }, { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }) => {
+    if (isLoading) return;
 
     console.log("LoginPage: Attempting login");
 
-    // Set flag to indicate login was attempted
+    // Reset all state flags
     loginAttemptedRef.current = true;
-    // Reset cart merge handling flag
+    loginSuccessfulRef.current = false;
     cartMergeHandledRef.current = false;
-    // Clear error ref
+    postLoginFlowStartedRef.current = false;
     errorRef.current = null;
-    // Reset notification tracking
     notificationShownRef.current = false;
 
-    setIsSubmitting(true);
-
     try {
-      // Clear any previous errors
-      clearError();
+      // Attempt login - this returns a boolean indicating success
+      const success = await login(values.email, values.password);
 
-      // Attempt login - this will throw if authentication fails
-      await login(credentials.email, credentials.password);
+      if (!success) {
+        throw new Error("Login failed. Please check your credentials.");
+      }
 
-      // If we get here, login was successful
-      // The server will store the guest cart in session
-      // Navigation and cart refresh will happen through the useEffect
+      console.log("LoginPage: Login successful");
+
+      // Mark login as successful - post-login flow will be handled in the effect
+      loginSuccessfulRef.current = true;
+
+      // We intentionally don't reset setSubmitting here to prevent UI flicker
+      // It will be reset after redirection or in handlePostLoginFlow
     } catch (err) {
-      // Handle errors manually to prevent automatic redirects
+      // Handle errors
       if (isMountedRef.current) {
         const errorMessage =
           err instanceof Error
@@ -233,13 +281,28 @@ const LoginPage: React.FC = () => {
           notificationShownRef.current = true;
         }
 
-        loginAttemptedRef.current = false; // Reset the flag on error
+        loginAttemptedRef.current = false;
+        loginSuccessfulRef.current = false;
 
-        // Explicitly reset submitting state on error
-        setIsSubmitting(false);
+        // Reset submitting state on error
+        setSubmitting(false);
       }
     }
   };
+
+  // Prevent page from being "stuck" - force redirect after timeout
+  useEffect(() => {
+    if (loginSuccessfulRef.current && !redirectedRef.current) {
+      const safetyTimer = setTimeout(() => {
+        if (isMountedRef.current && !redirectedRef.current) {
+          console.log("LoginPage: Safety timeout triggered - forcing redirect");
+          redirectToDestination();
+        }
+      }, 3000); // 3 second safety timeout
+
+      return () => clearTimeout(safetyTimer);
+    }
+  }, [loginSuccessfulRef.current]);
 
   // Calculate existing cart item count
   const existingCartItemCount = cart?.items?.length || 0;
@@ -250,14 +313,17 @@ const LoginPage: React.FC = () => {
       {showCartMergeModal && (
         <CartMergeModal
           isOpen={showCartMergeModal}
-          onClose={() => setShowCartMergeModal(false)}
+          onClose={() => {
+            setShowCartMergeModal(false);
+            redirectToDestination();
+          }}
           onAction={handleMergeAction}
           existingCartItemCount={existingCartItemCount}
           guestCartItemCount={guestCartItemCount}
           isLoading={isCartMerging}
         />
       )}
-      
+
       <div className="pt-16 min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -276,108 +342,124 @@ const LoginPage: React.FC = () => {
 
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
           <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-            {/* Explicitly prevent form submission with onSubmit handler */}
-            <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-              {/* Email input */}
-              <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Email address
-                </label>
-                <div className="mt-1">
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={credentials.email}
-                    onChange={handleInputChange}
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
-              </div>
+            <Formik
+              initialValues={initialFormValues}
+              validationSchema={LoginSchema}
+              onSubmit={handleSubmit}
+            >
+              {({ isSubmitting, errors, touched }) => (
+                <Form className="space-y-6">
+                  {/* Email input */}
+                  <div>
+                    <label
+                      htmlFor="email"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Email address
+                    </label>
+                    <div className="mt-1">
+                      <Field
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        className={`appearance-none block w-full px-3 py-2 border ${
+                          errors.email && touched.email
+                            ? "border-red-300 text-red-900 placeholder-red-300 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                            : "border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        } rounded-md shadow-sm`}
+                      />
+                      <ErrorMessage
+                        name="email"
+                        component="p"
+                        className="mt-2 text-sm text-red-600"
+                      />
+                    </div>
+                  </div>
 
-              {/* Password input */}
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Password
-                </label>
-                <div className="mt-1 relative">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    value={credentials.password}
-                    onChange={handleInputChange}
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOffIcon className="h-5 w-5 text-gray-400" />
-                    ) : (
-                      <EyeIcon className="h-5 w-5 text-gray-400" />
-                    )}
-                  </button>
-                </div>
-              </div>
+                  {/* Password input */}
+                  <div>
+                    <label
+                      htmlFor="password"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Password
+                    </label>
+                    <div className="mt-1 relative">
+                      <Field
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="current-password"
+                        className={`appearance-none block w-full px-3 py-2 border ${
+                          errors.password && touched.password
+                            ? "border-red-300 text-red-900 placeholder-red-300 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                            : "border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        } rounded-md shadow-sm`}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? (
+                          <EyeOffIcon className="h-5 w-5 text-gray-400" />
+                        ) : (
+                          <EyeIcon className="h-5 w-5 text-gray-400" />
+                        )}
+                      </button>
+                      <ErrorMessage
+                        name="password"
+                        component="p"
+                        className="mt-2 text-sm text-red-600"
+                      />
+                    </div>
+                  </div>
 
-              {/* Remember me and forgot password */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <input
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                  <label
-                    htmlFor="remember-me"
-                    className="ml-2 block text-sm text-gray-700"
-                  >
-                    Remember me
-                  </label>
-                </div>
+                  {/* Remember me and forgot password */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Field
+                        id="rememberMe"
+                        name="rememberMe"
+                        type="checkbox"
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label
+                        htmlFor="rememberMe"
+                        className="ml-2 block text-sm text-gray-700"
+                      >
+                        Remember me
+                      </label>
+                    </div>
 
-                <div className="text-sm">
-                  <Link
-                    to="/forgot-password"
-                    className="font-medium text-primary-600 hover:text-primary-500"
-                  >
-                    Forgot your password?
-                  </Link>
-                </div>
-              </div>
+                    <div className="text-sm">
+                      <Link
+                        to="/forgot-password"
+                        className="font-medium text-primary-600 hover:text-primary-500"
+                      >
+                        Forgot your password?
+                      </Link>
+                    </div>
+                  </div>
 
-              {/* Login button */}
-              <div>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="medium"
-                  fullWidth
-                  disabled={isSubmitting || isLoading}
-                  loading={isSubmitting || isLoading}
-                  onClick={handleLoginClick}
-                  ariaLabel="Sign in to your account"
-                >
-                  Sign in
-                </Button>
-              </div>
-            </form>
+                  {/* Login button */}
+                  <div>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="medium"
+                      fullWidth
+                      disabled={isSubmitting || isLoading}
+                      loading={isSubmitting || isLoading}
+                      ariaLabel="Sign in to your account"
+                    >
+                      Sign in
+                    </Button>
+                  </div>
+                </Form>
+              )}
+            </Formik>
 
             <div className="mt-6">
               <div className="relative">

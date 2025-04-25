@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCart } from "../context/CartContext";
 import {
   useAddresses,
   useCreateAddress,
   useCreateOrder,
   useCreatePaymentIntent,
 } from "../services/cartService";
-import { Address } from "../types";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import CheckoutForm from "../components/checkout/CheckoutForm";
+import { useCartContext } from "../context/CartContext";
+import { Address } from "../types/address";
 
 // Initialize Stripe with environment variable or fallback
 const stripePromise = loadStripe(
@@ -21,7 +21,7 @@ const stripePromise = loadStripe(
 
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
-  const { cart, refreshCart } = useCart();
+  const { cart, fetchCart } = useCartContext();
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<
     string | null
   >(null);
@@ -47,7 +47,6 @@ const CheckoutPage: React.FC = () => {
     isDefault: false,
   });
 
-  console.log({ cart });
   // Use React Query hooks
   const addressesQuery = useAddresses();
   const addresses = addressesQuery.data || [];
@@ -152,9 +151,9 @@ const CheckoutPage: React.FC = () => {
 
       // Create the order
       const orderResponse = await createOrderMutation.mutateAsync({
-        shippingAddressId: selectedShippingAddress,
-        billingAddressId: selectedBillingAddress,
-        paymentMethodId: "card",
+        shipping_address_id: selectedShippingAddress,
+        billing_address_id: selectedBillingAddress,
+        payment_method_id: "card",
       });
 
       const newOrderId = orderResponse.data.id;
@@ -177,7 +176,7 @@ const CheckoutPage: React.FC = () => {
   };
 
   const handlePaymentSuccess = () => {
-    refreshCart();
+    fetchCart();
     navigate("/orders", { state: { success: true, orderId } });
   };
 
@@ -207,8 +206,8 @@ const CheckoutPage: React.FC = () => {
     return total + Number(itemPrice) * Number(item.quantity);
   }, 0);
 
-  const shippingCost = cart.shippingCost || 0;
-  const taxAmount = cart.taxAmount || 0;
+  const shippingCost = 0;
+  const taxAmount = 10;
   const total = subtotal + shippingCost + taxAmount;
 
   return (

@@ -5,17 +5,18 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { WishlistItem, ApiResponse } from "../types";
+import { ApiResponse } from "../types";
 import {
   useWishlist as useWishlistQuery,
   useAddToWishlist,
   useRemoveFromWishlist,
   useToggleWishlist,
 } from "../services/wishlistService";
-import { useAuth } from "./AuthContext";
 import { useInvalidateQueries } from "../hooks/useQueryHooks";
 import { QueryKeys } from "../utils/queryKeys";
 import { useNotification } from "./NotificationContext";
+import { WishlistItem } from "../types/wishlist";
+import { useAuthContext } from "./AuthContext";
 
 interface WishlistContextType {
   wishlistItems: WishlistItem[];
@@ -45,7 +46,7 @@ export const WishlistProvider: React.FC<{ children: ReactNode }> = ({
     error: null,
   });
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthContext();
   const { showNotification } = useNotification();
   const invalidateQueries = useInvalidateQueries();
 

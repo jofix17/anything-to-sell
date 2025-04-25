@@ -28,6 +28,7 @@ class ApiService {
       // Important: Allow axios to send and receive cookies
       withCredentials: true,
     });
+    console.log("Before API call, cookies:", document.cookie);
 
     this.setupInterceptors();
   }

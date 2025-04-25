@@ -8,11 +8,11 @@ import {
   ChevronDownIcon,
   XMarkIcon as XIcon,
 } from "@heroicons/react/24/outline";
-import { useAuth } from "../../context/AuthContext";
 import { useCategories } from "../../services/productService";
 import { APP_NAME } from "../../utils/appName";
 import CartMini from "../cart/CartMini";
 import useOutsideClick from "../../hooks/useOutsideClick";
+import { useAuthContext } from "../../context/AuthContext";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
@@ -28,7 +28,7 @@ const Header: React.FC<HeaderProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout } = useAuthContext();
   const navigate = useNavigate();
 
   // Refs for dropdown containers
@@ -287,7 +287,7 @@ const Header: React.FC<HeaderProps> = ({
               >
                 <SearchIcon className="w-5 h-5" />
               </button>
-              
+
               {/* Search bar */}
               {isSearchOpen && (
                 <div className="absolute right-0 top-full mt-2 w-64 sm:w-80 bg-white rounded-md shadow-lg p-2 z-50">

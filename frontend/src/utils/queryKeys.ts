@@ -1,4 +1,4 @@
-import { QueryFilters } from '../types/query';
+import { QueryFilters } from "../types/query";
 
 /**
  * Helper function to filter out insignificant or transient parameters
@@ -8,15 +8,15 @@ export const filterSignificantParams = (
   params: Record<string, unknown>,
   significantKeys: string[] = []
 ): Record<string, unknown> => {
-  if (!params || typeof params !== 'object') return {};
-  
+  if (!params || typeof params !== "object") return {};
+
   // If no significant keys specified, keep all keys except those starting with '_'
   if (significantKeys.length === 0) {
     return Object.fromEntries(
-      Object.entries(params).filter(([key]) => !key.startsWith('_'))
+      Object.entries(params).filter(([key]) => !key.startsWith("_"))
     );
   }
-  
+
   // Filter to only include specified significant keys that exist in the params
   return Object.fromEntries(
     Object.entries(params).filter(([key]) => significantKeys.includes(key))
@@ -27,10 +27,22 @@ export const filterSignificantParams = (
  * Default significant parameter keys for common query types
  */
 export const SIGNIFICANT_PARAM_KEYS = {
-  users: ['role', 'status', 'isActive', 'query', 'page', 'perPage'],
-  products: ['categoryId', 'vendorId', 'status', 'minPrice', 'maxPrice', 'onSale', 'inStock', 'query', 'sortBy', 'page', 'perPage'],
-  orders: ['status', 'startDate', 'endDate', 'query', 'page', 'perPage'],
-  generic: ['page', 'perPage', 'query', 'sortBy', 'status']
+  users: ["role", "status", "isActive", "query", "page", "perPage"],
+  products: [
+    "categoryId",
+    "vendorId",
+    "status",
+    "minPrice",
+    "maxPrice",
+    "onSale",
+    "inStock",
+    "query",
+    "sortBy",
+    "page",
+    "perPage",
+  ],
+  orders: ["status", "startDate", "endDate", "query", "page", "perPage"],
+  generic: ["page", "perPage", "query", "sortBy", "status"],
 };
 
 /**
@@ -39,90 +51,95 @@ export const SIGNIFICANT_PARAM_KEYS = {
  */
 export const QueryKeys = {
   auth: {
-    currentUser: ['auth', 'currentUser'],
-    sessions: ['auth', 'sessions'],
+    currentUser: ["auth", "currentUser"],
+    sessions: ["auth", "sessions"],
   },
   user: {
-    profile: ['user', 'profile'],
-    addresses: ['user', 'addresses'],
-    wishlist: ['user', 'wishlist'],
+    profile: ["user", "profile"],
+    addresses: ["user", "addresses"],
+    wishlist: ["user", "wishlist"],
   },
   products: {
-    all: ['products'],
+    all: ["products"],
     list: (params: Record<string, unknown> = {}) => [
-      'products', 
-      'list', 
-      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.products)
+      "products",
+      "list",
+      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.products),
     ],
-    detail: (id: string) => ['products', 'detail', id],
-    reviews: (productId: string) => ['products', 'reviews', productId],
-    featured: ['products', 'featured'],
-    newArrivals: ['products', 'newArrivals'],
-    related: (productId: string) => ['products', 'related', productId],
+    detail: (id: string) => ["products", "detail", id],
+    reviews: (productId: string) => ["products", "reviews", productId],
+    featured: ["products", "featured"],
+    newArrivals: ["products", "newArrivals"],
+    related: (productId: string) => ["products", "related", productId],
   },
   categories: {
-    all: ['categories'],
-    detail: (id: string) => ['categories', 'detail', id],
+    all: ["categories"],
+    detail: (id: string) => ["categories", "detail", id],
   },
   cart: {
-    current: ['cart'],
-    items: ['cart', 'items'],
-    guestCheck: ['cart', 'guestCheck']
+    current: ["cart"],
+    items: ["cart", "items"],
+    guestCheck: ["cart", "guestCheck"],
+    checkExisting: ["cart", "checkExisting"],
   },
   orders: {
-    all: ['orders'],
+    all: ["orders"],
     list: (params: Record<string, unknown> = {}) => [
-      'orders',
-      'list',
-      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.orders)
+      "orders",
+      "list",
+      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.orders),
     ],
-    detail: (id: string) => ['orders', 'detail', id],
+    detail: (id: string) => ["orders", "detail", id],
   },
   vendor: {
-    store: ['vendor', 'store'],
+    store: ["vendor", "store"],
     products: (filters: QueryFilters = {}) => [
-      'vendor', 
-      'products', 
-      filterSignificantParams(filters, SIGNIFICANT_PARAM_KEYS.products)
+      "vendor",
+      "products",
+      filterSignificantParams(filters, SIGNIFICANT_PARAM_KEYS.products),
     ],
     orders: (filters: QueryFilters = {}) => [
-      'vendor', 
-      'orders', 
-      filterSignificantParams(filters, SIGNIFICANT_PARAM_KEYS.orders)
+      "vendor",
+      "orders",
+      filterSignificantParams(filters, SIGNIFICANT_PARAM_KEYS.orders),
     ],
-    dashboard: ['vendor', 'dashboard'],
+    dashboard: ["vendor", "dashboard"],
     salesReport: (params: QueryFilters = {}) => [
-      'vendor', 
-      'salesReport', 
-      filterSignificantParams(params)
+      "vendor",
+      "salesReport",
+      filterSignificantParams(params),
     ],
   },
   admin: {
-    dashboard: ['admin', 'dashboard'],
+    dashboard: ["admin", "dashboard"],
     users: (params: Record<string, unknown> = {}) => [
-      'admin', 
-      'users', 
-      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.users)
+      "admin",
+      "users",
+      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.users),
     ],
     products: (params: QueryFilters = {}) => [
-      'admin', 
-      'products', 
-      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.products)
+      "admin",
+      "products",
+      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.products),
     ],
     orders: (params: QueryFilters = {}) => [
-      'admin', 
-      'orders', 
-      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.orders)
+      "admin",
+      "orders",
+      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.orders),
     ],
     vendors: (params: QueryFilters = {}) => [
-      'admin', 
-      'vendors', 
-      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.users)
+      "admin",
+      "vendors",
+      filterSignificantParams(params, SIGNIFICANT_PARAM_KEYS.users),
     ],
-    discounts: ['admin', 'discounts'],
+    discounts: ["admin", "discounts"],
   },
   support: {
-    conversations: (status?: string) => ['support', 'conversations', status],
-    messages: (conversationId: string) => ['support', 'messages', conversationId],
+    conversations: (status?: string) => ["support", "conversations", status],
+    messages: (conversationId: string) => [
+      "support",
+      "messages",
+      conversationId,
+    ],
   },
 };

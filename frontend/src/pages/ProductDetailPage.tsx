@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
 import { useNotification } from "../context/NotificationContext";
 import StarRating from "../components/common/StarRating";
 import ProductImageGallery from "../components/product/ProductImageGallery";
@@ -15,16 +13,19 @@ import {
   useToggleWishlist,
   useIsProductInWishlist,
 } from "../services/wishlistService";
-import { ApiResponse, WishlistItem } from "../types";
+import { ApiResponse } from "../types";
 import RelatedProducts from "../components/product/RelatedProducts";
+import { useAuthContext } from "../context/AuthContext";
+import { useCartContext } from "../context/CartContext";
+import { WishlistItem } from "../types/wishlist";
 
 type ProductTab = "description" | "specifications" | "reviews";
 
 const ProductDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
-  const { addToCart } = useCart();
+  const { isAuthenticated } = useAuthContext();
+  const { addToCart } = useCartContext();
   const { showNotification } = useNotification();
 
   const [quantity, setQuantity] = useState<number>(1);
@@ -501,7 +502,10 @@ const ProductDetailPage: React.FC = () => {
             </div>
           )}
 
-          <RelatedProducts currentProductId={product.id} category={product.category} />
+          <RelatedProducts
+            currentProductId={product.id}
+            category={product.category}
+          />
 
           {activeTab === "reviews" && (
             <ProductReviews

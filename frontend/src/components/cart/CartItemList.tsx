@@ -1,9 +1,9 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Cart } from "../../types/index";
 import CartItem from "./CartItem";
 import Button from "../common/Button";
-import { useCart } from "../../context/CartContext";
+import { Cart } from "../../types/cart";
+import { useCartContext } from "../../context/CartContext";
 
 interface CartItemListProps {
   cart: Cart;
@@ -25,7 +25,7 @@ const CartItemList: React.FC<CartItemListProps> = ({
   isCheckoutDisabled = false,
   onCheckout,
 }) => {
-  const { clearCart, isLoading } = useCart();
+  const { clearCart, isLoading } = useCartContext();
 
   // Handle clearing the cart
   const handleClearCart = () => {

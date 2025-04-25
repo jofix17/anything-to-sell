@@ -1,8 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import Button from "../common/Button";
-import { useAuth } from "../../context/AuthContext";
-import { useCart } from "../../context/CartContext";
+import { useAuthContext } from "../../context/AuthContext";
+import { useCartContext } from "../../context/CartContext";
 
 interface CartSummaryProps {
   subtotal: number;
@@ -28,8 +28,8 @@ const CartSummary: React.FC<CartSummaryProps> = ({
   checkoutButtonText = "Checkout",
   isCheckoutDisabled = false,
 }) => {
-  const { isAuthenticated } = useAuth();
-  const { isLoading } = useCart();
+  const { isAuthenticated } = useAuthContext();
+  const { isLoading } = useCartContext();
 
   // Calculate total with shipping and tax
   const total = subtotal + shippingCost + taxAmount;

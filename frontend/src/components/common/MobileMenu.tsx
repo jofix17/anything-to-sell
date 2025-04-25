@@ -11,10 +11,9 @@ import {
   ChevronRightIcon,
   ArrowRightEndOnRectangleIcon as LogoutIcon,
 } from '@heroicons/react/24/outline';
-import { useAuth } from '../../context/AuthContext';
 import productService from '../../services/productService';
-import { Category } from '../../types';
-
+import { Category } from '../../types/category';
+import { useAuthContext } from '../../context/AuthContext';
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,7 +23,7 @@ const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout } = useAuthContext();
   const navigate = useNavigate();
 
   // Fetch categories

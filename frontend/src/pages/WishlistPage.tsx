@@ -1,21 +1,21 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { useCart } from "../context/CartContext";
 import {
   useWishlist,
   useRemoveFromWishlist,
 } from "../services/wishlistService";
 import { QueryKeys } from "../utils/queryKeys";
 import { useInvalidateQueries } from "../hooks/useQueryHooks";
+import { useCartContext } from "../context/CartContext";
 
 const WishlistPage: React.FC = () => {
-  const { addToCart } = useCart();
+  const { addToCart } = useCartContext();
   const [addingToCart, setAddingToCart] = useState<Record<string, boolean>>({});
   const [removingItems, setRemovingItems] = useState<Record<string, boolean>>(
     {}
   );
   const invalidateQueries = useInvalidateQueries();
-  
+
   // Use React Query hooks for wishlist
   const { data: wishlistResponse, isLoading, error, refetch } = useWishlist();
   const wishlistItems = wishlistResponse?.data || [];

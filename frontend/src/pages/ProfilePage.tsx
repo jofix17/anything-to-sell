@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext";
 import { useNotification } from "../context/NotificationContext";
 import { Link } from "react-router-dom";
-import { useChangePassword } from "../services/authService";
-import { PasswordChangeData } from "../types";
+import { useAuthContext } from "../context/AuthContext";
+import { PasswordData } from "../types/auth";
+import { useChangePassword } from "../hooks/api/useAuthApi";
+
 
 interface ProfileUpdateValues {
   firstName: string;
@@ -13,7 +14,7 @@ interface ProfileUpdateValues {
 }
 
 const ProfilePage: React.FC = () => {
-  const { user, updateProfile, isLoading } = useAuth();
+  const { user, updateProfile, isLoading } = useAuthContext();
   const { showNotification } = useNotification();
   const changePasswordMutation = useChangePassword();
 
@@ -25,7 +26,7 @@ const ProfilePage: React.FC = () => {
     phone: "",
   });
 
-  const [passwordData, setPasswordData] = useState<PasswordChangeData>({
+  const [passwordData, setPasswordData] = useState<PasswordData>({
     currentPassword: "",
     newPassword: "",
     passwordConfirmation: "",

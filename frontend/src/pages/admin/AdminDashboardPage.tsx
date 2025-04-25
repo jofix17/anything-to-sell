@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
 import { useAdminDashboardStats } from "../../services/adminService";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import StatCard from "../../components/admin/StartCard";
@@ -9,6 +8,7 @@ import OrderStatusChart from "../../components/admin/OrderStatusChart";
 import ProductApprovalsList from "../../components/admin/ProductApprovalList";
 import Button from "../../components/common/Button";
 import { DateRange } from "../../types";
+import { useAuthContext } from "../../context/AuthContext";
 
 /**
  * Admin Dashboard Page Component
@@ -17,7 +17,7 @@ import { DateRange } from "../../types";
  * and provides quick access to main admin functions.
  */
 const AdminDashboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const [dateRange, setDateRange] = useState<DateRange>("30days");
 
   // Fetch dashboard data using React Query hook with date range

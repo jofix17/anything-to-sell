@@ -10,24 +10,21 @@ import {
 } from "@heroicons/react/24/outline";
 import ProductList from "../components/product/ProductList";
 import Skeleton from "../components/common/Skeleton";
-import {
-  ProductSortType,
-  ProductFilterParams,
-  WishlistItem,
-  ApiResponse,
-} from "../types";
 import { useProducts, useCategories } from "../services/productService";
-import { useAuth } from "../context/AuthContext";
 import { useToggleWishlist, useWishlist } from "../services/wishlistService";
 import { useNotification } from "../context/NotificationContext";
 import SearchBar from "../components/common/SearchBar";
 import Dropdown from "../components/common/Dropdown";
 import Pagination from "../components/common/Pagination";
+import { useAuthContext } from "../context/AuthContext";
+import { ProductFilterParams, ProductSortType } from "../types/product";
+import { ApiResponse } from "../types";
+import { WishlistItem } from "../types/wishlist";
 
 const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuthContext();
   const { showNotification } = useNotification();
 
   // Filters UI state

@@ -15,14 +15,14 @@ import {
   ArrowRightEndOnRectangleIcon as LogoutIcon,
   Bars3Icon as MenuIcon,
 } from "@heroicons/react/24/outline";
-import { useAuth } from "../../context/AuthContext";
+import { useAuthContext } from "../../context/AuthContext";
 
 const AdminLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const { user, logout } = useAuth();
+  const { user, logout } = useAuthContext();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -276,7 +276,6 @@ const AdminLayout: React.FC = () => {
           className="fixed inset-0 z-30 bg-black opacity-50 md:hidden"
         ></div>
       )}
-
     </div>
   );
 };

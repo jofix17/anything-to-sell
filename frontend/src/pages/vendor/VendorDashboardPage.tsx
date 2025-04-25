@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import StatCard from '../../components/vendor/StatCard';
 import OrdersList from '../../components/vendor/OrderList';
@@ -9,9 +8,10 @@ import TopProducts from '../../components/vendor/TopProducts';
 import Button from '../../components/common/Button';
 import { DateRange } from '../../types';
 import { useVendorDashboardStats } from '../../services/vendorService';
+import { useAuthContext } from '../../context/AuthContext';
 
 const VendorDashboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const [dateRange, setDateRange] = useState<DateRange>('30days');
 
   const { 

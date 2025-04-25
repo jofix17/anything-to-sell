@@ -14,14 +14,14 @@ import {
   BellIcon,
   ArrowRightEndOnRectangleIcon as LogoutIcon,
 } from '@heroicons/react/24/outline';
-import { useAuth } from '../../context/AuthContext';
+import { useAuthContext } from '../../context/AuthContext';
 
 const VendorLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const { user, logout } = useAuth();
+  const { user, logout } = useAuthContext();
   const location = useLocation();
   const navigate = useNavigate();
 

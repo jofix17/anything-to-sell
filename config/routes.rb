@@ -106,6 +106,7 @@ Rails.application.routes.draw do
 
         post "transfer-cart", to: "carts#transfer_cart"
         get "check-existing-cart", to: "carts#check_existing_cart"
+        get "check-guest-cart", to: "carts#check_guest_cart"
       end
 
       resources :orders, only: [ :index, :show, :create ]

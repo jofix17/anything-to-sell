@@ -5,8 +5,7 @@ import {
   EyeSlashIcon as EyeOffIcon,
   ExclamationCircleIcon,
 } from "@heroicons/react/24/outline";
-import { useAuth } from "../context/AuthContext";
-import { useNotification } from "../context/NotificationContext";
+import { useAuthContext } from "../context/AuthContext";
 
 const RegisterPage: React.FC = () => {
   // Form state
@@ -28,8 +27,7 @@ const RegisterPage: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Hooks
-  const { register, isAuthenticated, error } = useAuth();
-  const { showNotification } = useNotification();
+  const { register, isAuthenticated } = useAuthContext();
   const navigate = useNavigate();
 
   // If user is already authenticated, redirect to home
@@ -38,13 +36,6 @@ const RegisterPage: React.FC = () => {
       navigate("/");
     }
   }, [isAuthenticated, navigate]);
-
-  // Show error notification if registration fails
-  useEffect(() => {
-    if (error) {
-      showNotification(error, { type: "error" });
-    }
-  }, [error, showNotification]);
 
   // Handle form input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

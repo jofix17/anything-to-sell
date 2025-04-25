@@ -1,11 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { useCart } from "../../context/CartContext";
 import Button from "../common/Button";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { toast } from "react-toastify";
-import { Category, Product, ProductFilterParams } from "../../types";
 import { useProducts } from "../../services/productService";
+import { Category } from "../../types/category";
+import { useCartContext } from "../../context/CartContext";
+import { Product, ProductFilterParams } from "../../types/product";
 
 interface RelatedProductsProps {
   currentProductId: string;
@@ -18,7 +19,7 @@ const RelatedProducts: React.FC<RelatedProductsProps> = ({
   category,
   limit = 4,
 }) => {
-  const { addToCart } = useCart();
+  const { addToCart } = useCartContext();
   
   // Create filter params to get products from the same category
   const filterParams: ProductFilterParams = {

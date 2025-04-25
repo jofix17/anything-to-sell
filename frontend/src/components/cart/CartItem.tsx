@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { TrashIcon } from "@heroicons/react/24/outline";
-import { CartItem as CartItemType } from "../../types/index";
-import { useCartOperations } from "../../hooks/useCartHooks";
+import { CartItem as CartItemType } from "../../types/cart";
+import { useCartContext } from "../../context/CartContext";
 
 interface CartItemProps {
   item: CartItemType;
@@ -10,9 +10,51 @@ interface CartItemProps {
 }
 
 /**
+ * Custom hook for cart operations
+ */
+const useCartOperations = () => {
+  const { updateCartItem, removeFromCart } = useCartContext();
+  const [isUpdatingCart, setIsUpdatingCart] = useState(false);
+  const [isRemovingFromCart, setIsRemovingFromCart] = useState<string | null>(
+    null
+  );
+
+  // Handle updating cart item quantity
+  const handleUpdateCartItem = async (itemId: string, quantity: number) => {
+    setIsUpdatingCart(true);
+    try {
+      await updateCartItem(itemId, quantity);
+    } catch (error) {
+      console.error("Error updating cart item:", error);
+    } finally {
+      setIsUpdatingCart(false);
+    }
+  };
+
+  // Handle removing item from cart
+  const handleRemoveCartItem = async (itemId: string, productName: string) => {
+    setIsRemovingFromCart(itemId);
+    try {
+      await removeFromCart(itemId);
+    } catch (error) {
+      console.error(`Error removing ${productName} from cart:`, error);
+    } finally {
+      setIsRemovingFromCart(null);
+    }
+  };
+
+  return {
+    handleUpdateCartItem,
+    handleRemoveCartItem,
+    isUpdatingCart,
+    isRemovingFromCart,
+  };
+};
+
+/**
  * Component for displaying a cart item with quantity controls and removal option
  */
-const CartItem: React.FC<CartItemProps> = ({ item, showControls = true }) => {
+const CartItems: React.FC<CartItemProps> = ({ item, showControls = true }) => {
   const {
     handleUpdateCartItem,
     handleRemoveCartItem,
@@ -147,4 +189,4 @@ const CartItem: React.FC<CartItemProps> = ({ item, showControls = true }) => {
   );
 };
 
-export default CartItem;
+export default CartItems;

@@ -3,636 +3,384 @@ import React, {
   useContext,
   useState,
   useEffect,
-  useCallback,
   useRef,
-  useMemo,
+  ReactNode,
 } from "react";
-import { Cart, AddToCartData } from "../types";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNotification } from "./NotificationContext";
 import {
+  useTransferCart,
+  useCheckGuestCart as useCheckGuestCartHook,
+  useCheckUserCart as useCheckUserCartHook,
   useGetCart,
   useAddToCart,
   useUpdateCartItem,
   useRemoveCartItem,
   useClearCart,
-  useMergeCart,
-  useReplaceCart,
-  useKeepUserCart,
-  useCheckExistingCart,
-} from "../services/cartService";
-import { useInvalidateQueries } from "../hooks/useQueryHooks";
+} from "../hooks/api/useCartApi";
+import { CartContextType } from "../types/cart";
 import { QueryKeys } from "../utils/queryKeys";
-import { useAuth } from "./AuthContext";
-import { CartMergeAction } from "../components/cart/CartMergeModal";
+import { useAuthContext } from "./AuthContext";
 
-interface CartContextType {
-  cart: Cart | null;
-  isLoading: boolean;
-  error: string | null;
-  addToCart: (productId: string, quantity: number) => Promise<void>;
-  updateCartItem: (cartItemId: string, quantity: number) => Promise<void>;
-  removeCartItem: (cartItemId: string) => Promise<void>;
-  clearCart: () => Promise<void>;
-  refreshCart: () => Promise<void>;
-  resetCartState: () => void;
-  handleCartMergeAction: (action: CartMergeAction) => Promise<void>;
-  showCartMergeModal: boolean;
-  setShowCartMergeModal: (show: boolean) => void;
-  guestCartItemCount: number;
-  isCartMerging: boolean;
-}
-
+// Create the context
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-/**
- * Provider for cart functionality with optimized fetching
- */
-export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  // State management
-  const [cartState, setCartState] = useState<{
-    cart: Cart | null;
-    isLoading: boolean;
-    error: string | null;
-  }>({
-    cart: null,
-    isLoading: false,
-    error: null,
-  });
+// Provider component props
+interface CartProviderProps {
+  children: ReactNode;
+}
 
-  const [showCartMergeModal, setShowCartMergeModal] = useState(false);
-  const [guestCartItemCount, setGuestCartItemCount] = useState(0);
-  const [isCartMerging, setIsCartMerging] = useState(false);
+// CartProvider component
+export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
+  const { user, isAuthenticated } = useAuthContext();
+  const { showNotification } = useNotification();
+  const queryClient = useQueryClient();
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [hasGuestCart, setHasGuestCart] = useState(false);
+  const [hasUserCart, setHasUserCart] = useState(false);
+  const [shouldFetchCart, setShouldFetchCart] = useState(false);
 
-  const { isAuthenticated, user } = useAuth();
-  const invalidateQueries = useInvalidateQueries();
+  // Add refs to track if we've already checked for carts
+  const guestCartCheckedRef = useRef(false);
+  const userCartCheckedRef = useRef(false);
+  const initializationInProgressRef = useRef(false);
 
-  // Refs to track operations and prevent duplicate calls
-  const cartOperationInProgressRef = useRef(false);
-  const previousAuthStateRef = useRef(isAuthenticated);
-  const cartMergeCheckDoneRef = useRef(false);
-  const initialCartLoadedRef = useRef(false);
-  const cartRefreshInProgressRef = useRef(false);
-  const autoMergePerformedRef = useRef(false);
-
-  // Setup React Query with appropriate options, enabling manual control
+  // Cart query with initialization check
   const {
-    refetch,
-    isLoading: isCartQueryLoading,
-    isFetching: isCartQueryFetching,
-    data: cartData,
-    error: cartQueryError,
+    data: cartResponse,
+    isLoading: isCartLoading,
+    refetch: refetchCart,
   } = useGetCart({
-    refetchOnWindowFocus: false,
-    retry: 1,
-    staleTime: 30000, // Consider data fresh for 30 seconds to reduce flickering
-    enabled: false, // Disable automatic fetching, we'll control it manually
+    enabled: shouldFetchCart, // Only fetch after initialization and when we confirm a cart should exist
   });
 
-  // Add the guest cart check query
-  const { refetch: checkExistingCart } = useCheckExistingCart({
-    enabled: false, // Don't run automatically
-    retry: 1, // Allow one retry on failure
-    cacheTime: 0, // Don't cache this result
-  });
+  // Extract cart data from the API response
+  const cart = cartResponse || null;
 
-  // Set up mutation hooks
+  // Cart mutations and check queries
   const addToCartMutation = useAddToCart();
   const updateCartItemMutation = useUpdateCartItem();
   const removeCartItemMutation = useRemoveCartItem();
   const clearCartMutation = useClearCart();
-  const mergeCartMutation = useMergeCart();
-  const replaceCartMutation = useReplaceCart();
-  const keepUserCartMutation = useKeepUserCart();
+  const transferCartMutation = useTransferCart();
+  const checkGuestCartQuery = useCheckGuestCartHook({ enabled: false });
+  const checkUserCartQuery = useCheckUserCartHook({ enabled: false });
 
-  // Update cart state based on React Query results
+  // Initialize the cart system
   useEffect(() => {
-    // Update the loading state
-    setCartState((prevState) => ({
-      ...prevState,
-      isLoading:
-        isCartQueryLoading ||
-        isCartQueryFetching ||
-        cartOperationInProgressRef.current,
-    }));
-
-    // Update cart data when available
-    if (cartData && !isCartQueryLoading && !isCartQueryFetching) {
-      setCartState((prevState) => ({
-        ...prevState,
-        cart: cartData,
-        isLoading: cartOperationInProgressRef.current,
-        error: null,
-      }));
-
-      // Mark initial load as complete
-      initialCartLoadedRef.current = true;
-    }
-
-    // Handle errors
-    if (cartQueryError && !isCartQueryLoading && !isCartQueryFetching) {
-      console.error("Cart query error:", cartQueryError);
-      setCartState((prevState) => ({
-        ...prevState,
-        error:
-          cartQueryError instanceof Error
-            ? cartQueryError.message
-            : "Failed to load cart",
-        isLoading: false,
-      }));
-    }
-  }, [isCartQueryLoading, isCartQueryFetching, cartData, cartQueryError]);
-
-  // Reset cart state function
-  const resetCartState = useCallback(() => {
-    setCartState({
-      cart: null,
-      isLoading: false,
-      error: null,
-    });
-
-    // Reset initialization flags
-    initialCartLoadedRef.current = false;
-  }, []);
-
-  // Check for guest cart that needs merging - called after login
-  const checkForGuestCartMerge = useCallback(async () => {
-    // Only check once per session and only if user is authenticated
-    if (cartMergeCheckDoneRef.current || !isAuthenticated || !user) {
+    // Prevent multiple simultaneous initialization attempts
+    if (initializationInProgressRef.current) {
       return;
     }
 
-    try {
-      console.log("Checking for guest cart after login");
+    const initialize = async () => {
+      // Set flag to prevent duplicate initialization
+      initializationInProgressRef.current = true;
 
-      // Get the current cart after login - first check if the user has a cart in the user object
-      const userHasCart = user.cart && user.cart.id;
-      const userCartHasItems =
-        userHasCart && user.cart.items && user.cart.items.length > 0;
-
-      console.log("User cart check:", { userHasCart, userCartHasItems });
-
-      // Check if there's a guest cart
-      const checkExistingCartResponse = await checkExistingCart();
-      const checkExistingCartData = checkExistingCartResponse?.data;
-      const guestHasItems =
-        checkExistingCartData &&
-        checkExistingCartData.hasExistingCart &&
-        checkExistingCartData.itemCount > 0;
-
-      if (guestHasItems) {
-        const guestItemCount = checkExistingCartData.itemCount || 0;
-        setGuestCartItemCount(guestItemCount);
-        console.log(`Found guest cart with ${guestItemCount} items`);
-
-        // If user has no cart or empty cart but guest cart has items, auto-merge
-        if (
-          !userCartHasItems &&
-          guestItemCount > 0 &&
-          !autoMergePerformedRef.current
-        ) {
-          console.log(
-            "User has no cart or empty cart but guest has items - auto replacing"
-          );
-          autoMergePerformedRef.current = true;
-          await handleCartMergeAction("replace");
-        }
-        // If both user and guest have cart items, show merge modal
-        else if (userCartHasItems && guestItemCount > 0) {
-          console.log(
-            "Both user and guest carts have items, showing merge modal"
-          );
-          setShowCartMergeModal(true);
-        }
-      } else {
-        // If user has a cart already, ensure it's loaded
-        if (userHasCart) {
-          console.log("No guest cart, but user has a cart - refreshing");
-          await refetch();
-        }
-        console.log("No guest cart found or guest cart is empty");
-      }
-
-      // Mark check as done
-      cartMergeCheckDoneRef.current = true;
-    } catch (error) {
-      console.error("Error checking for guest cart:", error);
-      // Mark as done even on error to prevent repeated attempts
-      cartMergeCheckDoneRef.current = true;
-    }
-  }, [isAuthenticated, user, refetch, checkExistingCart]);
-
-  // Handle cart merge action
-  const handleCartMergeAction = useCallback(
-    async (action: CartMergeAction): Promise<void> => {
       try {
-        console.log(`Processing cart merge action: ${action}`);
-        setIsCartMerging(true);
+        console.log("CartContext: Initializing cart system");
+        // Reset state on authentication change
+        setIsInitialized(false);
+        setShouldFetchCart(false);
 
-        switch (action) {
-          case "merge":
-            await mergeCartMutation.mutateAsync({});
-            break;
-          case "replace":
-            await replaceCartMutation.mutateAsync({});
-            break;
-          case "keep":
-            await keepUserCartMutation.mutateAsync({});
-            break;
+        // Reset cart check refs on auth state change
+        if (isAuthenticated) {
+          guestCartCheckedRef.current = true; // Skip guest cart check for authenticated users
+          userCartCheckedRef.current = false; // Force user cart check
+        } else {
+          guestCartCheckedRef.current = false; // Force guest cart check
+          userCartCheckedRef.current = true; // Skip user cart check for guests
         }
 
-        // Close modal and refresh cart
-        setShowCartMergeModal(false);
-        await refreshCart();
-        console.log("Cart merge action completed successfully");
+        // Check for guest cart first if not authenticated
+        let guestCartExists = false;
+        if (!isAuthenticated && !guestCartCheckedRef.current) {
+          guestCartExists = await checkForGuestCart();
+          guestCartCheckedRef.current = true;
+        }
+
+        // If authenticated, also check for user cart
+        let userCartExists = false;
+        if (isAuthenticated && !userCartCheckedRef.current) {
+          userCartExists = await checkForUserCart();
+          userCartCheckedRef.current = true;
+        }
+
+        // Only fetch cart if we know a cart exists (guest or user)
+        setShouldFetchCart(guestCartExists || userCartExists);
+        setIsInitialized(true);
+
+        console.log("CartContext: Initialization complete", {
+          guestCartExists,
+          userCartExists,
+          shouldFetchCart: guestCartExists || userCartExists,
+        });
       } catch (error) {
-        console.error(`Error during cart ${action} action:`, error);
-        setCartState((prevState) => ({
-          ...prevState,
-          error:
-            error instanceof Error ? error.message : `Failed to ${action} cart`,
-        }));
+        console.error(
+          "Error initializing cart:",
+          error instanceof Error ? error.message : String(error)
+        );
+        setIsInitialized(true); // Mark as initialized even on error
       } finally {
-        setIsCartMerging(false);
+        // Reset the flag so we can initialize again if needed
+        initializationInProgressRef.current = false;
       }
-    },
-    [mergeCartMutation, replaceCartMutation, keepUserCartMutation]
-  );
+    };
 
-  // Controlled cart refresh function to prevent duplicate fetches
-  const refreshCart = useCallback(async (): Promise<void> => {
-    // Skip if there's already a cart refresh in progress
-    if (cartRefreshInProgressRef.current) {
-      console.log("Cart refresh already in progress, skipping");
-      return Promise.resolve();
-    }
+    initialize();
+  }, [isAuthenticated]); // Re-run when auth state changes
 
+  // Check for guest cart
+  const checkForGuestCart = async (): Promise<boolean> => {
     try {
-      cartRefreshInProgressRef.current = true;
-      cartOperationInProgressRef.current = true;
-
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: true,
-      }));
-
-      console.log("Refreshing cart");
-      await refetch();
-      console.log("Cart refresh complete");
-      return Promise.resolve();
+      console.log("CartContext: Checking for guest cart");
+      const result = await checkGuestCartQuery.refetch();
+      if (result.isSuccess && result.data) {
+        // Directly access the hasGuestCart property from the data object
+        const hasCart = result.data.hasGuestCart;
+        setHasGuestCart(hasCart);
+        console.log("CartContext: Guest cart check result", { hasCart });
+        return hasCart;
+      } else {
+        setHasGuestCart(false);
+        return false;
+      }
     } catch (error) {
-      console.error("Error refreshing cart:", error);
-
-      setCartState((prevState) => ({
-        ...prevState,
-        error:
-          error instanceof Error ? error.message : "Failed to refresh cart",
-        isLoading: false,
-      }));
-
-      return Promise.reject(error);
-    } finally {
-      cartRefreshInProgressRef.current = false;
-      cartOperationInProgressRef.current = false;
-    }
-  }, [refetch]);
-
-  // When auth state changes, handle cart state
-  useEffect(() => {
-    // Check if auth state changed
-    if (previousAuthStateRef.current !== isAuthenticated) {
-      console.log(
-        `Auth state changed: ${previousAuthStateRef.current} -> ${isAuthenticated}`
+      console.error(
+        "Error checking for guest cart:",
+        error instanceof Error ? error.message : String(error)
       );
-
-      // If user logged out, reset the cart state first
-      if (!isAuthenticated && previousAuthStateRef.current) {
-        console.log("User logged out, resetting cart state");
-        resetCartState();
-
-        // Reset flags when logging out
-        cartMergeCheckDoneRef.current = false;
-        autoMergePerformedRef.current = false;
-      }
-
-      // If user logged in, we need to check for guest cart merging
-      if (isAuthenticated && !previousAuthStateRef.current) {
-        console.log("User logged in, will check for guest cart to merge");
-
-        // When the user logs in, their cart data is already in the user object
-        // Set cart from user data while we figure out if we need to merge
-        if (user && user.cart) {
-          console.log("Setting cart from user data initially");
-          setCartState((prevState) => ({
-            ...prevState,
-            cart: user.cart,
-            isLoading: false,
-          }));
-        }
-
-        // Check if there's a guest cart that needs merging
-        checkForGuestCartMerge();
-      } else {
-        // Regular refresh for other state changes
-        console.log("Regular cart refresh due to auth state change");
-        invalidateQueries(QueryKeys.cart.current);
-        refetch().catch(console.error);
-      }
-
-      // Update the previous auth state ref
-      previousAuthStateRef.current = isAuthenticated;
+      setHasGuestCart(false);
+      return false;
     }
-  }, [
-    isAuthenticated,
-    invalidateQueries,
-    refetch,
-    resetCartState,
-    checkForGuestCartMerge,
-    user,
-  ]);
+  };
 
-  // Initial load effect - runs once when component mounts
-  useEffect(() => {
-    if (
-      !initialCartLoadedRef.current &&
-      !isCartQueryLoading &&
-      !isCartQueryFetching &&
-      !cartRefreshInProgressRef.current // Ensure no refresh is in progress
-    ) {
-      console.log("Initial cart load");
-      cartRefreshInProgressRef.current = true; // Prevent duplicate fetches
+  // Check for user cart
+  const checkForUserCart = async (): Promise<boolean> => {
+    if (!isAuthenticated) return false;
 
-      // If user is authenticated and has a cart in the user object, use that initially
-      if (isAuthenticated && user?.cart) {
-        console.log("Setting initial cart from user data");
-        setCartState((prevState) => ({
-          ...prevState,
-          cart: user.cart,
-          isLoading: false,
-        }));
-        initialCartLoadedRef.current = true;
-        cartRefreshInProgressRef.current = false;
+    try {
+      console.log("CartContext: Checking for user cart");
+      const result = await checkUserCartQuery.refetch();
+      if (result.isSuccess && result.data) {
+        // Directly access the hasExistingCart property from the data object
+        const hasCart = result.data.hasExistingCart;
+        setHasUserCart(hasCart);
+        console.log("CartContext: User cart check result", { hasCart });
+        return hasCart;
       } else {
-        // Otherwise fetch the cart
-        refetch()
-          .catch(console.error)
-          .finally(() => {
-            cartRefreshInProgressRef.current = false;
-          });
+        setHasUserCart(false);
+        return false;
       }
+    } catch (error) {
+      console.error(
+        "Error checking for user cart:",
+        error instanceof Error ? error.message : String(error)
+      );
+      setHasUserCart(false);
+      return false;
     }
-  }, [refetch, isCartQueryLoading, isCartQueryFetching, isAuthenticated, user]);
+  };
 
-  // Add item to cart
-  const addToCart = useCallback(
-    async (productId: string, quantity: number): Promise<void> => {
-      if (cartOperationInProgressRef.current) {
-        console.log("Cart operation already in progress, skipping add to cart");
-        return Promise.resolve();
-      }
+  // Fetch cart
+  const fetchCart = async (): Promise<void> => {
+    try {
+      await refetchCart();
+    } catch (error) {
+      console.error(
+        "Error fetching cart:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  };
 
-      try {
-        cartOperationInProgressRef.current = true;
+  // Add to cart function
+  const addToCart = async (
+    productId: string,
+    quantity: number
+  ): Promise<boolean> => {
+    try {
+      const response = await addToCartMutation.mutateAsync({
+        productId,
+        quantity,
+      });
 
-        setCartState((prevState) => ({
-          ...prevState,
-          isLoading: true,
-        }));
+      if (response.success) {
+        // Update the cart data in the query cache with the full response structure
+        queryClient.setQueryData(QueryKeys.cart.current, response);
 
-        console.log(
-          `Adding product ${productId} to cart, quantity: ${quantity}`
-        );
-        const data: AddToCartData = {
-          productId,
-          quantity,
-        };
-
-        const result = await addToCartMutation.mutateAsync(data);
-
-        if (result.success) {
-          setCartState({
-            cart: result.data,
-            isLoading: false,
-            error: null,
-          });
-          console.log("Product successfully added to cart");
-        } else {
-          throw new Error(result.message || "Failed to add item to cart");
+        // Ensure we know we have a cart after adding an item
+        if (!hasGuestCart && !hasUserCart) {
+          if (isAuthenticated) {
+            setHasUserCart(true);
+          } else {
+            setHasGuestCart(true);
+          }
+          setShouldFetchCart(true);
         }
-      } catch (error) {
-        console.error("Error adding to cart:", error);
 
-        setCartState((prevState) => ({
-          ...prevState,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to add item to cart",
-          isLoading: false,
-        }));
-
-        throw error;
-      } finally {
-        cartOperationInProgressRef.current = false;
+        return true;
+      } else {
+        throw new Error(response.message);
       }
-    },
-    [addToCartMutation]
-  );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to add item to cart";
+      showNotification(errorMessage, { type: "error" });
+      return false;
+    }
+  };
 
-  // Update cart item
-  const updateCartItem = useCallback(
-    async (cartItemId: string, quantity: number): Promise<void> => {
-      if (cartOperationInProgressRef.current) {
-        console.log("Cart operation in progress, skipping update");
-        return Promise.resolve();
+  // Update cart item function
+  const updateCartItem = async (
+    itemId: string,
+    quantity: number
+  ): Promise<boolean> => {
+    try {
+      const response = await updateCartItemMutation.mutateAsync({
+        itemId,
+        quantity,
+      });
+
+      if (response.success) {
+        // Update the cart data in the query cache with the full response structure
+        queryClient.setQueryData(QueryKeys.cart.current, response);
+        showNotification("Cart updated", { type: "success" });
+        return true;
+      } else {
+        throw new Error(response.message);
       }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to update cart";
+      showNotification(errorMessage, { type: "error" });
+      return false;
+    }
+  };
 
-      try {
-        cartOperationInProgressRef.current = true;
+  // Remove from cart function
+  const removeFromCart = async (itemId: string): Promise<boolean> => {
+    try {
+      const response = await removeCartItemMutation.mutateAsync(itemId);
 
-        setCartState((prevState) => ({
-          ...prevState,
-          isLoading: true,
-        }));
+      if (response.success) {
+        // Update the cart data in the query cache with the full response structure
+        queryClient.setQueryData(QueryKeys.cart.current, response);
 
-        console.log(
-          `Updating cart item ${cartItemId} to quantity: ${quantity}`
-        );
-        const result = await updateCartItemMutation.mutateAsync({
-          cartItemId,
-          quantity,
-        });
-
-        if (result.success) {
-          setCartState({
-            cart: result.data,
-            isLoading: false,
-            error: null,
-          });
-          console.log("Cart item updated successfully");
-
-          // Invalidate cart query
-          invalidateQueries(QueryKeys.cart.current);
-        } else {
-          throw new Error(result.message || "Failed to update cart item");
+        // Check if this was the last item and update cart existence flags
+        if (response.data?.items?.length === 0) {
+          if (isAuthenticated) {
+            setHasUserCart(false);
+          } else {
+            setHasGuestCart(false);
+          }
         }
-      } catch (error) {
-        console.error("Error updating cart item:", error);
 
-        setCartState((prevState) => ({
-          ...prevState,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to update cart item",
-          isLoading: false,
-        }));
-
-        throw error;
-      } finally {
-        cartOperationInProgressRef.current = false;
+        showNotification("Item removed from cart", { type: "success" });
+        return true;
+      } else {
+        throw new Error(response.message);
       }
-    },
-    [updateCartItemMutation, invalidateQueries]
-  );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to remove item from cart";
+      showNotification(errorMessage, { type: "error" });
+      return false;
+    }
+  };
 
-  // Remove cart item
-  const removeCartItem = useCallback(
-    async (cartItemId: string): Promise<void> => {
-      if (cartOperationInProgressRef.current) {
-        console.log("Cart operation in progress, skipping remove");
-        return Promise.resolve();
-      }
+  // Clear cart function
+  const clearCart = async (): Promise<boolean> => {
+    try {
+      const response = await clearCartMutation.mutateAsync();
 
-      try {
-        cartOperationInProgressRef.current = true;
+      if (response.success) {
+        // Update the cart data in the query cache with the full response structure
+        queryClient.setQueryData(QueryKeys.cart.current, response);
 
-        setCartState((prevState) => ({
-          ...prevState,
-          isLoading: true,
-        }));
-
-        console.log(`Removing cart item ${cartItemId}`);
-        const result = await removeCartItemMutation.mutateAsync(cartItemId);
-
-        if (result.success) {
-          setCartState({
-            cart: result.data,
-            isLoading: false,
-            error: null,
-          });
-          console.log("Cart item removed successfully");
-
-          // Invalidate cart query
-          invalidateQueries(QueryKeys.cart.current);
+        // If cart is cleared, we should update our state indicators
+        if (isAuthenticated) {
+          setHasUserCart(false);
         } else {
-          throw new Error(result.message || "Failed to remove cart item");
+          setHasGuestCart(false);
         }
-      } catch (error) {
-        console.error("Error removing cart item:", error);
 
-        setCartState((prevState) => ({
-          ...prevState,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to remove cart item",
-          isLoading: false,
-        }));
-
-        throw error;
-      } finally {
-        cartOperationInProgressRef.current = false;
+        showNotification("Cart cleared", { type: "success" });
+        return true;
+      } else {
+        throw new Error(response.message);
       }
-    },
-    [removeCartItemMutation, invalidateQueries]
-  );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to clear cart";
+      showNotification(errorMessage, { type: "error" });
+      return false;
+    }
+  };
 
-  // Clear cart
-  const clearCart = useCallback(async (): Promise<void> => {
-    if (cartOperationInProgressRef.current) {
-      console.log("Cart operation in progress, skipping clear");
-      return Promise.resolve();
+  // Transfer guest cart to user function
+  const transferGuestCartToUser = async (
+    actionType: string = "merge"
+  ): Promise<boolean> => {
+    if (!isAuthenticated || !user || !cart) {
+      showNotification("You must be logged in to transfer cart", {
+        type: "error",
+      });
+      return false;
     }
 
     try {
-      cartOperationInProgressRef.current = true;
+      const response = await transferCartMutation.mutateAsync({
+        sourceCartId: cart.id,
+        targetUserId: user.id,
+        actionType: actionType,
+      });
 
-      setCartState((prevState) => ({
-        ...prevState,
-        isLoading: true,
-      }));
-
-      console.log("Clearing cart");
-      const result = await clearCartMutation.mutateAsync({});
-
-      if (result.success) {
-        setCartState({
-          cart: result.data,
-          isLoading: false,
-          error: null,
-        });
-        console.log("Cart cleared successfully");
-
-        // Invalidate cart query
-        invalidateQueries(QueryKeys.cart.current);
+      if (response.success) {
+        // Invalidate the cart query to refetch with the updated data
+        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
+        setHasGuestCart(false); // Guest cart has been transferred
+        setHasUserCart(true); // Now user has a cart
+        setShouldFetchCart(true); // Make sure we fetch the updated cart
+        showNotification("Cart transferred successfully", { type: "success" });
+        return true;
       } else {
-        throw new Error(result.message || "Failed to clear cart");
+        throw new Error(response.message);
       }
     } catch (error) {
-      console.error("Error clearing cart:", error);
-
-      setCartState((prevState) => ({
-        ...prevState,
-        error: error instanceof Error ? error.message : "Failed to clear cart",
-        isLoading: false,
-      }));
-
-      throw error;
-    } finally {
-      cartOperationInProgressRef.current = false;
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to transfer cart";
+      showNotification(errorMessage, { type: "error" });
+      return false;
     }
-  }, [clearCartMutation, invalidateQueries]);
+  };
 
-  // Calculate the combined loading state
-  const isLoading =
-    isCartQueryLoading ||
-    isCartQueryFetching ||
-    cartOperationInProgressRef.current ||
-    isCartMerging;
-
-  // Create memoized context value
-  const contextValue = useMemo(
-    () => ({
-      ...cartState,
-      isLoading, // Use the calculated loading state
-      addToCart,
-      updateCartItem,
-      removeCartItem,
-      clearCart,
-      refreshCart,
-      resetCartState,
-      handleCartMergeAction,
-      showCartMergeModal,
-      setShowCartMergeModal,
-      guestCartItemCount,
-      isCartMerging,
-    }),
-    [
-      cartState,
-      isLoading,
-      addToCart,
-      updateCartItem,
-      removeCartItem,
-      clearCart,
-      refreshCart,
-      resetCartState,
-      handleCartMergeAction,
-      showCartMergeModal,
-      guestCartItemCount,
-      isCartMerging,
-    ]
-  );
+  // Prepare context value
+  const contextValue: CartContextType = {
+    cart: cart,
+    isLoading:
+      isCartLoading ||
+      addToCartMutation.isPending ||
+      updateCartItemMutation.isPending ||
+      removeCartItemMutation.isPending ||
+      clearCartMutation.isPending ||
+      transferCartMutation.isPending ||
+      checkGuestCartQuery.isFetching ||
+      checkUserCartQuery.isFetching,
+    isInitialized,
+    addToCart,
+    updateCartItem,
+    removeFromCart,
+    clearCart,
+    hasGuestCart,
+    hasUserCart,
+    transferGuestCartToUser,
+    checkForGuestCart,
+    checkForUserCart,
+    fetchCart,
+  };
 
   return (
     <CartContext.Provider value={contextValue}>{children}</CartContext.Provider>
@@ -640,10 +388,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
 };
 
 // Custom hook to use the cart context
-export const useCart = (): CartContextType => {
+export const useCartContext = (): CartContextType => {
   const context = useContext(CartContext);
   if (context === undefined) {
-    throw new Error("useCart must be used within a CartProvider");
+    throw new Error("useCartContext must be used within a CartProvider");
   }
   return context;
 };

@@ -6,7 +6,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { QueryProvider } from "./context/QueryContext";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 
 // Layout components
@@ -73,7 +73,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   element,
   requiredRole,
 }) => {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuthContext();
 
   // Show loading indicator while checking authentication
   if (isLoading) {

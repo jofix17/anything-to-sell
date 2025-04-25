@@ -9,10 +9,10 @@ import {
   HeartIcon as HeartSolidIcon,
   StarIcon as StarSolidIcon,
 } from "@heroicons/react/24/solid";
-import { Product } from "../../types";
-import { useCart } from "../../context/CartContext";
-import { useAuth } from "../../context/AuthContext";
 import { useNotification } from "../../context/NotificationContext";
+import { Product } from "../../types/product";
+import { useCartContext } from "../../context/CartContext";
+import { useAuthContext } from "../../context/AuthContext";
 
 interface ProductCardProps {
   product: Product;
@@ -25,8 +25,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   isWishlisted = false,
   onToggleWishlist,
 }) => {
-  const { addToCart } = useCart();
-  const { isAuthenticated } = useAuth();
+  const { addToCart } = useCartContext();
+  const { isAuthenticated } = useAuthContext();
   const { showNotification } = useNotification();
 
   // Calculate discount percentage if product is on sale
