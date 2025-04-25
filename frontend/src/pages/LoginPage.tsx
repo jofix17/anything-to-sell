@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Formik, Form, Field, ErrorMessage } from "formik";
+import { Formik, Form, Field } from "formik";
 import * as Yup from "yup";
-import {
-  EyeIcon,
-  EyeSlashIcon as EyeOffIcon,
-} from "@heroicons/react/24/outline";
 import { useNotification } from "../context/NotificationContext";
 import Button from "../components/common/Button";
 import CartMergeModal from "../components/cart/CartMergeModal";
@@ -13,20 +9,18 @@ import { CartMergeAction } from "../components/cart/CartMergeModal";
 import { useCartContext } from "../context/CartContext";
 import { useAuthContext } from "../context/AuthContext";
 import { LoginCredentials } from "../types/auth";
+import TextInput from "../components/common/TextInput";
 
 // Login form validation schema
 const LoginSchema = Yup.object().shape({
   email: Yup.string()
     .email("Invalid email address")
     .required("Email is required"),
-  password: Yup.string()
-    .required("Password is required"),
-  rememberMe: Yup.boolean()
+  password: Yup.string().required("Password is required"),
+  rememberMe: Yup.boolean(),
 });
 
 const LoginPage: React.FC = () => {
-  // Form state
-  const [showPassword, setShowPassword] = useState(false);
   const [showCartMergeModal, setShowCartMergeModal] = useState(false);
   const [isCartMerging, setIsCartMerging] = useState(false);
   const [guestCartItemCount, setGuestCartItemCount] = useState(0);
@@ -66,7 +60,7 @@ const LoginPage: React.FC = () => {
   const initialFormValues: LoginCredentials & { rememberMe: boolean } = {
     email: "",
     password: "",
-    rememberMe: false
+    rememberMe: false,
   };
 
   // Get redirect from URL if present
@@ -77,7 +71,6 @@ const LoginPage: React.FC = () => {
       sessionStorage.setItem("redirectAfterLogin", redirectPath);
     }
   }, [location.search]);
-  
 
   // Cleanup function to prevent memory leaks and clear timers
   useEffect(() => {
@@ -122,11 +115,15 @@ const LoginPage: React.FC = () => {
       isLoading,
       loginAttempted: loginAttemptedRef.current,
       loginSuccessful: loginSuccessfulRef.current,
-      postLoginFlowStarted: postLoginFlowStartedRef.current
+      postLoginFlowStarted: postLoginFlowStartedRef.current,
     });
 
     // If login was successful and we're now authenticated, handle post-login logic
-    if (isAuthenticated && loginSuccessfulRef.current && !postLoginFlowStartedRef.current) {
+    if (
+      isAuthenticated &&
+      loginSuccessfulRef.current &&
+      !postLoginFlowStartedRef.current
+    ) {
       // Mark that post-login flow has started to prevent duplicate execution
       postLoginFlowStartedRef.current = true;
       handlePostLoginFlow();
@@ -220,24 +217,27 @@ const LoginPage: React.FC = () => {
   // Get destination path and redirect
   const redirectToDestination = () => {
     if (redirectedRef.current) return; // Prevent multiple redirects
-    
+
     // Mark as redirected
     redirectedRef.current = true;
-    
+
     // Get redirect path from session storage
     const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
-    
+
     // Clear the redirect path from session storage
     sessionStorage.removeItem("redirectAfterLogin");
-    
+
     console.log("LoginPage: Redirecting to", redirectPath);
-    
+
     // Navigate immediately
     navigate(redirectPath, { replace: true });
   };
 
   // Form submission handler
-  const handleSubmit = async (values: LoginCredentials & { rememberMe: boolean }, { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }) => {
+  const handleSubmit = async (
+    values: LoginCredentials & { rememberMe: boolean },
+    { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }
+  ) => {
     if (isLoading) return;
 
     console.log("LoginPage: Attempting login");
@@ -347,74 +347,29 @@ const LoginPage: React.FC = () => {
               validationSchema={LoginSchema}
               onSubmit={handleSubmit}
             >
-              {({ isSubmitting, errors, touched }) => (
+              {({ isSubmitting, errors, touched, getFieldProps }) => (
                 <Form className="space-y-6">
-                  {/* Email input */}
-                  <div>
-                    <label
-                      htmlFor="email"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      Email address
-                    </label>
-                    <div className="mt-1">
-                      <Field
-                        id="email"
-                        name="email"
-                        type="email"
-                        autoComplete="email"
-                        className={`appearance-none block w-full px-3 py-2 border ${
-                          errors.email && touched.email
-                            ? "border-red-300 text-red-900 placeholder-red-300 focus:outline-none focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        } rounded-md shadow-sm`}
-                      />
-                      <ErrorMessage
-                        name="email"
-                        component="p"
-                        className="mt-2 text-sm text-red-600"
-                      />
-                    </div>
-                  </div>
+                  <TextInput
+                    label="Email"
+                    type="email"
+                    {...getFieldProps("email")}
+                    error={
+                      touched.email && errors.email ? errors.email : undefined
+                    }
+                    disabled={isLoading || isSubmitting}
+                  />
 
-                  {/* Password input */}
-                  <div>
-                    <label
-                      htmlFor="password"
-                      className="block text-sm font-medium text-gray-700"
-                    >
-                      Password
-                    </label>
-                    <div className="mt-1 relative">
-                      <Field
-                        id="password"
-                        name="password"
-                        type={showPassword ? "text" : "password"}
-                        autoComplete="current-password"
-                        className={`appearance-none block w-full px-3 py-2 border ${
-                          errors.password && touched.password
-                            ? "border-red-300 text-red-900 placeholder-red-300 focus:outline-none focus:ring-red-500 focus:border-red-500"
-                            : "border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                        } rounded-md shadow-sm`}
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? (
-                          <EyeOffIcon className="h-5 w-5 text-gray-400" />
-                        ) : (
-                          <EyeIcon className="h-5 w-5 text-gray-400" />
-                        )}
-                      </button>
-                      <ErrorMessage
-                        name="password"
-                        component="p"
-                        className="mt-2 text-sm text-red-600"
-                      />
-                    </div>
-                  </div>
+                  <TextInput
+                    label="Password"
+                    type="password"
+                    {...getFieldProps("password")}
+                    error={
+                      touched.password && errors.password
+                        ? errors.password
+                        : undefined
+                    }
+                    disabled={isLoading || isSubmitting}
+                  />
 
                   {/* Remember me and forgot password */}
                   <div className="flex items-center justify-between">
@@ -448,11 +403,9 @@ const LoginPage: React.FC = () => {
                     <Button
                       type="submit"
                       variant="primary"
-                      size="medium"
                       fullWidth
                       disabled={isSubmitting || isLoading}
                       loading={isSubmitting || isLoading}
-                      ariaLabel="Sign in to your account"
                     >
                       Sign in
                     </Button>
@@ -479,7 +432,6 @@ const LoginPage: React.FC = () => {
                     variant="outline"
                     fullWidth
                     onClick={() => (window.location.href = "/auth/google")}
-                    ariaLabel="Sign in with Google"
                   >
                     <svg
                       className="w-5 h-5"
@@ -497,7 +449,6 @@ const LoginPage: React.FC = () => {
                     variant="outline"
                     fullWidth
                     onClick={() => (window.location.href = "/auth/facebook")}
-                    ariaLabel="Sign in with Facebook"
                   >
                     <svg
                       className="w-5 h-5"

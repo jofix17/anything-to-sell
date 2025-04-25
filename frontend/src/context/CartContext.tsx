@@ -40,18 +40,25 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [hasUserCart, setHasUserCart] = useState(false);
   const [shouldFetchCart, setShouldFetchCart] = useState(false);
 
-  // Add refs to track if we've already checked for carts
+  // Refs to track operations and prevent duplicate API calls
+  const initializationInProgressRef = useRef(false);
   const guestCartCheckedRef = useRef(false);
   const userCartCheckedRef = useRef(false);
-  const initializationInProgressRef = useRef(false);
+  const guestCartCheckInProgressRef = useRef(false);
+  const userCartCheckInProgressRef = useRef(false);
+  const transferInProgressRef = useRef(false);
+  const addToCartInProgressRef = useRef(false);
+  const updateCartInProgressRef = useRef(false);
+  const removeCartInProgressRef = useRef(false);
+  const clearCartInProgressRef = useRef(false);
 
-  // Cart query with initialization check
+  // Get cart API query
   const {
     data: cartResponse,
     isLoading: isCartLoading,
     refetch: refetchCart,
   } = useGetCart({
-    enabled: shouldFetchCart, // Only fetch after initialization and when we confirm a cart should exist
+    enabled: shouldFetchCart,
   });
 
   // Extract cart data from the API response
@@ -66,7 +73,48 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const checkGuestCartQuery = useCheckGuestCartHook({ enabled: false });
   const checkUserCartQuery = useCheckUserCartHook({ enabled: false });
 
-  // Initialize the cart system
+  // Effect to update cart state based on cart response
+  useEffect(() => {
+    if (cart) {
+      console.log("CartContext: Cart data received", { 
+        items: cart.items.length,
+        isAuth: isAuthenticated 
+      });
+      
+      // If we have a cart, update the state flags based on the cart content
+      if (isAuthenticated) {
+        setHasUserCart(cart.items.length > 0);
+        userCartCheckedRef.current = true;
+      } else {
+        setHasGuestCart(cart.items.length > 0);
+        guestCartCheckedRef.current = true;
+      }
+      
+      setIsInitialized(true);
+    }
+  }, [cart, isAuthenticated]);
+
+  // Check localStorage for existing cart token on page load
+  useEffect(() => {
+    const checkForExistingCart = async () => {
+      if (initializationInProgressRef.current) return;
+      
+      // For guests, we check local storage for any existing guest cart token
+      const guestCartToken = localStorage.getItem('guest_cart_token');
+      if (!isAuthenticated && guestCartToken) {
+        console.log("CartContext: Found guest cart token in localStorage");
+        // If we have a token in localStorage, we should check if the cart exists
+        await checkForGuestCart();
+      } else if (isAuthenticated) {
+        // For logged in users, check if they have a cart
+        await checkForUserCart();
+      }
+    };
+    
+    checkForExistingCart();
+  }, []);
+
+  // Initialize the cart system - optimized to prevent duplicate API calls
   useEffect(() => {
     // Prevent multiple simultaneous initialization attempts
     if (initializationInProgressRef.current) {
@@ -79,42 +127,31 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
       try {
         console.log("CartContext: Initializing cart system");
-        // Reset state on authentication change
+        
+        // Reset internal state tracking
         setIsInitialized(false);
-        setShouldFetchCart(false);
-
-        // Reset cart check refs on auth state change
-        if (isAuthenticated) {
-          guestCartCheckedRef.current = true; // Skip guest cart check for authenticated users
-          userCartCheckedRef.current = false; // Force user cart check
-        } else {
-          guestCartCheckedRef.current = false; // Force guest cart check
-          userCartCheckedRef.current = true; // Skip user cart check for guests
+        
+        // Reset cart check flags
+        guestCartCheckedRef.current = false;
+        userCartCheckedRef.current = false;
+        
+        // For authenticated users, check for existing cart
+        if (isAuthenticated && user) {
+          console.log("CartContext: User is authenticated, checking for user cart");
+          await checkForUserCart();
+        } else if (!isAuthenticated) {
+          // For guests, check for existing cart from localStorage token
+          console.log("CartContext: Guest user, checking for guest cart");
+          await checkForGuestCart();
         }
-
-        // Check for guest cart first if not authenticated
-        let guestCartExists = false;
-        if (!isAuthenticated && !guestCartCheckedRef.current) {
-          guestCartExists = await checkForGuestCart();
-          guestCartCheckedRef.current = true;
-        }
-
-        // If authenticated, also check for user cart
-        let userCartExists = false;
-        if (isAuthenticated && !userCartCheckedRef.current) {
-          userCartExists = await checkForUserCart();
-          userCartCheckedRef.current = true;
-        }
-
-        // Only fetch cart if we know a cart exists (guest or user)
-        setShouldFetchCart(guestCartExists || userCartExists);
-        setIsInitialized(true);
-
+        
         console.log("CartContext: Initialization complete", {
-          guestCartExists,
-          userCartExists,
-          shouldFetchCart: guestCartExists || userCartExists,
+          hasGuestCart,
+          hasUserCart,
+          shouldFetchCart
         });
+        
+        setIsInitialized(true);
       } catch (error) {
         console.error(
           "Error initializing cart:",
@@ -122,27 +159,53 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         );
         setIsInitialized(true); // Mark as initialized even on error
       } finally {
-        // Reset the flag so we can initialize again if needed
-        initializationInProgressRef.current = false;
+        // Reset the flag after a small delay to prevent rapid re-initialization
+        setTimeout(() => {
+          initializationInProgressRef.current = false;
+        }, 100);
       }
     };
 
     initialize();
   }, [isAuthenticated]); // Re-run when auth state changes
 
-  // Check for guest cart
+  // Check for guest cart - optimized to prevent duplicate calls
   const checkForGuestCart = async (): Promise<boolean> => {
+    // Prevent duplicate check attempts
+    if (guestCartCheckInProgressRef.current) {
+      console.log("CartContext: Guest cart check already in progress, returning current state");
+      return hasGuestCart;
+    }
+    
+    if (guestCartCheckedRef.current) {
+      console.log("CartContext: Guest cart already checked, returning cached result");
+      return hasGuestCart;
+    }
+    
     try {
+      // Set flag to prevent concurrent checks
+      guestCartCheckInProgressRef.current = true;
+      
       console.log("CartContext: Checking for guest cart");
       const result = await checkGuestCartQuery.refetch();
+      
       if (result.isSuccess && result.data) {
         // Directly access the hasGuestCart property from the data object
         const hasCart = result.data.hasGuestCart;
         setHasGuestCart(hasCart);
+        guestCartCheckedRef.current = true;
+        
+        // If guest has a cart, we should fetch it
+        if (hasCart && !shouldFetchCart) {
+          console.log("CartContext: Guest cart found, enabling cart fetch");
+          setShouldFetchCart(true);
+        }
+        
         console.log("CartContext: Guest cart check result", { hasCart });
         return hasCart;
       } else {
         setHasGuestCart(false);
+        guestCartCheckedRef.current = true;
         return false;
       }
     } catch (error) {
@@ -152,24 +215,51 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       );
       setHasGuestCart(false);
       return false;
+    } finally {
+      // Reset in-progress flag
+      guestCartCheckInProgressRef.current = false;
     }
   };
 
-  // Check for user cart
+  // Check for user cart - optimized to prevent duplicate calls
   const checkForUserCart = async (): Promise<boolean> => {
     if (!isAuthenticated) return false;
+    
+    // Prevent duplicate check attempts
+    if (userCartCheckInProgressRef.current) {
+      console.log("CartContext: User cart check already in progress, returning current state");
+      return hasUserCart;
+    }
+    
+    if (userCartCheckedRef.current) {
+      console.log("CartContext: User cart already checked, returning cached result");
+      return hasUserCart;
+    }
 
     try {
+      // Set flag to prevent concurrent checks
+      userCartCheckInProgressRef.current = true;
+      
       console.log("CartContext: Checking for user cart");
       const result = await checkUserCartQuery.refetch();
+      
       if (result.isSuccess && result.data) {
         // Directly access the hasExistingCart property from the data object
         const hasCart = result.data.hasExistingCart;
         setHasUserCart(hasCart);
+        userCartCheckedRef.current = true;
+        
+        // If user has a cart, we should fetch it
+        if (hasCart && !shouldFetchCart) {
+          console.log("CartContext: User cart found, enabling cart fetch");
+          setShouldFetchCart(true);
+        }
+        
         console.log("CartContext: User cart check result", { hasCart });
         return hasCart;
       } else {
         setHasUserCart(false);
+        userCartCheckedRef.current = true;
         return false;
       }
     } catch (error) {
@@ -179,12 +269,35 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       );
       setHasUserCart(false);
       return false;
+    } finally {
+      // Reset in-progress flag
+      userCartCheckInProgressRef.current = false;
     }
   };
 
-  // Fetch cart
+  // Effect to preserve guest cart token in localStorage when cart is fetched
+  useEffect(() => {
+    if (cart && !isAuthenticated && cart.guestToken) {
+      // Store guest cart token in localStorage for persistence
+      localStorage.setItem('guest_cart_token', cart.guestToken);
+      console.log("CartContext: Saved guest cart token to localStorage", cart.guestToken);
+    }
+  }, [cart, isAuthenticated]);
+
+  // Fetch cart - optimized but only fetches when shouldFetchCart is true
   const fetchCart = async (): Promise<void> => {
+    if (!shouldFetchCart) {
+      console.log("CartContext: Skip fetchCart - shouldFetchCart is false");
+      return;
+    }
+    
+    if (isCartLoading) {
+      console.log("CartContext: Skip fetchCart - cart is already loading");
+      return;
+    }
+    
     try {
+      console.log("CartContext: Fetching cart");
       await refetchCart();
     } catch (error) {
       console.error(
@@ -194,12 +307,21 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
   };
 
-  // Add to cart function
+  // Add to cart function - optimized
   const addToCart = async (
     productId: string,
     quantity: number
   ): Promise<boolean> => {
+    // Prevent duplicate operations
+    if (addToCartInProgressRef.current) {
+      console.log("CartContext: Add to cart already in progress");
+      return false;
+    }
+
     try {
+      addToCartInProgressRef.current = true;
+      console.log(`CartContext: Adding product ${productId} to cart, quantity ${quantity}`);
+      
       const response = await addToCartMutation.mutateAsync({
         productId,
         quantity,
@@ -208,17 +330,26 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       if (response.success) {
         // Update the cart data in the query cache with the full response structure
         queryClient.setQueryData(QueryKeys.cart.current, response);
+        
+        // Store guest token if it's a guest cart
+        if (!isAuthenticated && response.data?.guestToken) {
+          localStorage.setItem('guest_cart_token', response.data.guestToken);
+          console.log("CartContext: Saved guest cart token after adding item", response.data.guestToken);
+        }
 
         // Ensure we know we have a cart after adding an item
         if (!hasGuestCart && !hasUserCart) {
           if (isAuthenticated) {
             setHasUserCart(true);
+            userCartCheckedRef.current = true;
           } else {
             setHasGuestCart(true);
+            guestCartCheckedRef.current = true;
           }
           setShouldFetchCart(true);
         }
 
+        console.log("CartContext: Item added to cart successfully");
         return true;
       } else {
         throw new Error(response.message);
@@ -226,17 +357,29 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to add item to cart";
+      console.error("CartContext: Add to cart error", errorMessage);
       showNotification(errorMessage, { type: "error" });
       return false;
+    } finally {
+      addToCartInProgressRef.current = false;
     }
   };
 
-  // Update cart item function
+  // Update cart item function - optimized
   const updateCartItem = async (
     itemId: string,
     quantity: number
   ): Promise<boolean> => {
+    // Prevent duplicate operations
+    if (updateCartInProgressRef.current) {
+      console.log("CartContext: Update cart already in progress");
+      return false;
+    }
+
     try {
+      updateCartInProgressRef.current = true;
+      console.log(`CartContext: Updating cart item ${itemId}, quantity ${quantity}`);
+      
       const response = await updateCartItemMutation.mutateAsync({
         itemId,
         quantity,
@@ -246,6 +389,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         // Update the cart data in the query cache with the full response structure
         queryClient.setQueryData(QueryKeys.cart.current, response);
         showNotification("Cart updated", { type: "success" });
+        console.log("CartContext: Cart item updated successfully");
         return true;
       } else {
         throw new Error(response.message);
@@ -253,14 +397,26 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to update cart";
+      console.error("CartContext: Update cart error", errorMessage);
       showNotification(errorMessage, { type: "error" });
       return false;
+    } finally {
+      updateCartInProgressRef.current = false;
     }
   };
 
-  // Remove from cart function
+  // Remove from cart function - optimized
   const removeFromCart = async (itemId: string): Promise<boolean> => {
+    // Prevent duplicate operations
+    if (removeCartInProgressRef.current) {
+      console.log("CartContext: Remove from cart already in progress");
+      return false;
+    }
+
     try {
+      removeCartInProgressRef.current = true;
+      console.log(`CartContext: Removing item ${itemId} from cart`);
+      
       const response = await removeCartItemMutation.mutateAsync(itemId);
 
       if (response.success) {
@@ -273,10 +429,13 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
             setHasUserCart(false);
           } else {
             setHasGuestCart(false);
+            // Remove guest cart token from localStorage if cart is empty
+            localStorage.removeItem('guest_cart_token');
           }
         }
 
         showNotification("Item removed from cart", { type: "success" });
+        console.log("CartContext: Item removed from cart successfully");
         return true;
       } else {
         throw new Error(response.message);
@@ -286,14 +445,26 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         error instanceof Error
           ? error.message
           : "Failed to remove item from cart";
+      console.error("CartContext: Remove from cart error", errorMessage);
       showNotification(errorMessage, { type: "error" });
       return false;
+    } finally {
+      removeCartInProgressRef.current = false;
     }
   };
 
-  // Clear cart function
+  // Clear cart function - optimized
   const clearCart = async (): Promise<boolean> => {
+    // Prevent duplicate operations
+    if (clearCartInProgressRef.current) {
+      console.log("CartContext: Clear cart already in progress");
+      return false;
+    }
+
     try {
+      clearCartInProgressRef.current = true;
+      console.log("CartContext: Clearing cart");
+      
       const response = await clearCartMutation.mutateAsync();
 
       if (response.success) {
@@ -305,9 +476,12 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
           setHasUserCart(false);
         } else {
           setHasGuestCart(false);
+          // Remove guest cart token from localStorage
+          localStorage.removeItem('guest_cart_token');
         }
 
         showNotification("Cart cleared", { type: "success" });
+        console.log("CartContext: Cart cleared successfully");
         return true;
       } else {
         throw new Error(response.message);
@@ -315,16 +489,25 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to clear cart";
+      console.error("CartContext: Clear cart error", errorMessage);
       showNotification(errorMessage, { type: "error" });
       return false;
+    } finally {
+      clearCartInProgressRef.current = false;
     }
   };
 
-  // Transfer guest cart to user function
+  // Transfer guest cart to user function - optimized
   const transferGuestCartToUser = async (
     actionType: string = "merge"
   ): Promise<boolean> => {
-    if (!isAuthenticated || !user || !cart) {
+    // Prevent duplicate transfer attempts
+    if (transferInProgressRef.current) {
+      console.log("CartContext: Transfer already in progress, skipping duplicate request");
+      return false;
+    }
+    
+    if (!isAuthenticated || !user) {
       showNotification("You must be logged in to transfer cart", {
         type: "error",
       });
@@ -332,28 +515,74 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     }
 
     try {
+      // Set flag to prevent concurrent transfers
+      transferInProgressRef.current = true;
+      
+      console.log("CartContext: Transferring guest cart to user", { 
+        actionType, 
+        cartId: cart?.id,
+        userId: user.id
+      });
+
+      // Make sure we have the source cart ID
+      const sourceCartId = cart?.id;
+      if (!sourceCartId) {
+        console.error("CartContext: Source cart not found");
+        throw new Error("Source cart not found");
+      }
+
+      // Call the API to transfer the cart with the specified action
       const response = await transferCartMutation.mutateAsync({
-        sourceCartId: cart.id,
+        sourceCartId: sourceCartId,
         targetUserId: user.id,
         actionType: actionType,
       });
 
       if (response.success) {
+        console.log(`CartContext: Cart ${actionType} successful`, response.data);
+        
+        // Remove guest cart token from localStorage after transfer
+        localStorage.removeItem('guest_cart_token');
+        
         // Invalidate the cart query to refetch with the updated data
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-        setHasGuestCart(false); // Guest cart has been transferred
-        setHasUserCart(true); // Now user has a cart
-        setShouldFetchCart(true); // Make sure we fetch the updated cart
-        showNotification("Cart transferred successfully", { type: "success" });
+        
+        // Update local state based on the action
+        setHasGuestCart(false); // Guest cart has been processed
+        guestCartCheckedRef.current = true;
+        
+        // For all actions, user now has a cart (may be empty for "keep" action)
+        setHasUserCart(true);
+        userCartCheckedRef.current = true;
+        
+        // Make sure we fetch the updated cart
+        setShouldFetchCart(true);
+        
+        // Show appropriate notification based on the action
+        let message = "Cart transferred successfully";
+        if (actionType === "merge") {
+          message = "Carts merged successfully";
+        } else if (actionType === "replace") {
+          message = "Guest cart items transferred to your account";
+        } else if (actionType === "keep") {
+          message = "Using your existing cart";
+        }
+        
+        showNotification(message, { type: "success" });
         return true;
       } else {
-        throw new Error(response.message);
+        console.error("CartContext: Cart transfer error", response.message);
+        throw new Error(response.message || "Failed to transfer cart");
       }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to transfer cart";
+      console.error("CartContext: Cart transfer error", errorMessage);
       showNotification(errorMessage, { type: "error" });
       return false;
+    } finally {
+      // Always reset the flag, even on error
+      transferInProgressRef.current = false;
     }
   };
 

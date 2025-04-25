@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import Header from "../common/Header";
 import Footer from "../common/Footer";
 import MobileMenu from "../common/MobileMenu";
+import CartTransferHandler from "../cart/CartTransferHandler";
 
 const MainLayout: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -32,6 +33,9 @@ const MainLayout: React.FC = () => {
         onClose={() => setIsMobileMenuOpen(false)}
       />
 
+      {/* Add CartTransferHandler - this component is invisible but handles cart transfers */}
+      <CartTransferHandler />
+
       {/* Main content area */}
       <main className="flex-grow pt-6">
         <Outlet />
@@ -39,7 +43,6 @@ const MainLayout: React.FC = () => {
 
       {/* Footer */}
       <Footer />
-
     </div>
   );
 };
