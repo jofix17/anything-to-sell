@@ -5,6 +5,8 @@ module Api
       def index
         @categories = Category.all
 
+        @categories = @categories.includes(:subcategories)
+
         # Optionally filter to show only root categories
         @categories = @categories.where(parent_id: nil) if params[:root_only] == "true"
 

@@ -4,7 +4,8 @@ module Api
       # GET /api/v1/products
       def index
         # Filter to only show active products
-        @products = Product.where(is_active: true, status: "active")
+        @products = Product.includes(:category, :user, :product_images, :collections)
+        .where(is_active: true, status: "active")
 
         # Apply filters
         @products = @products.where(category_id: params[:category_id]) if params[:category_id].present?
@@ -52,7 +53,8 @@ module Api
 
       # GET /api/v1/products/:id
       def show
-        @product = Product.find(params[:id])
+        @product = Product.includes(:category, :user, :product_images, :collections)
+        .find(params[:id])
 
         # Only allow viewing active products
         if !@product.is_active || @product.status != "active"
@@ -66,9 +68,10 @@ module Api
 
       # GET /api/v1/products/featured
       def featured
-        @products = Product.joins(:collections)
-                           .where(collections: { slug: "featured" })
-                           .where(is_active: true, status: "active")
+        @products = Product.includes(:category, :user, :product_images, :collections)
+        .joins(:collections)
+        .where(collections: { slug: "featured" })
+        .where(is_active: true, status: "active")
 
         # Pagination
         page = (params[:page] || 1).to_i
@@ -86,9 +89,10 @@ module Api
 
       # GET /api/v1/products/new_arrivals
       def new_arrivals
-        @products = Product.joins(:collections)
-                           .where(collections: { slug: "new-arrivals" })
-                           .where(is_active: true, status: "active")
+        @products = Product.includes(:category, :user, :product_images, :collections)
+        .joins(:collections)
+        .where(collections: { slug: "new-arrivals" })
+        .where(is_active: true, status: "active")
 
         # Pagination
         page = (params[:page] || 1).to_i

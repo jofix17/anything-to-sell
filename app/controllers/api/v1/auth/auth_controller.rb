@@ -57,7 +57,7 @@ module Api
         def logout
           # We don't actually invalidate the token since it's JWT
           # In a production app, you might maintain a token blacklist
-          reset_session
+          # reset_session
           success_response(nil, "Logout successful")
         end
 

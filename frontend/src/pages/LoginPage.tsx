@@ -110,14 +110,6 @@ const LoginPage: React.FC = () => {
 
   // Handle authentication state changes
   useEffect(() => {
-    console.log("Auth state changed:", {
-      isAuthenticated,
-      isLoading,
-      loginAttempted: loginAttemptedRef.current,
-      loginSuccessful: loginSuccessfulRef.current,
-      postLoginFlowStarted: postLoginFlowStartedRef.current,
-    });
-
     // If login was successful and we're now authenticated, handle post-login logic
     if (
       isAuthenticated &&
