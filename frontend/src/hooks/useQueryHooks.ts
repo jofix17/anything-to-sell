@@ -1,13 +1,15 @@
 import {
   useQuery,
   useMutation,
-  useQueryClient,
   UseMutationOptions,
   UseQueryOptions,
   QueryKey,
   QueryFunctionContext,
+  UseInfiniteQueryOptions,
+  useInfiniteQuery,
 } from "@tanstack/react-query";
-import { ApiResponse, PaginatedResponse } from "../types";
+import { ApiErrorResponse, ApiResponse, PaginatedResponse } from "../types";
+import { queryClient } from "../context/QueryContext";
 
 // Track in-flight requests to prevent duplicates
 const inFlightRequests = new Map<string, Promise<unknown>>();
@@ -48,14 +50,19 @@ export const createQueryFn = <TData>(
       const requestId = `${requestKey}_${Math.random()
         .toString(36)
         .substring(2, 9)}`;
-      console.debug(`[Query ${requestId}] Started: ${requestKey}`);
+
+      if (process.env.NODE_ENV === "development") {
+        console.debug(`[Query ${requestId}] Started: ${requestKey}`);
+      }
 
       // Check if there's already an in-flight request for this query key
       const existingRequest = inFlightRequests.get(requestKey);
       if (existingRequest) {
-        console.debug(
-          `[Query ${requestId}] Reusing in-flight request for ${requestKey}`
-        );
+        if (process.env.NODE_ENV === "development") {
+          console.debug(
+            `[Query ${requestId}] Reusing in-flight request for ${requestKey}`
+          );
+        }
         return existingRequest as Promise<ApiResponse<TData>>;
       }
 
@@ -67,15 +74,30 @@ export const createQueryFn = <TData>(
       // When the request completes, remove it from tracking and log performance
       promise.finally(() => {
         inFlightRequests.delete(requestKey);
-        const duration = performance.now() - startTime;
-        console.debug(
-          `[Query ${requestId}] Completed in ${duration.toFixed(2)}ms`
-        );
+        if (process.env.NODE_ENV === "development") {
+          const duration = performance.now() - startTime;
+          console.debug(
+            `[Query ${requestId}] Completed in ${duration.toFixed(2)}ms`
+          );
+        }
       });
 
-      return await promise;
+      const response = await promise;
+
+      // Check if the response indicates an error
+      if (!response.success) {
+        const error = new Error(response.message) as Error & {
+          response?: ApiErrorResponse;
+        };
+        error.response = response as unknown as ApiErrorResponse;
+        throw error;
+      }
+
+      return response;
     } catch (error) {
-      console.error(`[Query Error] ${context.queryKey.join("/")}: `, error);
+      if (process.env.NODE_ENV === "development") {
+        console.error(`[Query Error] ${context.queryKey.join("/")}: `, error);
+      }
       throw error;
     }
   };
@@ -104,6 +126,21 @@ export function useApiQuery<TData, TError = Error>(
     queryKey,
     queryFn: createQueryFn(() => queryFn()),
     select: options.select || defaultSelect,
+    retry: (failureCount, error) => {
+      // Custom retry logic based on API error patterns
+      // Don't retry if we got a structured error response from our API
+      const apiError = error as Error & {
+        response?: ApiErrorResponse;
+      };
+
+      // If it's a validation error or authentication error, don't retry
+      if (apiError.response?.success === false) {
+        return false;
+      }
+
+      // For network errors or server errors, retry up to 3 times
+      return failureCount < 3;
+    },
     ...options,
   });
 }
@@ -116,7 +153,7 @@ type PaginatedQueryOptions<TData, TError> = Omit<
     PaginatedResponse<TData>,
     QueryKey
   >,
-  "queryKey" | "queryFn" | "placeholderData"
+  "queryKey" | "queryFn"
 > & {
   keepPreviousData?: boolean;
 };
@@ -133,14 +170,14 @@ export function usePaginatedQuery<TData, TError = Error>(
   const defaultSelect = (response: ApiResponse<PaginatedResponse<TData>>) =>
     response.data;
 
-  // Set up placeholder data function based on keepPreviousData flag
-  const placeholderDataFn =
-    options.keepPreviousData !== false
-      ? (previousData: ApiResponse<PaginatedResponse<TData>> | undefined) =>
-          previousData
-      : undefined;
+  // Extract keepPreviousData to handle it separately
+  const { keepPreviousData, ...restOptions } = options;
 
-  const { ...restOptions } = options;
+  // Set placeholderData when keepPreviousData is true
+  const placeholderData = keepPreviousData
+    ? (previousData: ApiResponse<PaginatedResponse<TData>> | undefined) =>
+        previousData
+    : undefined;
 
   return useQuery<
     ApiResponse<PaginatedResponse<TData>>,
@@ -152,8 +189,82 @@ export function usePaginatedQuery<TData, TError = Error>(
     queryFn: createQueryFn(() => queryFn()),
     select: options.select || defaultSelect,
     ...restOptions,
-    // Use a function that returns previous data instead of the string 'keepPrevious'
-    placeholderData: placeholderDataFn,
+    placeholderData,
+  });
+}
+
+/**
+ * Enhanced hook for infinite queries (e.g., "load more" functionality)
+ */
+export function useInfiniteApiQuery<TData, TError = Error>(
+  queryKey: QueryKey,
+  queryFn: (context: {
+    pageParam?: number | string;
+  }) => Promise<ApiResponse<PaginatedResponse<TData>>>,
+  options?: Partial<
+    Omit<
+      UseInfiniteQueryOptions<
+        ApiResponse<PaginatedResponse<TData>>,
+        TError,
+        PaginatedResponse<TData>,
+        ApiResponse<PaginatedResponse<TData>>,
+        QueryKey,
+        number | string
+      >,
+      "queryKey" | "queryFn"
+    >
+  >
+) {
+  // Default function to get the next page parameter based on Rails pagination format
+  const defaultGetNextPageParam = (
+    lastPage: ApiResponse<PaginatedResponse<TData>>
+  ) => {
+    const { page, totalPages } = lastPage.data;
+    // Only return next page param if there are more pages
+    return page < totalPages ? page + 1 : undefined;
+  };
+
+  // Extract specific properties we want to handle specially
+  const { getNextPageParam, initialPageParam, ...restOptions } = options || {};
+
+  return useInfiniteQuery<
+    ApiResponse<PaginatedResponse<TData>>,
+    TError,
+    PaginatedResponse<TData>,
+    QueryKey,
+    number | string
+  >({
+    queryKey,
+    queryFn: createQueryFn((context) => {
+      // Use explicit type casting to satisfy TypeScript
+      const pageParam: number | string =
+        (context.pageParam as number | string) || 1;
+      return queryFn({ pageParam });
+    }),
+    select: (data) => {
+      // Transform the data to a more usable format for infinite queries
+      // Combine all items from all pages into a single flat array
+      const flattenedData = data.pages.reduce<TData[]>(
+        (acc, page) => [...acc, ...page.data.data],
+        []
+      );
+
+      // Get pagination info from the last page
+      const lastPage = data.pages[data.pages.length - 1];
+      const { total, page, perPage, totalPages } = lastPage.data;
+
+      // Return a structure that matches PaginatedResponse<TData>
+      return {
+        data: flattenedData,
+        total,
+        page,
+        perPage,
+        totalPages,
+      };
+    },
+    getNextPageParam: getNextPageParam || defaultGetNextPageParam,
+    initialPageParam: initialPageParam || 1,
+    ...restOptions,
   });
 }
 
@@ -174,10 +285,40 @@ export function useApiMutation<TData, TVariables, TError = Error>(
     meta?: InvalidateQueriesMetaInfo;
   } = {}
 ) {
-  const queryClient = useQueryClient();
+  // Create a wrapped mutation function that handles error responses
+  const wrappedMutationFn = async (
+    variables: TVariables
+  ): Promise<ApiResponse<TData>> => {
+    const response = await mutationFn(variables);
+
+    // Check if the response indicates an error
+    if (!response.success) {
+      const error = new Error(response.message) as Error & {
+        response?: ApiErrorResponse;
+      };
+      error.response = response as unknown as ApiErrorResponse;
+      throw error;
+    }
+
+    return response;
+  };
 
   return useMutation<ApiResponse<TData>, TError, TVariables>({
-    mutationFn,
+    mutationFn: wrappedMutationFn,
+    retry: (failureCount, error) => {
+      // Custom retry logic based on API error patterns
+      const apiError = error as Error & {
+        response?: ApiErrorResponse;
+      };
+
+      // Never retry validation errors or authentication errors
+      if (apiError.response?.success === false) {
+        return false;
+      }
+
+      // For network errors or unexpected server errors, retry once
+      return failureCount < 1;
+    },
     ...options,
     onSuccess: (data, variables, context) => {
       // Handle invalidation based on meta information
@@ -203,11 +344,95 @@ export function useApiMutation<TData, TVariables, TError = Error>(
 }
 
 /**
+ * Hook for optimistic mutations that update cache before the server responds
+ */
+export function useOptimisticMutation<TData, TVariables, TError = Error>(
+  mutationFn: (variables: TVariables) => Promise<ApiResponse<TData>>,
+  options: Omit<
+    UseMutationOptions<
+      ApiResponse<TData>,
+      TError,
+      TVariables,
+      { previousData: ApiResponse<TData> }
+    >,
+    "mutationFn" | "onMutate"
+  > & {
+    queryKey: QueryKey;
+    updateData: (oldData: TData, variables: TVariables) => TData;
+  }
+) {
+  const { queryKey, updateData, ...mutationOptions } = options;
+
+  // Create a wrapped mutation function that handles error responses
+  const wrappedMutationFn = async (
+    variables: TVariables
+  ): Promise<ApiResponse<TData>> => {
+    const response = await mutationFn(variables);
+
+    // Check if the response indicates an error
+    if (!response.success) {
+      const error = new Error(response.message) as Error & {
+        response?: ApiErrorResponse;
+      };
+      error.response = response as unknown as ApiErrorResponse;
+      throw error;
+    }
+
+    return response;
+  };
+
+  return useMutation<
+    ApiResponse<TData>,
+    TError,
+    TVariables,
+    { previousData: ApiResponse<TData> }
+  >({
+    mutationFn: wrappedMutationFn,
+    ...mutationOptions,
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches to avoid overwriting our optimistic update
+      await queryClient.cancelQueries({ queryKey });
+
+      // Snapshot the previous value (complete API response)
+      const previousApiResponse =
+        queryClient.getQueryData<ApiResponse<TData>>(queryKey);
+
+      // Only proceed with optimistic update if we have existing data
+      if (previousApiResponse?.data) {
+        // Create updated API response with our optimistically updated data
+        const updatedApiResponse = {
+          ...previousApiResponse,
+          data: updateData(previousApiResponse.data, variables),
+        };
+
+        // Update the cached data
+        queryClient.setQueryData<ApiResponse<TData>>(
+          queryKey,
+          updatedApiResponse
+        );
+      }
+
+      // Return a context object with the snapshotted value
+      return { previousData: previousApiResponse! };
+    },
+    onError: (err, variables, context) => {
+      // If there was an error, revert back to the previous value
+      if (context?.previousData) {
+        queryClient.setQueryData(queryKey, context.previousData);
+      }
+
+      // Call the original onError handler if it exists
+      if (options.onError) {
+        options.onError(err, variables, context);
+      }
+    },
+  });
+}
+
+/**
  * Enhanced hook for prefetching a query with better caching control
  */
 export function usePrefetchQuery<TData>() {
-  const queryClient = useQueryClient();
-
   return (
     queryKey: QueryKey,
     queryFn: () => Promise<ApiResponse<TData>>,
@@ -226,10 +451,11 @@ export function usePrefetchQuery<TData>() {
  * Hook for safely invalidating queries
  */
 export function useInvalidateQueries() {
-  const queryClient = useQueryClient();
-
-  return (queryKey: QueryKey) => {
-    return queryClient.invalidateQueries({ queryKey });
+  return (queryKey: QueryKey, options?: { exact?: boolean }) => {
+    return queryClient.invalidateQueries({
+      queryKey,
+      exact: options?.exact ?? false,
+    });
   };
 }
 
@@ -237,10 +463,11 @@ export function useInvalidateQueries() {
  * Hook for resetting queries to their initial state
  */
 export function useResetQueries() {
-  const queryClient = useQueryClient();
-
-  return (queryKey: QueryKey) => {
-    return queryClient.resetQueries({ queryKey });
+  return (queryKey: QueryKey, options?: { exact?: boolean }) => {
+    return queryClient.resetQueries({
+      queryKey,
+      exact: options?.exact ?? false,
+    });
   };
 }
 
@@ -248,10 +475,20 @@ export function useResetQueries() {
  * Hook for setting query data without fetching
  */
 export function useSetQueryData<TData>() {
-  const queryClient = useQueryClient();
-
-  return (queryKey: QueryKey, data: TData) => {
+  return (
+    queryKey: QueryKey,
+    data: TData | ((oldData: TData | undefined) => TData)
+  ) => {
     return queryClient.setQueryData(queryKey, data);
+  };
+}
+
+/**
+ * Hook to cancel ongoing queries
+ */
+export function useCancelQueries() {
+  return (queryKey: QueryKey) => {
+    return queryClient.cancelQueries({ queryKey });
   };
 }
 
@@ -259,11 +496,14 @@ export function useSetQueryData<TData>() {
 const queryHooks = {
   useApiQuery,
   usePaginatedQuery,
+  useInfiniteApiQuery,
   useApiMutation,
+  useOptimisticMutation,
   usePrefetchQuery,
   useInvalidateQueries,
   useResetQueries,
   useSetQueryData,
+  useCancelQueries,
   createQueryFn,
   hashQueryKey,
 };

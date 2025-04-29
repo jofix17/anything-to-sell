@@ -26,7 +26,7 @@ const LoginPage: React.FC = () => {
   // Context hooks
   const { login, isAuthenticated, isLoading } = useAuthContext();
   const { showNotification } = useNotification();
-  const { fetchCart } = useCartContext();
+  const { fetchCart, checkCartConflicts } = useCartContext();
 
   // Navigation hooks
   const navigate = useNavigate();
@@ -41,8 +41,8 @@ const LoginPage: React.FC = () => {
   const postLoginFlowStartedRef = useRef(false);
   const redirectedRef = useRef(false); // Track if we've already redirected
   
-  // New ref to track if cart fetch is needed
-  const cartFetchNeededRef = useRef(true);
+  // New ref to track cart processing status
+  const cartProcessingRef = useRef(false);
 
   // Initial form values
   const initialFormValues: LoginCredentials & { rememberMe: boolean } = {
@@ -97,16 +97,31 @@ const LoginPage: React.FC = () => {
   const handlePostLoginFlow = async () => {
     console.log("LoginPage: Starting post-login flow");
     
+    if (cartProcessingRef.current) {
+      console.log("LoginPage: Cart processing already in progress, skipping");
+      return;
+    }
+    
+    cartProcessingRef.current = true;
+    
     try {
-      // Fetch cart if needed - cart context will handle merging
-      if (cartFetchNeededRef.current) {
-        console.log("LoginPage: Fetching cart as part of post-login flow");
-        await fetchCart();
-        cartFetchNeededRef.current = false;
-      }
+      // First explicitly check for cart conflicts
+      console.log("LoginPage: Explicitly checking for cart conflicts");
+      await checkCartConflicts(true);
+      
+      // Wait a moment to ensure cart transfer modal can show if needed
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Then fetch the cart to ensure we have the latest state
+      console.log("LoginPage: Fetching cart as part of post-login flow");
+      await fetchCart();
+      
+      // Wait a bit longer to ensure any cart transfer logic completes
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
       console.error("Error in post-login cart handling:", error);
     } finally {
+      cartProcessingRef.current = false;
       // Redirect after handling cart
       redirectToDestination();
     }
@@ -146,7 +161,7 @@ const LoginPage: React.FC = () => {
     postLoginFlowStartedRef.current = false;
     errorRef.current = null;
     notificationShownRef.current = false;
-    cartFetchNeededRef.current = true;
+    cartProcessingRef.current = false;
 
     try {
       // Attempt login - this returns a boolean indicating success
@@ -196,7 +211,7 @@ const LoginPage: React.FC = () => {
           console.log("LoginPage: Safety timeout triggered - forcing redirect");
           redirectToDestination();
         }
-      }, 3000); // 3 second safety timeout
+      }, 5000); // 5 second safety timeout (extended from 3s)
 
       return () => clearTimeout(safetyTimer);
     }

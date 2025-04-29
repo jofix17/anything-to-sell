@@ -5,31 +5,11 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-
-// Types
-export type NotificationType = "success" | "error" | "info" | "warning";
-
-export interface Notification {
-  id: string;
-  message: string;
-  type: NotificationType;
-  duration: number; // In milliseconds
-  dismissible: boolean;
-}
-
-interface NotificationContextType {
-  notifications: Notification[];
-  showNotification: (
-    message: string,
-    options?: Partial<{
-      type: NotificationType;
-      duration: number;
-      dismissible: boolean;
-    }>
-  ) => string; // Returns notification ID
-  dismissNotification: (id: string) => void;
-  clearAllNotifications: () => void;
-}
+import {
+  NotificationContextType,
+  NotificationType,
+  Notification,
+} from "../types/notification";
 
 // Create the context
 const NotificationContext = createContext<NotificationContextType | undefined>(

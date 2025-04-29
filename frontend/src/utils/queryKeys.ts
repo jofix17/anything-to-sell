@@ -24,6 +24,25 @@ export const filterSignificantParams = (
 };
 
 /**
+ * Hash a query parameter object to a stable string representation
+ * This helps with comparing objects for cache invalidation
+ */
+export const hashQueryParams = (params: Record<string, unknown>): string => {
+  return JSON.stringify(params, (_, val) => {
+    if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+      // Sort object keys for stability
+      return Object.keys(val)
+        .sort()
+        .reduce((result: Record<string, unknown>, key) => {
+          result[key] = (val as Record<string, unknown>)[key];
+          return result;
+        }, {});
+    }
+    return val;
+  });
+};
+
+/**
  * Default significant parameter keys for common query types
  */
 export const SIGNIFICANT_PARAM_KEYS = {
@@ -53,11 +72,32 @@ export const QueryKeys = {
   auth: {
     currentUser: ["auth", "currentUser"],
     sessions: ["auth", "sessions"],
+    profile: (userId?: string) => ["auth", "profile", userId], // Added for better specificity
   },
   user: {
     profile: ["user", "profile"],
     addresses: ["user", "addresses"],
     wishlist: ["user", "wishlist"],
+  },
+  cart: {
+    current: ["cart"],
+    items: ["cart", "items"],
+    guestCheck: ["cart", "guestCheck"],
+    checkExisting: ["cart", "checkExisting"],
+    // Add more specific keys for better cache control
+    item: (itemId: string) => ["cart", "item", itemId],
+    transferStatus: (sourceId: string, targetId: string) => [
+      "cart",
+      "transfer",
+      `${sourceId}->${targetId}`,
+    ],
+    // Create a function that returns all cart-related keys for batch invalidation
+    getAllKeys: () => [
+      ["cart"],
+      ["cart", "items"],
+      ["cart", "guestCheck"],
+      ["cart", "checkExisting"],
+    ],
   },
   products: {
     all: ["products"],
@@ -75,12 +115,6 @@ export const QueryKeys = {
   categories: {
     all: ["categories"],
     detail: (id: string) => ["categories", "detail", id],
-  },
-  cart: {
-    current: ["cart"],
-    items: ["cart", "items"],
-    guestCheck: ["cart", "guestCheck"],
-    checkExisting: ["cart", "checkExisting"],
   },
   orders: {
     all: ["orders"],
@@ -141,5 +175,54 @@ export const QueryKeys = {
       "messages",
       conversationId,
     ],
+  },
+
+  // Utils for working with query keys
+  utils: {
+    /**
+     * Create a function that returns all keys related to a specific entity
+     * Useful for invalidating all related queries after a mutation
+     */
+    getAllRelatedKeys: (
+      entityType: "user" | "cart" | "product" | "order",
+      entityId?: string
+    ) => {
+      switch (entityType) {
+        case "user":
+          return [
+            QueryKeys.auth.currentUser,
+            QueryKeys.user.profile,
+            entityId ? QueryKeys.auth.profile(entityId) : null,
+          ].filter(Boolean);
+        case "cart":
+          return [
+            QueryKeys.cart.current,
+            QueryKeys.cart.items,
+            QueryKeys.cart.guestCheck,
+            QueryKeys.cart.checkExisting,
+          ];
+        case "product":
+          return [
+            QueryKeys.products.all,
+            entityId ? QueryKeys.products.detail(entityId) : null,
+          ].filter(Boolean);
+        case "order":
+          return [
+            QueryKeys.orders.all,
+            entityId ? QueryKeys.orders.detail(entityId) : null,
+          ].filter(Boolean);
+        default:
+          return [];
+      }
+    },
+
+    /**
+     * Check if a query key is related to an entity type
+     * Useful for determining if a query should be invalidated
+     */
+    isRelatedToEntity: (queryKey: unknown[], entityType: string): boolean => {
+      if (!queryKey.length) return false;
+      return queryKey[0] === entityType;
+    },
   },
 };

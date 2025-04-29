@@ -39,6 +39,7 @@ export interface CartContextType {
   userCartItemCount: number;
   transferCart: (action: CartTransferAction) => Promise<boolean>;
   isCartDataStale: () => boolean;
+  checkCartConflicts: (force?: boolean) => Promise<void>;
 }
 
 // API RESPONSES

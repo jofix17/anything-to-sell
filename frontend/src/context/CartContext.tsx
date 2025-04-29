@@ -6,7 +6,6 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuthContext } from "./AuthContext";
 import { useNotification } from "./NotificationContext";
 import { CartTransferModal } from "../components/cart/CartTransferModal";
@@ -21,6 +20,7 @@ import {
   useTransferCart,
 } from "../hooks/api/useCartApi";
 import { CartContextType, CartTransferAction } from "../types/cart";
+import { queryClient } from "./QueryContext";
 
 // Create context
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -29,7 +29,6 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const queryClient = useQueryClient();
   const { showNotification } = useNotification();
   const {
     isAuthenticated,
@@ -52,11 +51,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   // Stale time in milliseconds (10 seconds)
   const CART_STALE_TIME = 10000;
 
-  // Add refs to prevent multiple calls
+  // Add refs to prevent multiple calls and track state
   const checkingCartsRef = useRef(false);
   const cartInitializedRef = useRef(false);
   const transferInProgressRef = useRef(false);
   const autoTransferAttemptedRef = useRef(false);
+  const transferModalShownRef = useRef(false);
+
+  // Keep track of last auth state to detect changes
+  const prevAuthStateRef = useRef({
+    isAuthenticated: false,
+    userId: null as string | null,
+  });
 
   // Use our API hooks
   const {
@@ -106,7 +112,180 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("Error fetching cart:", error);
       }
     },
-    [refetchCart, queryClient, isCartDataStale]
+    [refetchCart, isCartDataStale]
+  );
+
+  // Helper function to handle guest cart auto transfer
+  const handleGuestCartAutoTransfer = useCallback(
+    async (userId: string, sourceCartId: string) => {
+      try {
+        await transferCartMutation.mutateAsync({
+          sourceCartId: sourceCartId,
+          targetUserId: userId,
+          actionType: "replace",
+        });
+
+        // Reset guest cart state after successful transfer
+        setHasGuestCart(false);
+        setGuestCartItemCount(0);
+        setSourceCart(null);
+
+        // Refresh cart data
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+        await fetchCart(true);
+
+        showNotification("Guest cart items have been added to your account", {
+          type: "success",
+          dismissible: true,
+        });
+
+        return true;
+      } catch (error) {
+        console.error("Auto cart transfer failed:", error);
+        return false;
+      }
+    },
+    [transferCartMutation, fetchCart, showNotification]
+  );
+
+  // Method to check for cart conflicts with better duplicate prevention
+  const checkCartConflicts = useCallback(
+    async (force = false): Promise<void> => {
+      // Skip if already checking or transfer is in progress and not forced
+      if (
+        (checkingCartsRef.current || transferInProgressRef.current) &&
+        !force
+      ) {
+        console.log(
+          "Skipping duplicate cart conflict check - already in progress"
+        );
+        return;
+      }
+
+      // Skip if auth still loading
+      if (authLoading) {
+        console.log("Skipping cart conflict check - auth still loading");
+        return;
+      }
+
+      // Set flag to prevent concurrent checks - do this first!
+      checkingCartsRef.current = true;
+
+      try {
+        console.log("Starting cart conflict check...");
+
+        // Check for guest cart first - if no guest cart, no need to proceed
+        const guestCartResult = await refetchGuestCart();
+        const guestCartInfo = guestCartResult.data;
+
+        if (!guestCartInfo) {
+          console.log("No guest cart info received, skipping further checks");
+          setHasGuestCart(false);
+          setGuestCartItemCount(0);
+          setIsInitialized(true);
+          cartInitializedRef.current = true;
+          checkingCartsRef.current = false;
+          return;
+        }
+
+        const hasGuestCartItems = !!guestCartInfo?.hasGuestCart;
+        const guestItemCount = guestCartInfo?.itemCount || 0;
+
+        setHasGuestCart(hasGuestCartItems);
+        setGuestCartItemCount(guestItemCount);
+
+        // Only continue with conflict check if guest cart exists and has items
+        if (hasGuestCartItems && guestItemCount > 0 && guestCartInfo.cartId) {
+          console.log(`Found guest cart with ${guestItemCount} items`);
+          setSourceCart(guestCartInfo.cartId);
+
+          // Check for user cart if authenticated
+          if (isAuthenticated && user) {
+            const userCartResult = await refetchUserCart();
+            const userCartInfo = userCartResult.data;
+
+            if (!userCartInfo) {
+              console.log("No user cart info received");
+              setHasUserCart(false);
+              setUserCartItemCount(0);
+
+              // Auto transfer guest cart (no user cart exists)
+              if (user && guestCartInfo.cartId) {
+                await handleGuestCartAutoTransfer(
+                  user.id,
+                  guestCartInfo.cartId
+                );
+              }
+
+              setIsInitialized(true);
+              cartInitializedRef.current = true;
+              checkingCartsRef.current = false;
+              return;
+            }
+
+            const hasUserCartItems = !!userCartInfo?.hasExistingCart;
+            const userItemCount = userCartInfo?.itemCount || 0;
+
+            setHasUserCart(hasUserCartItems);
+            setUserCartItemCount(userItemCount);
+
+            // Only show modal if user cart actually has items AND guest cart has items
+            if (hasUserCartItems && userItemCount > 0 && userCartInfo.cartId) {
+              console.log(
+                `Found user cart with ${userItemCount} items - conflict detected`
+              );
+              // Both carts have items - we have a conflict
+              setTargetCart(userCartInfo.cartId || null);
+
+              // Only show modal if not already showing and both carts have items
+              if (!showTransferModal && !transferModalShownRef.current) {
+                console.log("Opening cart transfer modal");
+                setShowTransferModal(true);
+                transferModalShownRef.current = true;
+              }
+            } else {
+              // User cart empty or has no items but guest cart has items - auto transfer
+              console.log(
+                "Auto transferring guest cart to user (no user cart or empty cart)"
+              );
+
+              if (user && guestCartInfo.cartId) {
+                await handleGuestCartAutoTransfer(
+                  user.id,
+                  guestCartInfo.cartId
+                );
+              }
+            }
+          }
+        } else {
+          console.log("No guest cart found or it's empty");
+        }
+
+        // Always fetch current cart at the end if needed
+        if (isAuthenticated || guestItemCount > 0) {
+          await fetchCart(true);
+        }
+
+        setIsInitialized(true);
+        cartInitializedRef.current = true;
+      } catch (error) {
+        console.error("Error checking cart conflicts:", error);
+      } finally {
+        // Reset the checking flag when done
+        checkingCartsRef.current = false;
+      }
+    },
+    [
+      isAuthenticated,
+      user,
+      authLoading,
+      refetchGuestCart,
+      refetchUserCart,
+      showTransferModal,
+      fetchCart,
+      handleGuestCartAutoTransfer,
+    ]
   );
 
   // Method to add an item to the cart
@@ -123,11 +302,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("Error adding item to cart:", error);
         showNotification("Failed to add item to cart", {
           type: "error",
+          dismissible: true,
         });
         return false;
       }
     },
-    [addItemMutation, showNotification, queryClient, fetchCart]
+    [addItemMutation, showNotification, fetchCart]
   );
 
   // Method to update cart item quantity
@@ -144,11 +324,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("Error updating cart item:", error);
         showNotification("Failed to update cart item", {
           type: "error",
+          dismissible: true,
         });
         return false;
       }
     },
-    [updateItemMutation, showNotification, queryClient, fetchCart]
+    [updateItemMutation, showNotification, fetchCart]
   );
 
   // Method to remove an item from the cart
@@ -162,17 +343,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         await fetchCart(true); // Force refresh cart data
         showNotification("Item removed from cart", {
           type: "info",
+          dismissible: true,
         });
         return true;
       } catch (error) {
         console.error("Error removing item from cart:", error);
         showNotification("Failed to remove item from cart", {
           type: "error",
+          dismissible: true,
         });
         return false;
       }
     },
-    [removeItemMutation, showNotification, queryClient, fetchCart]
+    [removeItemMutation, showNotification, fetchCart]
   );
 
   // Method to clear the cart
@@ -185,16 +368,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       await fetchCart(true); // Force refresh cart data
       showNotification("Cart cleared", {
         type: "info",
+        dismissible: true,
       });
       return true;
     } catch (error) {
       console.error("Error clearing cart:", error);
       showNotification("Failed to clear cart", {
         type: "error",
+        dismissible: true,
       });
       return false;
     }
-  }, [clearCartMutation, showNotification, queryClient, fetchCart]);
+  }, [clearCartMutation, showNotification, fetchCart]);
 
   // Method to transfer cart
   const transferCart = useCallback(
@@ -204,6 +389,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           "Transfer failed: missing source cart or user details",
           {
             type: "error",
+            dismissible: true,
           }
         );
         return false;
@@ -240,9 +426,21 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         // Fetch the updated cart
         await fetchCart(true); // Force refresh cart data
 
+        // Reset modal state
+        transferModalShownRef.current = false;
         setShowTransferModal(false);
-        showNotification("Cart transferred successfully", {
+
+        // Show notification based on action type
+        const actionText =
+          action === "merge"
+            ? "merged"
+            : action === "replace"
+            ? "replaced your cart"
+            : "copied to your account";
+
+        showNotification(`Guest cart items successfully ${actionText}`, {
           type: "success",
+          dismissible: true,
         });
 
         return true;
@@ -250,36 +448,81 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         console.error("Error transferring cart:", error);
         showNotification("Failed to transfer cart", {
           type: "error",
+          dismissible: true,
         });
         return false;
       } finally {
         transferInProgressRef.current = false;
       }
     },
-    [
-      sourceCart,
-      user,
-      transferCartMutation,
-      showNotification,
-      queryClient,
-      fetchCart,
-    ]
+    [sourceCart, user, transferCartMutation, showNotification, fetchCart]
   );
 
-  // Effect to handle automatic cart transfer after login
+  // Reset transfer modal flags when modal is closed
   useEffect(() => {
-    const handlePostLoginCartTransfer = async () => {
-      if (
-        !isAuthenticated ||
-        !loginJustCompleted ||
-        autoTransferAttemptedRef.current
-      ) {
-        return;
-      }
+    if (!showTransferModal) {
+      transferModalShownRef.current = false;
+    }
+  }, [showTransferModal]);
 
+  // Effect to handle cart checks after authentication
+  useEffect(() => {
+    // Detect authentication state changes
+    const currentAuthState = {
+      isAuthenticated,
+      userId: user?.id || null,
+    };
+
+    const authStateChanged =
+      prevAuthStateRef.current.isAuthenticated !== isAuthenticated ||
+      prevAuthStateRef.current.userId !== currentAuthState.userId;
+
+    // Update the ref with current state
+    prevAuthStateRef.current = currentAuthState;
+
+    // Skip if auth is loading
+    if (authLoading) {
+      return;
+    }
+
+    // User has just logged in or changed - check carts
+    if (isAuthenticated && authStateChanged) {
+      console.log("Authentication state changed - checking carts");
+      // Wait a bit to ensure auth state is fully updated
+      setTimeout(() => {
+        // Reset attempt flag when auth state changes
+        autoTransferAttemptedRef.current = false;
+        // Reset modal shown flag
+        transferModalShownRef.current = false;
+        // Reset cart initialized flag to force a fresh check
+        cartInitializedRef.current = false;
+        // Force cart conflict check
+        checkCartConflicts(true);
+      }, 100);
+    }
+  }, [isAuthenticated, user, authLoading, checkCartConflicts]);
+
+  // Effect to handle post-login cart handling
+  useEffect(() => {
+    // Create a debounced function for cart checking
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // If loginJustCompleted flag is true, perform cart check
+    if (
+      loginJustCompleted &&
+      !autoTransferAttemptedRef.current &&
+      isAuthenticated
+    ) {
+      console.log("Login just completed - scheduling cart conflict check");
       autoTransferAttemptedRef.current = true;
 
-      // Invalidate all cart queries to ensure fresh data
+      // Clear any existing timeout
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      // Reset cache but don't fetch immediately - this will help
+      // prevent multiple simultaneous API calls
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.invalidateQueries({ queryKey: ["guestCart"] });
       queryClient.invalidateQueries({ queryKey: ["userCart"] });
@@ -287,187 +530,42 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       // Reset lastFetchTime to ensure fresh data
       lastFetchTimeRef.current = 0;
 
-      // Wait a bit to ensure auth state is updated
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Check for guest cart first
-      try {
-        const guestCartResult = await refetchGuestCart();
-        const guestCartInfo = guestCartResult.data;
-
-        const hasGuestCartItems = !!guestCartInfo?.hasGuestCart;
-        const guestItemCount = guestCartInfo?.itemCount || 0;
-
-        if (hasGuestCartItems && guestItemCount > 0 && guestCartInfo.cartId) {
-          // Now check for user cart
-          const userCartResult = await refetchUserCart();
-          const userCartInfo = userCartResult.data;
-
-          const hasUserCartItems = !!userCartInfo?.hasExistingCart;
-          const userItemCount = userCartInfo?.itemCount || 0;
-
-          if (hasUserCartItems && userItemCount > 0) {
-            // Both carts have items, show transfer modal
-            setHasGuestCart(true);
-            setGuestCartItemCount(guestItemCount);
-            setHasUserCart(true);
-            setUserCartItemCount(userItemCount);
-            setSourceCart(guestCartInfo.cartId);
-            setTargetCart(userCartInfo?.cartId || null);
-            setShowTransferModal(true);
-          } else {
-            if (user) {
-              try {
-                const transferResult = await transferCartMutation.mutateAsync({
-                  sourceCartId: guestCartInfo.cartId,
-                  targetUserId: user.id,
-                  actionType: "replace",
-                });
-
-                if (transferResult.success) {
-                  setHasGuestCart(false);
-                  setGuestCartItemCount(0);
-                  setSourceCart(null);
-
-                  // Refresh cart data
-                  queryClient.invalidateQueries({ queryKey: ["cart"] });
-                  fetchCart(true); // Force refresh cart data
-                }
-              } catch (error) {
-                console.error("Auto-transfer after login failed:", error);
-              }
-            }
-          }
+      // Delay to ensure all state updates have propagated and group multiple calls
+      timeoutId = setTimeout(() => {
+        // Only run if not already checking
+        if (!checkingCartsRef.current) {
+          checkCartConflicts(true);
         }
-
-        // Finally, fetch the current cart regardless of transfer status
-        fetchCart(true); // Force refresh cart data
-      } catch (error) {
-        console.error("Error in post-login cart handling:", error);
-      }
-    };
-
-    handlePostLoginCartTransfer();
-  }, [
-    isAuthenticated,
-    loginJustCompleted,
-    user,
-    refetchGuestCart,
-    refetchUserCart,
-    queryClient,
-    transferCartMutation,
-    fetchCart,
-  ]);
-
-  // Check for guest cart and user cart on page load and auth status change
-  useEffect(() => {
-    const checkCarts = async () => {
-      // Prevent duplicate cart checks
-      if (checkingCartsRef.current) {
-        return;
-      }
-
-      // If authentication is still loading, wait
-      if (authLoading) {
-        return;
-      }
-
-      checkingCartsRef.current = true;
-
-      try {
-        // Always check for guest cart first
-        const guestCartResult = await refetchGuestCart();
-        const guestCartInfo = guestCartResult.data;
-
-        const hasGuestCartItems = !!guestCartInfo?.hasGuestCart;
-        const guestItemCount = guestCartInfo?.itemCount || 0;
-
-        setHasGuestCart(hasGuestCartItems);
-        setGuestCartItemCount(guestItemCount);
-
-        // Now check for user cart if authenticated
-        if (isAuthenticated && user) {
-          const userCartResult = await refetchUserCart();
-          const userCartInfo = userCartResult.data;
-
-          const hasUserCartItems = !!userCartInfo?.hasExistingCart;
-          const userItemCount = userCartInfo?.itemCount || 0;
-
-          setHasUserCart(hasUserCartItems);
-          setUserCartItemCount(userItemCount);
-
-          // If both carts exist with items, set up for transfer
-          if (hasGuestCartItems && guestItemCount > 0) {
-            // Get both cart IDs
-            setSourceCart(guestCartInfo.cartId || null);
-
-            if (hasUserCartItems && userItemCount > 0) {
-              // Both carts exist with items
-              setTargetCart(userCartInfo.cartId || null);
-              setShowTransferModal(true);
-            } else if (!hasUserCartItems || userItemCount === 0) {
-              // Run transfer in the next tick to avoid state update conflicts
-              setTimeout(() => {
-                if (guestCartInfo.cartId && user) {
-                  transferCartMutation.mutate(
-                    {
-                      sourceCartId: guestCartInfo.cartId,
-                      targetUserId: user.id,
-                      actionType: "replace",
-                    },
-                    {
-                      onSuccess: () => {
-                        setHasGuestCart(false);
-                        setGuestCartItemCount(0);
-                        queryClient.invalidateQueries({ queryKey: ["cart"] });
-                        queryClient.invalidateQueries({
-                          queryKey: ["guestCart"],
-                        });
-                        fetchCart(true); // Force refresh cart data
-                      },
-                      onError: (error) => {
-                        console.error("Auto-transfer failed:", error);
-                      },
-                    }
-                  );
-                }
-              }, 0);
-            }
-          }
-        }
-
-        // Fetch the current cart if items are present in either guest or user cart
-        const shouldFetchCart =
-          (guestCartInfo?.itemCount || 0) > 0 ||
-          (isAuthenticated && userCartItemCount > 0);
-
-        if (shouldFetchCart) {
-          // Reset lastFetchTime to ensure fresh data
-          lastFetchTimeRef.current = 0;
-          fetchCart(true); // Force refresh cart data
-        }
-
-        setIsInitialized(true);
-        cartInitializedRef.current = true;
-      } finally {
-        checkingCartsRef.current = false;
-      }
-    };
-
-    // Only run cart checks if we haven't initialized yet or auth status changed
-    if (!cartInitializedRef.current || !isInitialized) {
-      checkCarts();
+      }, 500); // Increased to 500ms to better group updates
     }
-  }, [
-    isAuthenticated,
-    user,
-    authLoading,
-    refetchGuestCart,
-    refetchUserCart,
-    fetchCart,
-    queryClient,
-    transferCartMutation,
-  ]);
+
+    // Clean up timeout on unmount
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [loginJustCompleted, isAuthenticated, checkCartConflicts]);
+
+  // Initial cart check on component mount - with better duplicate prevention
+  useEffect(() => {
+    const initializeCartOnce = () => {
+      // Only run if not already initialized and not already checking
+      if (
+        !cartInitializedRef.current &&
+        !isInitialized &&
+        !checkingCartsRef.current
+      ) {
+        console.log("Initial cart check on component mount");
+        checkCartConflicts();
+      }
+    };
+
+    // Slight delay to avoid race conditions with other initialization
+    const timeoutId = setTimeout(initializeCartOnce, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [checkCartConflicts, isInitialized]);
 
   // Extract cart from response
   const cart = cartData || null;
@@ -491,7 +589,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     hasUserCart,
     guestCartItemCount,
     userCartItemCount,
-    isCartDataStale, // Add the new method to the context
+    isCartDataStale,
+    checkCartConflicts,
   };
 
   return (
@@ -500,7 +599,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       {showTransferModal && (
         <CartTransferModal
           isOpen={showTransferModal}
-          onClose={() => setShowTransferModal(false)}
+          onClose={() => {
+            setShowTransferModal(false);
+          }}
           onTransfer={transferCart}
           guestItemCount={guestCartItemCount}
           userItemCount={userCartItemCount}
