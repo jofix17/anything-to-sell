@@ -39,7 +39,6 @@ const MainLayout: React.FC = () => {
 
       {/* Footer */}
       <Footer />
-
     </div>
   );
 };

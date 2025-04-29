@@ -62,6 +62,7 @@ import { WishlistProvider } from "./context/WishlistContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { ThemeProvider } from "./context/ThemesContext";
 import NotificationToast from "./components/common/NotificationToast";
+import NetworkNotificationHandler from "./components/network/NetworkNotificationHandler";
 
 // Protected route wrapper
 interface ProtectedRouteProps {
@@ -106,9 +107,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
 const App: React.FC = () => {
   return (
-    <QueryProvider>
-      <Router>
-        <NotificationProvider>
+    <NotificationProvider>
+      <NetworkNotificationHandler />
+      <QueryProvider>
+        <Router>
           <ThemeProvider>
             <AuthProvider>
               <CartProvider>
@@ -250,9 +252,9 @@ const App: React.FC = () => {
               </CartProvider>
             </AuthProvider>
           </ThemeProvider>
-        </NotificationProvider>
-      </Router>
-    </QueryProvider>
+        </Router>
+      </QueryProvider>
+    </NotificationProvider>
   );
 };
 

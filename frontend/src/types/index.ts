@@ -14,3 +14,9 @@ export interface PaginatedResponse<T> {
   perPage: number;
   totalPages: number;
 }
+
+export interface ApiErrorResponse {
+  success: false;
+  message: string;
+  errors: Record<string, string[]> | null;
+}

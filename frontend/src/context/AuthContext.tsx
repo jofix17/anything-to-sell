@@ -4,8 +4,8 @@ import React, {
   useState,
   ReactNode,
   useEffect,
+  useCallback,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useNotification } from "./NotificationContext";
 import {
   AuthContextType,
@@ -26,6 +26,7 @@ import {
   useUpdateProfile,
 } from "../hooks/api/useAuthApi";
 import { QueryKeys } from "../utils/queryKeys";
+import { queryClient } from "./QueryContext";
 
 // Create the context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,6 +39,8 @@ interface AuthProviderProps {
 // Storage keys
 const TOKEN_KEY = "token";
 const USER_KEY = "user_data";
+const AUTH_STATE_CHANGE_KEY = "auth_state_changed";
+const LOGIN_COMPLETED_TIMESTAMP_KEY = "login_completed_timestamp";
 
 // Helper to safely parse JSON from localStorage
 const getSavedUserData = (): User | null => {
@@ -74,11 +77,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     userDataLoaded: !!savedUser,
   });
 
-  const queryClient = useQueryClient();
   const { showNotification } = useNotification();
 
+  // Track if login just completed for cart transfer purposes
+  // Extended the time window for login detection for more reliable cart merging
+  const [loginJustCompleted, setLoginJustCompleted] = useState<boolean>(false);
+
+  // Set auth state change flag in sessionStorage
+  const markAuthStateChanged = useCallback(() => {
+    sessionStorage.setItem(AUTH_STATE_CHANGE_KEY, "true");
+    console.log("Auth state change marker set");
+  }, []);
+
+  // Helper to mark login as just completed
+  const markLoginCompleted = useCallback(() => {
+    // Skip if already marked to prevent duplicate updates
+    if (loginJustCompleted) {
+      console.log("Login already marked as completed, skipping");
+      return;
+    }
+    
+    // Set React state
+    setLoginJustCompleted(true);
+    
+    // Also set timestamp in localStorage for persistence across page loads
+    localStorage.setItem(LOGIN_COMPLETED_TIMESTAMP_KEY, Date.now().toString());
+    
+    // Also set auth state change flag
+    markAuthStateChanged();
+    
+    console.log("Auth state: Login completed and flags set");
+  }, [loginJustCompleted, markAuthStateChanged]);
+
   // Update auth state with a partial update
-  const updateAuthState = (newState: Partial<AuthStateType>) => {
+  const updateAuthState = useCallback((newState: Partial<AuthStateType>) => {
     setAuthState((prev) => {
       const updatedState = { ...prev, ...newState };
 
@@ -87,9 +119,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         saveUserData(newState.user);
       }
 
+      // If user is now authenticated but wasn't before, mark as login completed
+      if (
+        !prev.isAuthenticated && 
+        updatedState.isAuthenticated && 
+        updatedState.user
+      ) {
+        markLoginCompleted();
+      }
+
       return updatedState;
     });
-  };
+  }, [markLoginCompleted]);
 
   // Auth mutations
   const loginMutation = useLogin();
@@ -111,6 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Clear invalid auth data on error
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
+      sessionStorage.removeItem(AUTH_STATE_CHANGE_KEY);
 
       updateAuthState({
         user: null,
@@ -123,8 +165,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     },
     onSuccess: (userData: User) => {
       if (userData) {
-        console.log("AuthContext: User data loaded successfully");
-
         // Update the cache and local state
         queryClient.setQueryData(QueryKeys.auth.currentUser, userData);
 
@@ -135,16 +175,70 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           userDataLoaded: true,
           error: null,
         });
+
+        // Invalidate cart queries after authentication
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+        queryClient.invalidateQueries({ queryKey: ["userCart"] });
       }
     },
   });
+
+  // Effect to reset loginJustCompleted flag with debouncing
+  useEffect(() => {
+    if (loginJustCompleted) {
+      // Reset the flag after a delay to allow cart logic to run
+      // Extended to 5 seconds to ensure cart logic completes
+      const timer = setTimeout(() => {
+        console.log("Auth state: Resetting loginJustCompleted flag");
+        setLoginJustCompleted(false);
+        localStorage.removeItem(LOGIN_COMPLETED_TIMESTAMP_KEY);
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [loginJustCompleted]);
+
+  // Check on mount if loginJustCompleted should be true based on timestamp
+  useEffect(() => {
+    const checkLoginCompletedStatus = () => {
+      // Skip if loginJustCompleted is already true to prevent duplicate work
+      if (loginJustCompleted) return;
+      
+      const loginCompletedTimestamp = localStorage.getItem(LOGIN_COMPLETED_TIMESTAMP_KEY);
+      
+      if (loginCompletedTimestamp) {
+        const timestamp = parseInt(loginCompletedTimestamp, 10);
+        const now = Date.now();
+        const timeElapsed = now - timestamp;
+        
+        // If login happened within the last 5 seconds, consider it "just completed"
+        if (timeElapsed <= 5000) {
+          console.log("Auth init: Recent login detected, setting loginJustCompleted");
+          setLoginJustCompleted(true);
+        } else {
+          // Clear the timestamp if it's too old
+          localStorage.removeItem(LOGIN_COMPLETED_TIMESTAMP_KEY);
+        }
+      }
+      
+      // Check for auth state change flag
+      const authStateChanged = sessionStorage.getItem(AUTH_STATE_CHANGE_KEY) === "true";
+      if (authStateChanged) {
+        console.log("Auth init: Auth state change detected from session storage");
+        // Clear the flag
+        sessionStorage.removeItem(AUTH_STATE_CHANGE_KEY);
+      }
+    };
+    
+    checkLoginCompletedStatus();
+  }, [loginJustCompleted]);
 
   // Fetch user data on init if we have a token but no user data
   useEffect(() => {
     const initializeAuth = async () => {
       // If we have a token but no user data, fetch the user data
       if (authState.token && !authState.user && !authState.isLoading) {
-        console.log("AuthContext: Initializing - fetching user data");
         updateAuthState({ isLoading: true });
 
         try {
@@ -154,6 +248,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // Clear invalid auth data on error
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(USER_KEY);
+          sessionStorage.removeItem(AUTH_STATE_CHANGE_KEY);
 
           updateAuthState({
             token: null,
@@ -170,7 +265,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Explicitly fetch user data with the token - returns a Promise so we can await it
   const fetchUserData = async () => {
-    console.log("AuthContext: Explicitly fetching user data");
     updateAuthState({ isLoading: true });
 
     try {
@@ -210,6 +304,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         // Set token in localStorage
         localStorage.setItem(TOKEN_KEY, authToken);
+        
+        // Set auth state change flag in sessionStorage
+        sessionStorage.setItem(AUTH_STATE_CHANGE_KEY, "true");
 
         // Update auth state with user data if available
         if (userData) {
@@ -229,6 +326,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: null,
             userDataLoaded: true,
           });
+
+          // Set the login completed flag
+          markLoginCompleted();
+
+          // Invalidate cart queries after login
+          queryClient.invalidateQueries({ queryKey: ["cart"] });
+          queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+          queryClient.invalidateQueries({ queryKey: ["userCart"] });
         } else {
           // Set token but need to fetch user data
           updateAuthState({
@@ -243,7 +348,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           );
           try {
             // Wait a small delay to ensure token is properly set
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             // Fetch user data explicitly
             const fetchedUser = await fetchUserData();
             if (fetchedUser) {
@@ -255,6 +360,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 isLoading: false,
                 userDataLoaded: true,
               });
+
+              // Set the login completed flag
+              markLoginCompleted();
             }
           } catch (fetchError) {
             console.error("Error fetching user data after login:", fetchError);
@@ -263,10 +371,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         }
 
-        // Invalidate relevant queries to ensure fresh data
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-
-        showNotification("Login successful", { type: "success" });
+        showNotification("Login successful", {
+          type: "success",
+          dismissible: true,
+        });
         return true;
       } else {
         updateAuthState({
@@ -303,6 +411,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (response.success) {
         const { token: authToken, user: newUser } = response.data;
         localStorage.setItem(TOKEN_KEY, authToken);
+        
+        // Set auth state change flag in sessionStorage
+        sessionStorage.setItem(AUTH_STATE_CHANGE_KEY, "true");
 
         if (newUser) {
           // Save user data to localStorage
@@ -318,6 +429,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: null,
             userDataLoaded: true,
           });
+
+          // Set the login completed flag
+          markLoginCompleted();
+
+          // Invalidate cart queries after registration
+          queryClient.invalidateQueries({ queryKey: ["cart"] });
+          queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+          queryClient.invalidateQueries({ queryKey: ["userCart"] });
         } else {
           updateAuthState({
             token: authToken,
@@ -327,7 +446,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
           // Fetch user data explicitly
           try {
-            await new Promise((resolve) => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             const fetchedUser = await fetchUserData();
             if (fetchedUser) {
               // Save user data to localStorage
@@ -338,6 +457,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 isLoading: false,
                 userDataLoaded: true,
               });
+
+              // Set the login completed flag
+              markLoginCompleted();
             }
           } catch (fetchError) {
             console.error(
@@ -373,7 +495,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Logout function
   const logout = async () => {
     try {
+      // Set loading state
       updateAuthState({ isLoading: true });
+
+      // Reset any login flags first to prevent triggering cart operations on logout
+      setLoginJustCompleted(false);
+      localStorage.removeItem(LOGIN_COMPLETED_TIMESTAMP_KEY);
+      sessionStorage.removeItem(AUTH_STATE_CHANGE_KEY);
 
       if (authState.token) {
         // Call logout endpoint (even though JWT tokens can't truly be invalidated)
@@ -405,7 +533,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Clear all queries in the cache
       queryClient.clear();
 
-      showNotification("You have been logged out", { type: "info" });
+      showNotification("You have been logged out", { 
+        type: "info",
+        dismissible: true
+      });
     }
   };
 
@@ -584,6 +715,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     resetPassword,
     error: authState.error,
     userDataLoaded: authState.userDataLoaded,
+    loginJustCompleted, // Expose this state to CartContext
   };
 
   return (

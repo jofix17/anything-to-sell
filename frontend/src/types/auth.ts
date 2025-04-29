@@ -30,6 +30,7 @@ export interface AuthStateType {
 }
 
 export interface AuthContextType extends AuthStateType {
+  loginJustCompleted?: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   register: (userData: RegisterData) => Promise<boolean>;
   logout: () => void;

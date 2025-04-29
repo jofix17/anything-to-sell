@@ -1,126 +1,118 @@
+// src/components/cart/CartSummary.tsx
 import React from "react";
 import { Link } from "react-router-dom";
-import Button from "../common/Button";
-import { useAuthContext } from "../../context/AuthContext";
 import { useCartContext } from "../../context/CartContext";
+import { useAuthContext } from "../../context/AuthContext";
 
 interface CartSummaryProps {
-  subtotal: number;
-  shippingCost?: number;
-  taxAmount?: number;
-  totalItems: number;
-  onCheckout?: () => void;
   showCheckoutButton?: boolean;
-  checkoutButtonText?: string;
-  isCheckoutDisabled?: boolean;
+  className?: string;
 }
 
-/**
- * Component for showing the order summary and checkout button
- */
 const CartSummary: React.FC<CartSummaryProps> = ({
-  subtotal,
-  shippingCost = 0,
-  taxAmount = 0,
-  totalItems,
-  onCheckout,
   showCheckoutButton = true,
-  checkoutButtonText = "Checkout",
-  isCheckoutDisabled = false,
+  className = "",
 }) => {
+  const { cart, isLoading } = useCartContext();
   const { isAuthenticated } = useAuthContext();
-  const { isLoading } = useCartContext();
 
-  // Calculate total with shipping and tax
-  const total = subtotal + shippingCost + taxAmount;
+  if (isLoading) {
+    return (
+      <div className={`bg-white rounded-lg shadow-sm p-6 ${className}`}>
+        <div className="animate-pulse">
+          <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+          <div className="space-y-3 mb-6">
+            <div className="flex justify-between">
+              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/6"></div>
+            </div>
+            <div className="flex justify-between">
+              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/6"></div>
+            </div>
+            <div className="flex justify-between">
+              <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/6"></div>
+            </div>
+          </div>
+          <div className="h-10 bg-gray-200 rounded-md w-full"></div>
+        </div>
+      </div>
+    );
+  }
 
-  // Determine if we should show shipping and tax
-  const showShippingAndTax = shippingCost > 0 || taxAmount > 0;
+  if (!cart) {
+    return (
+      <div className={`bg-white rounded-lg shadow-sm p-6 ${className}`}>
+        <p className="text-gray-500">No cart information available</p>
+      </div>
+    );
+  }
 
-  // Determine checkout button text based on auth state
-  const buttonText = isAuthenticated
-    ? checkoutButtonText
-    : "Sign in & Checkout";
-
-  // Handle checkout button click
-  const handleCheckoutClick = () => {
-    if (onCheckout) {
-      onCheckout();
-    }
-  };
+  // Updated display properties based on type differences
+  const subtotal = cart?.totalPrice ? parseFloat(cart.totalPrice) : 0;
+  // Estimate shipping and tax for display purposes
+  const estimatedShipping = subtotal > 0 ? 10.0 : 0; // Mock $10 shipping or free if cart is empty
+  const estimatedTax = subtotal * 0.07; // Mock 7% tax rate
+  const estimatedTotal = subtotal + estimatedShipping + estimatedTax;
 
   return (
-    <div className="bg-gray-50 rounded-lg px-4 py-6 sm:p-6 lg:p-8 mt-6 lg:mt-0">
-      <h2 className="text-lg font-medium text-gray-900">Order summary</h2>
+    <div className={`bg-white rounded-lg shadow-sm p-6 ${className}`}>
+      <h2 className="text-xl font-semibold mb-4">Order Summary</h2>
 
-      {totalItems > 0 ? (
-        <>
-          <dl className="mt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <dt className="text-sm text-gray-600">
-                Subtotal ({totalItems} item{totalItems !== 1 ? "s" : ""})
-              </dt>
-              <dd className="text-sm font-medium text-gray-900">${subtotal}</dd>
-            </div>
-
-            {showShippingAndTax && (
-              <>
-                <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
-                  <dt className="text-sm text-gray-600">Shipping estimate</dt>
-                  <dd className="text-sm font-medium text-gray-900">
-                    ${shippingCost}
-                  </dd>
-                </div>
-
-                <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
-                  <dt className="text-sm text-gray-600">Tax estimate</dt>
-                  <dd className="text-sm font-medium text-gray-900">
-                    ${taxAmount}
-                  </dd>
-                </div>
-              </>
-            )}
-
-            <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
-              <dt className="text-base font-medium text-gray-900">
-                Order total
-              </dt>
-              <dd className="text-base font-medium text-gray-900">
-                ${showShippingAndTax ? total : subtotal}
-              </dd>
-            </div>
-          </dl>
-
-          {showCheckoutButton && (
-            <div className="mt-6">
-              <Button
-                type="button"
-                variant="primary"
-                fullWidth
-                size="large"
-                onClick={handleCheckoutClick}
-                disabled={isCheckoutDisabled || isLoading || totalItems === 0}
-              >
-                {buttonText}
-              </Button>
-            </div>
+      <div className="space-y-3 mb-6">
+        <div className="flex justify-between">
+          <span className="text-gray-600">
+            Subtotal ({cart.totalItems} items)
+          </span>
+          <span>${subtotal.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">Shipping</span>
+          {subtotal > 0 ? (
+            <span>${estimatedShipping.toFixed(2)}</span>
+          ) : (
+            <span>--</span>
           )}
-        </>
-      ) : (
-        <div className="mt-6 text-sm text-gray-500">Your cart is empty.</div>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">Tax (est.)</span>
+          {subtotal > 0 ? (
+            <span>${estimatedTax.toFixed(2)}</span>
+          ) : (
+            <span>--</span>
+          )}
+        </div>
+        <div className="border-t pt-3 flex justify-between font-semibold">
+          <span>Estimated Total</span>
+          <span>${estimatedTotal.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {showCheckoutButton && (
+        <Link
+          to={isAuthenticated ? "/checkout" : "/login?returnUrl=/checkout"}
+          className={`w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 flex items-center justify-center ${
+            cart.items.length === 0
+              ? "opacity-50 cursor-not-allowed pointer-events-none"
+              : ""
+          }`}
+        >
+          {isAuthenticated ? "Proceed to Checkout" : "Login to Checkout"}
+        </Link>
       )}
 
-      <div className="mt-6 text-sm text-center">
-        <p>
-          or{" "}
-          <Link
-            to="/products"
-            className="text-indigo-600 font-medium hover:text-indigo-500"
-          >
-            Continue Shopping<span aria-hidden="true"> &rarr;</span>
-          </Link>
+      {showCheckoutButton && cart.items.length === 0 && (
+        <p className="text-sm text-gray-500 mt-2 text-center">
+          Add items to your cart to proceed to checkout
         </p>
-      </div>
+      )}
+
+      {!isAuthenticated && cart.items.length > 0 && (
+        <p className="text-sm text-gray-500 mt-2 text-center">
+          You'll need to login to complete your purchase
+        </p>
+      )}
     </div>
   );
 };

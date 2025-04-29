@@ -125,7 +125,8 @@ module Api
             success_response({
               hasGuestCart: true,
               itemCount: guest_cart.cart_items.count,
-              total: guest_cart.total_price
+              total: guest_cart.total_price,
+              cartId: guest_cart.id # Add cartId to response
             }, "Guest cart found")
           else
             # No guest cart or empty cart
@@ -182,6 +183,7 @@ module Api
         # Get the source and target cart IDs
         source_cart_id = params[:source_cart_id]
         target_user_id = params[:target_user_id]
+        action_type = params[:action_type].to_s.downcase
 
         # Validate parameters
         if source_cart_id.blank? || target_user_id.blank?
@@ -194,6 +196,15 @@ module Api
           return error_response("Source cart not found", :not_found)
         end
 
+        # Store source cart information before potential deletion
+        source_cart_id_for_response = source_cart.id
+        source_cart_items_count = source_cart.cart_items.count
+
+        # Check if source cart is empty
+        if source_cart.cart_items.empty?
+          return error_response("Source cart is empty, nothing to transfer", :unprocessable_entity)
+        end
+
         # Find or create the target user's cart
         target_user = User.find_by(id: target_user_id)
         if target_user.nil?
@@ -203,48 +214,87 @@ module Api
         # Check if target user has a cart, create one if not
         target_cart = target_user.cart
         if target_cart.nil?
-          target_cart = Cart.create(user_id: target_user.id)
+          target_cart = Cart.create!(user_id: target_user.id)
           Rails.logger.info "TRANSFER_CART: Created new cart for target user: #{target_user.id}"
         end
 
+        # Check if source cart is a guest cart
+        is_guest_cart = source_cart.guest_token.present?
+
         # Determine transfer action
-        transfer_action = params[:action_type].to_s.downcase
-        Rails.logger.info "TRANSFER_CART: Action requested: #{transfer_action}"
+        Rails.logger.info "TRANSFER_CART: Action requested: #{action_type}"
 
-        case transfer_action
-        when "merge"
-          Rails.logger.info "TRANSFER_CART: Merging source cart into target cart"
-          merge_carts(source_cart, target_cart)
-          message = "Cart successfully merged to target user"
+        # Transfer items first before potentially deleting the source cart
+        begin
+          case action_type
+          when "merge"
+            Rails.logger.info "TRANSFER_CART: Merging source cart into target cart"
+            merge_carts_improved(source_cart, target_cart)
+            message = "Cart successfully merged to target user"
 
-        when "replace"
-          Rails.logger.info "TRANSFER_CART: Replacing target cart with source cart"
-          # Clear the target cart first
-          target_cart.cart_items.destroy_all
-          # Then merge the source cart items
-          merge_carts(source_cart, target_cart)
-          message = "Target user's cart has been replaced with source cart items"
+          when "replace"
+            Rails.logger.info "TRANSFER_CART: Replacing target cart with source cart"
+            # Clear the target cart first
+            target_cart.cart_items.destroy_all
+            # Then merge the source cart items
+            merge_carts_improved(source_cart, target_cart)
+            message = "Target user's cart has been replaced with source cart items"
 
-        when "copy"
-          Rails.logger.info "TRANSFER_CART: Copying source cart to target cart (keeping both)"
-          # Copy items without destroying the source cart
-          copy_cart_items(source_cart, target_cart)
-          message = "Cart successfully copied to target user"
+          when "copy"
+            Rails.logger.info "TRANSFER_CART: Copying source cart to target cart (keeping both)"
+            # Copy items without destroying the source cart
+            copy_cart_items_improved(source_cart, target_cart)
+            message = "Cart successfully copied to target user"
 
-        else
-          # Default to merge
-          Rails.logger.warn "TRANSFER_CART: Invalid action '#{transfer_action}', defaulting to merge"
-          merge_carts(source_cart, target_cart)
-          message = "Cart successfully merged to target user"
+          else
+            # Default to merge
+            Rails.logger.warn "TRANSFER_CART: Invalid action '#{action_type}', defaulting to merge"
+            merge_carts_improved(source_cart, target_cart)
+            message = "Cart successfully merged to target user (default action)"
+          end
+
+          # Force reload to get accurate counts after operations
+          target_cart.reload
+
+          # Delete the guest cart if it's a guest cart and only if explicitly replacing or merging
+          # Only do this after we've confirmed the merge worked
+          if is_guest_cart && (action_type == "merge" || action_type == "replace") && target_cart.cart_items.any?
+            Rails.logger.info "TRANSFER_CART: Removing guest cart after successful transfer: #{source_cart.id}"
+
+            # Get a reference to the token before destroying the cart
+            guest_token = source_cart.guest_token
+
+            # First clear cart items and then destroy the cart to prevent cascading issues
+            source_cart.cart_items.delete_all
+            source_cart.destroy
+
+            # Clear the guest cart token from session if it matches
+            if session[:guest_cart_token] == guest_token
+              session.delete(:guest_cart_token)
+              Rails.logger.info "TRANSFER_CART: Cleared guest cart token from session"
+            end
+          end
+
+          # Check if the transfer was successful
+          if target_cart.cart_items.empty? && source_cart_items_count > 0
+            # Something went wrong - the target cart should have items
+            Rails.logger.error "TRANSFER_CART: Transfer failed! Target cart is empty after transfer operation."
+            return error_response("Cart transfer failed - items could not be transferred properly", :internal_server_error)
+          end
+
+          success_response({
+            sourceCartId: source_cart_id_for_response,
+            targetUserId: target_user.id,
+            targetCartId: target_cart.id,
+            itemCount: target_cart.cart_items.count,
+            total: target_cart.total_price,
+            guestCartRemoved: is_guest_cart && (action_type == "merge" || action_type == "replace")
+          }, message)
+
+        rescue StandardError => e
+          Rails.logger.error "TRANSFER_CART ERROR: #{e.message}\n#{e.backtrace.join("\n")}"
+          error_response("Cart transfer failed: #{e.message}", :internal_server_error)
         end
-
-        success_response({
-          sourceCartId: source_cart.id,
-          targetUserId: target_user.id,
-          targetCartId: target_cart.id,
-          itemCount: target_cart.cart_items.count,
-          total: target_cart.total_price
-        }, message)
       end
 
       private
@@ -332,41 +382,91 @@ module Api
         end
       end
 
-      # Helper method to merge cart items
-      def merge_carts(source_cart, target_cart)
-        source_cart.cart_items.each do |item|
-          existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+      # Improved helper method to merge cart items
+      def merge_carts_improved(source_cart, target_cart)
+        # Implement a robust merge that ensures items are properly copied
+        ActiveRecord::Base.transaction do
+          # Keep track of product IDs to handle duplicates properly
+          processed_product_ids = Set.new
 
-          if existing_item
-            # Update quantity for existing item
-            existing_item.update(quantity: existing_item.quantity + item.quantity)
-            Rails.logger.info "MERGE_CARTS: Updated existing item quantity for product: #{item.product_id}"
-          else
-            # Move item to target cart
-            item.update(cart_id: target_cart.id)
-            Rails.logger.info "MERGE_CARTS: Moved item to target cart for product: #{item.product_id}"
+          source_cart.cart_items.each do |item|
+            # Ensure the product exists and is valid
+            product = Product.find_by(id: item.product_id)
+            next unless product && product.is_active
+
+            # Add product ID to processed set
+            processed_product_ids.add(item.product_id)
+
+            # Find or create cart item in target cart
+            existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+
+            if existing_item
+              # Update quantity for existing item
+              new_quantity = existing_item.quantity + item.quantity
+              # Ensure we don't exceed inventory
+              new_quantity = [ new_quantity, product.inventory ].min
+              existing_item.update!(quantity: new_quantity)
+              Rails.logger.info "MERGE_CARTS: Updated existing item quantity to #{new_quantity} for product: #{item.product_id}"
+            else
+              # Create a new item in target cart
+              # Ensure quantity doesn't exceed inventory
+              quantity = [ item.quantity, product.inventory ].min
+              # Create with appropriate price (current price from product or existing price)
+              price = product.sale_price || product.price
+              target_cart.cart_items.create!(
+                product_id: item.product_id,
+                quantity: quantity,
+                price: price
+              )
+              Rails.logger.info "MERGE_CARTS: Created new item with quantity #{quantity} for product: #{item.product_id}"
+            end
           end
+
+          # Update target cart's updated_at to ensure it's fresh
+          target_cart.touch
         end
       end
 
-      # Helper method to copy cart items without affecting the source cart
-      def copy_cart_items(source_cart, target_cart)
-        source_cart.cart_items.each do |item|
-          existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+      # Improved helper method to copy cart items without affecting the source cart
+      def copy_cart_items_improved(source_cart, target_cart)
+        # Use a transaction to ensure data integrity during copying
+        ActiveRecord::Base.transaction do
+          # Keep track of product IDs to handle duplicates properly
+          processed_product_ids = Set.new
 
-          if existing_item
-            # Update quantity for existing item
-            existing_item.update(quantity: existing_item.quantity + item.quantity)
-            Rails.logger.info "COPY_CART_ITEMS: Updated existing item quantity for product: #{item.product_id}"
-          else
-            # Create a new item in the target cart with the same properties
-            target_cart.cart_items.create(
-              product_id: item.product_id,
-              quantity: item.quantity,
-              price: item.price
-            )
-            Rails.logger.info "COPY_CART_ITEMS: Created new item in target cart for product: #{item.product_id}"
+          source_cart.cart_items.each do |item|
+            # Find existing product - make sure it's valid
+            product = Product.find_by(id: item.product_id)
+            next unless product && product.is_active
+
+            # Add product ID to processed set
+            processed_product_ids.add(item.product_id)
+
+            existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+
+            if existing_item
+              # Update quantity for existing item
+              new_quantity = existing_item.quantity + item.quantity
+              # Make sure we don't exceed inventory
+              new_quantity = [ new_quantity, product.inventory ].min
+              existing_item.update!(quantity: new_quantity)
+              Rails.logger.info "COPY_CART_ITEMS: Updated existing item quantity to #{new_quantity} for product: #{item.product_id}"
+            else
+              # Create a new item in the target cart
+              # Make sure quantity doesn't exceed inventory
+              quantity = [ item.quantity, product.inventory ].min
+              price = product.sale_price || product.price
+              new_item = target_cart.cart_items.create!(
+                product_id: item.product_id,
+                quantity: quantity,
+                price: price
+              )
+              Rails.logger.info "COPY_CART_ITEMS: Created new item with ID #{new_item.id} for product: #{item.product_id}"
+            end
           end
+
+          # Update the target cart's timestamp
+          target_cart.touch
         end
       end
 
