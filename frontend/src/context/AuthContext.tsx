@@ -77,6 +77,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
 
+  // Track if login just completed for cart transfer purposes
+  const [loginJustCompleted, setLoginJustCompleted] = useState(false);
+
   // Update auth state with a partial update
   const updateAuthState = (newState: Partial<AuthStateType>) => {
     setAuthState((prev) => {
@@ -135,6 +138,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           userDataLoaded: true,
           error: null,
         });
+
+        // Invalidate cart queries after authentication
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+        queryClient.invalidateQueries({ queryKey: ["userCart"] });
       }
     },
   });
@@ -168,6 +176,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initializeAuth();
   }, []);
 
+  // Effect to reset loginJustCompleted flag
+  useEffect(() => {
+    if (loginJustCompleted) {
+      // Reset the flag after a delay to allow cart logic to run
+      const timer = setTimeout(() => {
+        setLoginJustCompleted(false);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loginJustCompleted]);
+
   // Explicitly fetch user data with the token - returns a Promise so we can await it
   const fetchUserData = async () => {
     console.log("AuthContext: Explicitly fetching user data");
@@ -180,6 +200,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       console.log("AuthContext: User data fetch completed", result.data);
+      
+      // Set the just logged in flag when user data is successfully fetched
+      // This will trigger cart merging in CartContext
+      setLoginJustCompleted(true);
+      
       return result.data;
     } catch (error) {
       console.error("Failed to fetch user data:", error);
@@ -229,6 +254,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: null,
             userDataLoaded: true,
           });
+          
+          // Set the just logged in flag to trigger cart merging
+          setLoginJustCompleted(true);
+
+          // Invalidate cart queries after login
+          queryClient.invalidateQueries({ queryKey: ["cart"] });
+          queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+          queryClient.invalidateQueries({ queryKey: ["userCart"] });
         } else {
           // Set token but need to fetch user data
           updateAuthState({
@@ -255,6 +288,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 isLoading: false,
                 userDataLoaded: true,
               });
+              
+              // Set the just logged in flag to trigger cart merging
+              setLoginJustCompleted(true);
             }
           } catch (fetchError) {
             console.error("Error fetching user data after login:", fetchError);
@@ -262,9 +298,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             updateAuthState({ isLoading: false });
           }
         }
-
-        // Invalidate relevant queries to ensure fresh data
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
 
         showNotification("Login successful", { type: "success" });
         return true;
@@ -318,6 +351,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             error: null,
             userDataLoaded: true,
           });
+          
+          // Set the just logged in flag to trigger cart merging
+          setLoginJustCompleted(true);
+          
+          // Invalidate cart queries after registration
+          queryClient.invalidateQueries({ queryKey: ["cart"] });
+          queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+          queryClient.invalidateQueries({ queryKey: ["userCart"] });
         } else {
           updateAuthState({
             token: authToken,
@@ -338,6 +379,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 isLoading: false,
                 userDataLoaded: true,
               });
+              
+              // Set the just logged in flag to trigger cart merging
+              setLoginJustCompleted(true);
             }
           } catch (fetchError) {
             console.error(
@@ -584,6 +628,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     resetPassword,
     error: authState.error,
     userDataLoaded: authState.userDataLoaded,
+    loginJustCompleted, // Expose this state to CartContext
   };
 
   return (

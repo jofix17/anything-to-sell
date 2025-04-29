@@ -3,624 +3,518 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   useRef,
-  ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuthContext } from "./AuthContext";
 import { useNotification } from "./NotificationContext";
+import { CartTransferModal } from "../components/cart/CartTransferModal";
 import {
-  useTransferCart,
-  useCheckGuestCart as useCheckGuestCartHook,
-  useCheckUserCart as useCheckUserCartHook,
   useGetCart,
+  useCheckGuestCart,
+  useCheckUserCart,
   useAddToCart,
   useUpdateCartItem,
   useRemoveCartItem,
   useClearCart,
+  useTransferCart,
 } from "../hooks/api/useCartApi";
-import { CartContextType } from "../types/cart";
-import { QueryKeys } from "../utils/queryKeys";
-import { useAuthContext } from "./AuthContext";
+import { CartContextType, CartTransferAction } from "../types/cart";
 
-// Create the context
+// Create context
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-// Provider component props
-interface CartProviderProps {
-  children: ReactNode;
-}
-
-// CartProvider component
-export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
-  const { user, isAuthenticated } = useAuthContext();
-  const { showNotification } = useNotification();
+// Provider component
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const queryClient = useQueryClient();
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [hasGuestCart, setHasGuestCart] = useState(false);
-  const [hasUserCart, setHasUserCart] = useState(false);
-  const [shouldFetchCart, setShouldFetchCart] = useState(false);
-
-  // Refs to track operations and prevent duplicate API calls
-  const initializationInProgressRef = useRef(false);
-  const guestCartCheckedRef = useRef(false);
-  const userCartCheckedRef = useRef(false);
-  const guestCartCheckInProgressRef = useRef(false);
-  const userCartCheckInProgressRef = useRef(false);
-  const transferInProgressRef = useRef(false);
-  const addToCartInProgressRef = useRef(false);
-  const updateCartInProgressRef = useRef(false);
-  const removeCartInProgressRef = useRef(false);
-  const clearCartInProgressRef = useRef(false);
-
-  // Get cart API query
+  const { showNotification } = useNotification();
   const {
-    data: cartResponse,
+    isAuthenticated,
+    user,
+    isLoading: authLoading,
+    loginJustCompleted,
+  } = useAuthContext();
+
+  const [showTransferModal, setShowTransferModal] = useState<boolean>(false);
+  const [sourceCart, setSourceCart] = useState<string | null>(null);
+  const [targetCart, setTargetCart] = useState<string | null>(null);
+  const [hasGuestCart, setHasGuestCart] = useState<boolean>(false);
+  const [hasUserCart, setHasUserCart] = useState<boolean>(false);
+  const [guestCartItemCount, setGuestCartItemCount] = useState<number>(0);
+  const [userCartItemCount, setUserCartItemCount] = useState<number>(0);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
+
+  // Add lastFetchTime to track when cart data was last fetched
+  const lastFetchTimeRef = useRef<number>(0);
+  // Stale time in milliseconds (10 seconds)
+  const CART_STALE_TIME = 10000;
+
+  // Add refs to prevent multiple calls
+  const checkingCartsRef = useRef(false);
+  const cartInitializedRef = useRef(false);
+  const transferInProgressRef = useRef(false);
+  const autoTransferAttemptedRef = useRef(false);
+
+  // Use our API hooks
+  const {
+    data: cartData,
     isLoading: isCartLoading,
     refetch: refetchCart,
   } = useGetCart({
-    enabled: shouldFetchCart,
+    enabled: false,
+    staleTime: CART_STALE_TIME, // Set stale time for React Query
   });
 
-  // Extract cart data from the API response
-  const cart = cartResponse || null;
+  // Guest cart check query
+  const { refetch: refetchGuestCart } = useCheckGuestCart({ enabled: false });
 
-  // Cart mutations and check queries
-  const addToCartMutation = useAddToCart();
-  const updateCartItemMutation = useUpdateCartItem();
-  const removeCartItemMutation = useRemoveCartItem();
+  // User existing cart check query (only when authenticated)
+  const { refetch: refetchUserCart } = useCheckUserCart({ enabled: false });
+
+  // Mutations
+  const addItemMutation = useAddToCart();
+  const updateItemMutation = useUpdateCartItem();
+  const removeItemMutation = useRemoveCartItem();
   const clearCartMutation = useClearCart();
   const transferCartMutation = useTransferCart();
-  const checkGuestCartQuery = useCheckGuestCartHook({ enabled: false });
-  const checkUserCartQuery = useCheckUserCartHook({ enabled: false });
 
-  // Effect to update cart state based on cart response
-  useEffect(() => {
-    if (cart) {
-      console.log("CartContext: Cart data received", { 
-        items: cart.items.length,
-        isAuth: isAuthenticated 
-      });
-      
-      // If we have a cart, update the state flags based on the cart content
-      if (isAuthenticated) {
-        setHasUserCart(cart.items.length > 0);
-        userCartCheckedRef.current = true;
-      } else {
-        setHasGuestCart(cart.items.length > 0);
-        guestCartCheckedRef.current = true;
+  // Method to check if cart data is stale
+  const isCartDataStale = useCallback((): boolean => {
+    const currentTime = Date.now();
+    return currentTime - lastFetchTimeRef.current > CART_STALE_TIME;
+  }, [CART_STALE_TIME]);
+
+  // Method to fetch the cart only if data is stale or forceRefresh is true
+  const fetchCart = useCallback(
+    async (forceRefresh = false): Promise<void> => {
+      // Check if we have fresh data in the cache and don't need to refetch
+      if (
+        !forceRefresh &&
+        !isCartDataStale() &&
+        queryClient.getQueryData(["cart"])
+      ) {
+        return;
       }
-      
-      setIsInitialized(true);
-    }
-  }, [cart, isAuthenticated]);
-
-  // Check localStorage for existing cart token on page load
-  useEffect(() => {
-    const checkForExistingCart = async () => {
-      if (initializationInProgressRef.current) return;
-      
-      // For guests, we check local storage for any existing guest cart token
-      const guestCartToken = localStorage.getItem('guest_cart_token');
-      if (!isAuthenticated && guestCartToken) {
-        console.log("CartContext: Found guest cart token in localStorage");
-        // If we have a token in localStorage, we should check if the cart exists
-        await checkForGuestCart();
-      } else if (isAuthenticated) {
-        // For logged in users, check if they have a cart
-        await checkForUserCart();
-      }
-    };
-    
-    checkForExistingCart();
-  }, []);
-
-  // Initialize the cart system - optimized to prevent duplicate API calls
-  useEffect(() => {
-    // Prevent multiple simultaneous initialization attempts
-    if (initializationInProgressRef.current) {
-      return;
-    }
-
-    const initialize = async () => {
-      // Set flag to prevent duplicate initialization
-      initializationInProgressRef.current = true;
 
       try {
-        console.log("CartContext: Initializing cart system");
-        
-        // Reset internal state tracking
-        setIsInitialized(false);
-        
-        // Reset cart check flags
-        guestCartCheckedRef.current = false;
-        userCartCheckedRef.current = false;
-        
-        // For authenticated users, check for existing cart
-        if (isAuthenticated && user) {
-          console.log("CartContext: User is authenticated, checking for user cart");
-          await checkForUserCart();
-        } else if (!isAuthenticated) {
-          // For guests, check for existing cart from localStorage token
-          console.log("CartContext: Guest user, checking for guest cart");
-          await checkForGuestCart();
-        }
-        
-        console.log("CartContext: Initialization complete", {
-          hasGuestCart,
-          hasUserCart,
-          shouldFetchCart
-        });
-        
-        setIsInitialized(true);
+        await refetchCart();
+        lastFetchTimeRef.current = Date.now();
       } catch (error) {
-        console.error(
-          "Error initializing cart:",
-          error instanceof Error ? error.message : String(error)
-        );
-        setIsInitialized(true); // Mark as initialized even on error
-      } finally {
-        // Reset the flag after a small delay to prevent rapid re-initialization
-        setTimeout(() => {
-          initializationInProgressRef.current = false;
-        }, 100);
+        console.error("Error fetching cart:", error);
       }
-    };
+    },
+    [refetchCart, queryClient, isCartDataStale]
+  );
 
-    initialize();
-  }, [isAuthenticated]); // Re-run when auth state changes
-
-  // Check for guest cart - optimized to prevent duplicate calls
-  const checkForGuestCart = async (): Promise<boolean> => {
-    // Prevent duplicate check attempts
-    if (guestCartCheckInProgressRef.current) {
-      console.log("CartContext: Guest cart check already in progress, returning current state");
-      return hasGuestCart;
-    }
-    
-    if (guestCartCheckedRef.current) {
-      console.log("CartContext: Guest cart already checked, returning cached result");
-      return hasGuestCart;
-    }
-    
-    try {
-      // Set flag to prevent concurrent checks
-      guestCartCheckInProgressRef.current = true;
-      
-      console.log("CartContext: Checking for guest cart");
-      const result = await checkGuestCartQuery.refetch();
-      
-      if (result.isSuccess && result.data) {
-        // Directly access the hasGuestCart property from the data object
-        const hasCart = result.data.hasGuestCart;
-        setHasGuestCart(hasCart);
-        guestCartCheckedRef.current = true;
-        
-        // If guest has a cart, we should fetch it
-        if (hasCart && !shouldFetchCart) {
-          console.log("CartContext: Guest cart found, enabling cart fetch");
-          setShouldFetchCart(true);
-        }
-        
-        console.log("CartContext: Guest cart check result", { hasCart });
-        return hasCart;
-      } else {
-        setHasGuestCart(false);
-        guestCartCheckedRef.current = true;
+  // Method to add an item to the cart
+  const addToCart = useCallback(
+    async (productId: string, quantity: number): Promise<boolean> => {
+      try {
+        await addItemMutation.mutateAsync({ productId, quantity });
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        // Update lastFetchTime as the cart data has changed
+        lastFetchTimeRef.current = 0; // Reset to force a refresh on next fetch
+        await fetchCart(true); // Force refresh cart data
+        return true;
+      } catch (error) {
+        console.error("Error adding item to cart:", error);
+        showNotification("Failed to add item to cart", {
+          type: "error",
+        });
         return false;
       }
-    } catch (error) {
-      console.error(
-        "Error checking for guest cart:",
-        error instanceof Error ? error.message : String(error)
-      );
-      setHasGuestCart(false);
-      return false;
-    } finally {
-      // Reset in-progress flag
-      guestCartCheckInProgressRef.current = false;
-    }
-  };
+    },
+    [addItemMutation, showNotification, queryClient, fetchCart]
+  );
 
-  // Check for user cart - optimized to prevent duplicate calls
-  const checkForUserCart = async (): Promise<boolean> => {
-    if (!isAuthenticated) return false;
-    
-    // Prevent duplicate check attempts
-    if (userCartCheckInProgressRef.current) {
-      console.log("CartContext: User cart check already in progress, returning current state");
-      return hasUserCart;
-    }
-    
-    if (userCartCheckedRef.current) {
-      console.log("CartContext: User cart already checked, returning cached result");
-      return hasUserCart;
-    }
-
-    try {
-      // Set flag to prevent concurrent checks
-      userCartCheckInProgressRef.current = true;
-      
-      console.log("CartContext: Checking for user cart");
-      const result = await checkUserCartQuery.refetch();
-      
-      if (result.isSuccess && result.data) {
-        // Directly access the hasExistingCart property from the data object
-        const hasCart = result.data.hasExistingCart;
-        setHasUserCart(hasCart);
-        userCartCheckedRef.current = true;
-        
-        // If user has a cart, we should fetch it
-        if (hasCart && !shouldFetchCart) {
-          console.log("CartContext: User cart found, enabling cart fetch");
-          setShouldFetchCart(true);
-        }
-        
-        console.log("CartContext: User cart check result", { hasCart });
-        return hasCart;
-      } else {
-        setHasUserCart(false);
-        userCartCheckedRef.current = true;
+  // Method to update cart item quantity
+  const updateCartItem = useCallback(
+    async (itemId: string, quantity: number): Promise<boolean> => {
+      try {
+        await updateItemMutation.mutateAsync({ itemId, quantity });
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        // Update lastFetchTime as the cart data has changed
+        lastFetchTimeRef.current = 0; // Reset to force a refresh on next fetch
+        await fetchCart(true); // Force refresh cart data
+        return true;
+      } catch (error) {
+        console.error("Error updating cart item:", error);
+        showNotification("Failed to update cart item", {
+          type: "error",
+        });
         return false;
       }
-    } catch (error) {
-      console.error(
-        "Error checking for user cart:",
-        error instanceof Error ? error.message : String(error)
-      );
-      setHasUserCart(false);
-      return false;
-    } finally {
-      // Reset in-progress flag
-      userCartCheckInProgressRef.current = false;
-    }
-  };
+    },
+    [updateItemMutation, showNotification, queryClient, fetchCart]
+  );
 
-  // Effect to preserve guest cart token in localStorage when cart is fetched
-  useEffect(() => {
-    if (cart && !isAuthenticated && cart.guestToken) {
-      // Store guest cart token in localStorage for persistence
-      localStorage.setItem('guest_cart_token', cart.guestToken);
-      console.log("CartContext: Saved guest cart token to localStorage", cart.guestToken);
-    }
-  }, [cart, isAuthenticated]);
+  // Method to remove an item from the cart
+  const removeFromCart = useCallback(
+    async (itemId: string): Promise<boolean> => {
+      try {
+        await removeItemMutation.mutateAsync(itemId);
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        // Update lastFetchTime as the cart data has changed
+        lastFetchTimeRef.current = 0; // Reset to force a refresh on next fetch
+        await fetchCart(true); // Force refresh cart data
+        showNotification("Item removed from cart", {
+          type: "info",
+        });
+        return true;
+      } catch (error) {
+        console.error("Error removing item from cart:", error);
+        showNotification("Failed to remove item from cart", {
+          type: "error",
+        });
+        return false;
+      }
+    },
+    [removeItemMutation, showNotification, queryClient, fetchCart]
+  );
 
-  // Fetch cart - optimized but only fetches when shouldFetchCart is true
-  const fetchCart = async (): Promise<void> => {
-    if (!shouldFetchCart) {
-      console.log("CartContext: Skip fetchCart - shouldFetchCart is false");
-      return;
-    }
-    
-    if (isCartLoading) {
-      console.log("CartContext: Skip fetchCart - cart is already loading");
-      return;
-    }
-    
+  // Method to clear the cart
+  const clearCart = useCallback(async (): Promise<boolean> => {
     try {
-      console.log("CartContext: Fetching cart");
-      await refetchCart();
-    } catch (error) {
-      console.error(
-        "Error fetching cart:",
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  };
-
-  // Add to cart function - optimized
-  const addToCart = async (
-    productId: string,
-    quantity: number
-  ): Promise<boolean> => {
-    // Prevent duplicate operations
-    if (addToCartInProgressRef.current) {
-      console.log("CartContext: Add to cart already in progress");
-      return false;
-    }
-
-    try {
-      addToCartInProgressRef.current = true;
-      console.log(`CartContext: Adding product ${productId} to cart, quantity ${quantity}`);
-      
-      const response = await addToCartMutation.mutateAsync({
-        productId,
-        quantity,
+      await clearCartMutation.mutateAsync();
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      // Update lastFetchTime as the cart data has changed
+      lastFetchTimeRef.current = 0; // Reset to force a refresh on next fetch
+      await fetchCart(true); // Force refresh cart data
+      showNotification("Cart cleared", {
+        type: "info",
       });
-
-      if (response.success) {
-        // Update the cart data in the query cache with the full response structure
-        queryClient.setQueryData(QueryKeys.cart.current, response);
-        
-        // Store guest token if it's a guest cart
-        if (!isAuthenticated && response.data?.guestToken) {
-          localStorage.setItem('guest_cart_token', response.data.guestToken);
-          console.log("CartContext: Saved guest cart token after adding item", response.data.guestToken);
-        }
-
-        // Ensure we know we have a cart after adding an item
-        if (!hasGuestCart && !hasUserCart) {
-          if (isAuthenticated) {
-            setHasUserCart(true);
-            userCartCheckedRef.current = true;
-          } else {
-            setHasGuestCart(true);
-            guestCartCheckedRef.current = true;
-          }
-          setShouldFetchCart(true);
-        }
-
-        console.log("CartContext: Item added to cart successfully");
-        return true;
-      } else {
-        throw new Error(response.message);
-      }
+      return true;
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to add item to cart";
-      console.error("CartContext: Add to cart error", errorMessage);
-      showNotification(errorMessage, { type: "error" });
-      return false;
-    } finally {
-      addToCartInProgressRef.current = false;
-    }
-  };
-
-  // Update cart item function - optimized
-  const updateCartItem = async (
-    itemId: string,
-    quantity: number
-  ): Promise<boolean> => {
-    // Prevent duplicate operations
-    if (updateCartInProgressRef.current) {
-      console.log("CartContext: Update cart already in progress");
-      return false;
-    }
-
-    try {
-      updateCartInProgressRef.current = true;
-      console.log(`CartContext: Updating cart item ${itemId}, quantity ${quantity}`);
-      
-      const response = await updateCartItemMutation.mutateAsync({
-        itemId,
-        quantity,
-      });
-
-      if (response.success) {
-        // Update the cart data in the query cache with the full response structure
-        queryClient.setQueryData(QueryKeys.cart.current, response);
-        showNotification("Cart updated", { type: "success" });
-        console.log("CartContext: Cart item updated successfully");
-        return true;
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to update cart";
-      console.error("CartContext: Update cart error", errorMessage);
-      showNotification(errorMessage, { type: "error" });
-      return false;
-    } finally {
-      updateCartInProgressRef.current = false;
-    }
-  };
-
-  // Remove from cart function - optimized
-  const removeFromCart = async (itemId: string): Promise<boolean> => {
-    // Prevent duplicate operations
-    if (removeCartInProgressRef.current) {
-      console.log("CartContext: Remove from cart already in progress");
-      return false;
-    }
-
-    try {
-      removeCartInProgressRef.current = true;
-      console.log(`CartContext: Removing item ${itemId} from cart`);
-      
-      const response = await removeCartItemMutation.mutateAsync(itemId);
-
-      if (response.success) {
-        // Update the cart data in the query cache with the full response structure
-        queryClient.setQueryData(QueryKeys.cart.current, response);
-
-        // Check if this was the last item and update cart existence flags
-        if (response.data?.items?.length === 0) {
-          if (isAuthenticated) {
-            setHasUserCart(false);
-          } else {
-            setHasGuestCart(false);
-            // Remove guest cart token from localStorage if cart is empty
-            localStorage.removeItem('guest_cart_token');
-          }
-        }
-
-        showNotification("Item removed from cart", { type: "success" });
-        console.log("CartContext: Item removed from cart successfully");
-        return true;
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Failed to remove item from cart";
-      console.error("CartContext: Remove from cart error", errorMessage);
-      showNotification(errorMessage, { type: "error" });
-      return false;
-    } finally {
-      removeCartInProgressRef.current = false;
-    }
-  };
-
-  // Clear cart function - optimized
-  const clearCart = async (): Promise<boolean> => {
-    // Prevent duplicate operations
-    if (clearCartInProgressRef.current) {
-      console.log("CartContext: Clear cart already in progress");
-      return false;
-    }
-
-    try {
-      clearCartInProgressRef.current = true;
-      console.log("CartContext: Clearing cart");
-      
-      const response = await clearCartMutation.mutateAsync();
-
-      if (response.success) {
-        // Update the cart data in the query cache with the full response structure
-        queryClient.setQueryData(QueryKeys.cart.current, response);
-
-        // If cart is cleared, we should update our state indicators
-        if (isAuthenticated) {
-          setHasUserCart(false);
-        } else {
-          setHasGuestCart(false);
-          // Remove guest cart token from localStorage
-          localStorage.removeItem('guest_cart_token');
-        }
-
-        showNotification("Cart cleared", { type: "success" });
-        console.log("CartContext: Cart cleared successfully");
-        return true;
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to clear cart";
-      console.error("CartContext: Clear cart error", errorMessage);
-      showNotification(errorMessage, { type: "error" });
-      return false;
-    } finally {
-      clearCartInProgressRef.current = false;
-    }
-  };
-
-  // Transfer guest cart to user function - optimized
-  const transferGuestCartToUser = async (
-    actionType: string = "merge"
-  ): Promise<boolean> => {
-    // Prevent duplicate transfer attempts
-    if (transferInProgressRef.current) {
-      console.log("CartContext: Transfer already in progress, skipping duplicate request");
-      return false;
-    }
-    
-    if (!isAuthenticated || !user) {
-      showNotification("You must be logged in to transfer cart", {
+      console.error("Error clearing cart:", error);
+      showNotification("Failed to clear cart", {
         type: "error",
       });
       return false;
     }
+  }, [clearCartMutation, showNotification, queryClient, fetchCart]);
 
-    try {
-      // Set flag to prevent concurrent transfers
+  // Method to transfer cart
+  const transferCart = useCallback(
+    async (action: CartTransferAction): Promise<boolean> => {
+      if (!sourceCart || !user?.id) {
+        showNotification(
+          "Transfer failed: missing source cart or user details",
+          {
+            type: "error",
+          }
+        );
+        return false;
+      }
+
+      // Prevent duplicate transfer operations
+      if (transferInProgressRef.current) {
+        return false;
+      }
+
       transferInProgressRef.current = true;
-      
-      console.log("CartContext: Transferring guest cart to user", { 
-        actionType, 
-        cartId: cart?.id,
-        userId: user.id
-      });
+      try {
+        await transferCartMutation.mutateAsync({
+          sourceCartId: sourceCart,
+          targetUserId: user.id,
+          actionType: action,
+        });
 
-      // Make sure we have the source cart ID
-      const sourceCartId = cart?.id;
-      if (!sourceCartId) {
-        console.error("CartContext: Source cart not found");
-        throw new Error("Source cart not found");
-      }
+        // Invalidate cart queries after successful transfer
+        queryClient.invalidateQueries({ queryKey: ["cart"] });
+        queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+        queryClient.invalidateQueries({ queryKey: ["userCart"] });
 
-      // Call the API to transfer the cart with the specified action
-      const response = await transferCartMutation.mutateAsync({
-        sourceCartId: sourceCartId,
-        targetUserId: user.id,
-        actionType: actionType,
-      });
-
-      if (response.success) {
-        console.log(`CartContext: Cart ${actionType} successful`, response.data);
-        
-        // Remove guest cart token from localStorage after transfer
-        localStorage.removeItem('guest_cart_token');
-        
-        // Invalidate the cart query to refetch with the updated data
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-        
-        // Update local state based on the action
-        setHasGuestCart(false); // Guest cart has been processed
-        guestCartCheckedRef.current = true;
-        
-        // For all actions, user now has a cart (may be empty for "keep" action)
-        setHasUserCart(true);
-        userCartCheckedRef.current = true;
-        
-        // Make sure we fetch the updated cart
-        setShouldFetchCart(true);
-        
-        // Show appropriate notification based on the action
-        let message = "Cart transferred successfully";
-        if (actionType === "merge") {
-          message = "Carts merged successfully";
-        } else if (actionType === "replace") {
-          message = "Guest cart items transferred to your account";
-        } else if (actionType === "keep") {
-          message = "Using your existing cart";
+        // Reset guest cart state
+        if (action === "merge" || action === "replace") {
+          setHasGuestCart(false);
+          setGuestCartItemCount(0);
+          setSourceCart(null);
         }
-        
-        showNotification(message, { type: "success" });
-        return true;
-      } else {
-        console.error("CartContext: Cart transfer error", response.message);
-        throw new Error(response.message || "Failed to transfer cart");
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to transfer cart";
-      console.error("CartContext: Cart transfer error", errorMessage);
-      showNotification(errorMessage, { type: "error" });
-      return false;
-    } finally {
-      // Always reset the flag, even on error
-      transferInProgressRef.current = false;
-    }
-  };
 
-  // Prepare context value
+        // Update lastFetchTime as the cart data has changed
+        lastFetchTimeRef.current = 0; // Reset to force a refresh on next fetch
+
+        // Fetch the updated cart
+        await fetchCart(true); // Force refresh cart data
+
+        setShowTransferModal(false);
+        showNotification("Cart transferred successfully", {
+          type: "success",
+        });
+
+        return true;
+      } catch (error) {
+        console.error("Error transferring cart:", error);
+        showNotification("Failed to transfer cart", {
+          type: "error",
+        });
+        return false;
+      } finally {
+        transferInProgressRef.current = false;
+      }
+    },
+    [
+      sourceCart,
+      user,
+      transferCartMutation,
+      showNotification,
+      queryClient,
+      fetchCart,
+    ]
+  );
+
+  // Effect to handle automatic cart transfer after login
+  useEffect(() => {
+    const handlePostLoginCartTransfer = async () => {
+      if (
+        !isAuthenticated ||
+        !loginJustCompleted ||
+        autoTransferAttemptedRef.current
+      ) {
+        return;
+      }
+
+      autoTransferAttemptedRef.current = true;
+
+      // Invalidate all cart queries to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.invalidateQueries({ queryKey: ["guestCart"] });
+      queryClient.invalidateQueries({ queryKey: ["userCart"] });
+
+      // Reset lastFetchTime to ensure fresh data
+      lastFetchTimeRef.current = 0;
+
+      // Wait a bit to ensure auth state is updated
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Check for guest cart first
+      try {
+        const guestCartResult = await refetchGuestCart();
+        const guestCartInfo = guestCartResult.data;
+
+        const hasGuestCartItems = !!guestCartInfo?.hasGuestCart;
+        const guestItemCount = guestCartInfo?.itemCount || 0;
+
+        if (hasGuestCartItems && guestItemCount > 0 && guestCartInfo.cartId) {
+          // Now check for user cart
+          const userCartResult = await refetchUserCart();
+          const userCartInfo = userCartResult.data;
+
+          const hasUserCartItems = !!userCartInfo?.hasExistingCart;
+          const userItemCount = userCartInfo?.itemCount || 0;
+
+          if (hasUserCartItems && userItemCount > 0) {
+            // Both carts have items, show transfer modal
+            setHasGuestCart(true);
+            setGuestCartItemCount(guestItemCount);
+            setHasUserCart(true);
+            setUserCartItemCount(userItemCount);
+            setSourceCart(guestCartInfo.cartId);
+            setTargetCart(userCartInfo?.cartId || null);
+            setShowTransferModal(true);
+          } else {
+            if (user) {
+              try {
+                const transferResult = await transferCartMutation.mutateAsync({
+                  sourceCartId: guestCartInfo.cartId,
+                  targetUserId: user.id,
+                  actionType: "replace",
+                });
+
+                if (transferResult.success) {
+                  setHasGuestCart(false);
+                  setGuestCartItemCount(0);
+                  setSourceCart(null);
+
+                  // Refresh cart data
+                  queryClient.invalidateQueries({ queryKey: ["cart"] });
+                  fetchCart(true); // Force refresh cart data
+                }
+              } catch (error) {
+                console.error("Auto-transfer after login failed:", error);
+              }
+            }
+          }
+        }
+
+        // Finally, fetch the current cart regardless of transfer status
+        fetchCart(true); // Force refresh cart data
+      } catch (error) {
+        console.error("Error in post-login cart handling:", error);
+      }
+    };
+
+    handlePostLoginCartTransfer();
+  }, [
+    isAuthenticated,
+    loginJustCompleted,
+    user,
+    refetchGuestCart,
+    refetchUserCart,
+    queryClient,
+    transferCartMutation,
+    fetchCart,
+  ]);
+
+  // Check for guest cart and user cart on page load and auth status change
+  useEffect(() => {
+    const checkCarts = async () => {
+      // Prevent duplicate cart checks
+      if (checkingCartsRef.current) {
+        return;
+      }
+
+      // If authentication is still loading, wait
+      if (authLoading) {
+        return;
+      }
+
+      checkingCartsRef.current = true;
+
+      try {
+        // Always check for guest cart first
+        const guestCartResult = await refetchGuestCart();
+        const guestCartInfo = guestCartResult.data;
+
+        const hasGuestCartItems = !!guestCartInfo?.hasGuestCart;
+        const guestItemCount = guestCartInfo?.itemCount || 0;
+
+        setHasGuestCart(hasGuestCartItems);
+        setGuestCartItemCount(guestItemCount);
+
+        // Now check for user cart if authenticated
+        if (isAuthenticated && user) {
+          const userCartResult = await refetchUserCart();
+          const userCartInfo = userCartResult.data;
+
+          const hasUserCartItems = !!userCartInfo?.hasExistingCart;
+          const userItemCount = userCartInfo?.itemCount || 0;
+
+          setHasUserCart(hasUserCartItems);
+          setUserCartItemCount(userItemCount);
+
+          // If both carts exist with items, set up for transfer
+          if (hasGuestCartItems && guestItemCount > 0) {
+            // Get both cart IDs
+            setSourceCart(guestCartInfo.cartId || null);
+
+            if (hasUserCartItems && userItemCount > 0) {
+              // Both carts exist with items
+              setTargetCart(userCartInfo.cartId || null);
+              setShowTransferModal(true);
+            } else if (!hasUserCartItems || userItemCount === 0) {
+              // Run transfer in the next tick to avoid state update conflicts
+              setTimeout(() => {
+                if (guestCartInfo.cartId && user) {
+                  transferCartMutation.mutate(
+                    {
+                      sourceCartId: guestCartInfo.cartId,
+                      targetUserId: user.id,
+                      actionType: "replace",
+                    },
+                    {
+                      onSuccess: () => {
+                        setHasGuestCart(false);
+                        setGuestCartItemCount(0);
+                        queryClient.invalidateQueries({ queryKey: ["cart"] });
+                        queryClient.invalidateQueries({
+                          queryKey: ["guestCart"],
+                        });
+                        fetchCart(true); // Force refresh cart data
+                      },
+                      onError: (error) => {
+                        console.error("Auto-transfer failed:", error);
+                      },
+                    }
+                  );
+                }
+              }, 0);
+            }
+          }
+        }
+
+        // Fetch the current cart if items are present in either guest or user cart
+        const shouldFetchCart =
+          (guestCartInfo?.itemCount || 0) > 0 ||
+          (isAuthenticated && userCartItemCount > 0);
+
+        if (shouldFetchCart) {
+          // Reset lastFetchTime to ensure fresh data
+          lastFetchTimeRef.current = 0;
+          fetchCart(true); // Force refresh cart data
+        }
+
+        setIsInitialized(true);
+        cartInitializedRef.current = true;
+      } finally {
+        checkingCartsRef.current = false;
+      }
+    };
+
+    // Only run cart checks if we haven't initialized yet or auth status changed
+    if (!cartInitializedRef.current || !isInitialized) {
+      checkCarts();
+    }
+  }, [
+    isAuthenticated,
+    user,
+    authLoading,
+    refetchGuestCart,
+    refetchUserCart,
+    fetchCart,
+    queryClient,
+    transferCartMutation,
+  ]);
+
+  // Extract cart from response
+  const cart = cartData || null;
+
+  // Context value
   const contextValue: CartContextType = {
-    cart: cart,
-    isLoading:
-      isCartLoading ||
-      addToCartMutation.isPending ||
-      updateCartItemMutation.isPending ||
-      removeCartItemMutation.isPending ||
-      clearCartMutation.isPending ||
-      transferCartMutation.isPending ||
-      checkGuestCartQuery.isFetching ||
-      checkUserCartQuery.isFetching,
+    cart,
+    isLoading: isCartLoading,
     isInitialized,
+    showTransferModal,
+    setShowTransferModal,
+    sourceCart,
+    targetCart,
+    fetchCart,
     addToCart,
     updateCartItem,
     removeFromCart,
     clearCart,
+    transferCart,
     hasGuestCart,
     hasUserCart,
-    transferGuestCartToUser,
-    checkForGuestCart,
-    checkForUserCart,
-    fetchCart,
+    guestCartItemCount,
+    userCartItemCount,
+    isCartDataStale, // Add the new method to the context
   };
 
   return (
-    <CartContext.Provider value={contextValue}>{children}</CartContext.Provider>
+    <CartContext.Provider value={contextValue}>
+      {children}
+      {showTransferModal && (
+        <CartTransferModal
+          isOpen={showTransferModal}
+          onClose={() => setShowTransferModal(false)}
+          onTransfer={transferCart}
+          guestItemCount={guestCartItemCount}
+          userItemCount={userCartItemCount}
+        />
+      )}
+    </CartContext.Provider>
   );
 };
 
-// Custom hook to use the cart context
+// Custom hook
 export const useCartContext = (): CartContextType => {
   const context = useContext(CartContext);
   if (context === undefined) {
-    throw new Error("useCartContext must be used within a CartProvider");
+    throw new Error("useCart must be used within a CartProvider");
   }
   return context;
 };

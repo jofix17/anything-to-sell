@@ -125,7 +125,8 @@ module Api
             success_response({
               hasGuestCart: true,
               itemCount: guest_cart.cart_items.count,
-              total: guest_cart.total_price
+              total: guest_cart.total_price,
+              cartId: guest_cart.id # Add cartId to response
             }, "Guest cart found")
           else
             # No guest cart or empty cart
@@ -182,6 +183,7 @@ module Api
         # Get the source and target cart IDs
         source_cart_id = params[:source_cart_id]
         target_user_id = params[:target_user_id]
+        action_type = params[:action_type].to_s.downcase
 
         # Validate parameters
         if source_cart_id.blank? || target_user_id.blank?
@@ -220,15 +222,14 @@ module Api
         is_guest_cart = source_cart.guest_token.present?
 
         # Determine transfer action
-        transfer_action = params[:action_type].to_s.downcase
-        Rails.logger.info "TRANSFER_CART: Action requested: #{transfer_action}"
+        Rails.logger.info "TRANSFER_CART: Action requested: #{action_type}"
 
         # Transfer items first before potentially deleting the source cart
         begin
-          case transfer_action
+          case action_type
           when "merge"
             Rails.logger.info "TRANSFER_CART: Merging source cart into target cart"
-            merge_carts(source_cart, target_cart)
+            merge_carts_improved(source_cart, target_cart)
             message = "Cart successfully merged to target user"
 
           when "replace"
@@ -236,28 +237,28 @@ module Api
             # Clear the target cart first
             target_cart.cart_items.destroy_all
             # Then merge the source cart items
-            merge_carts(source_cart, target_cart)
+            merge_carts_improved(source_cart, target_cart)
             message = "Target user's cart has been replaced with source cart items"
 
           when "copy"
             Rails.logger.info "TRANSFER_CART: Copying source cart to target cart (keeping both)"
             # Copy items without destroying the source cart
-            copy_cart_items(source_cart, target_cart)
+            copy_cart_items_improved(source_cart, target_cart)
             message = "Cart successfully copied to target user"
 
           else
             # Default to merge
-            Rails.logger.warn "TRANSFER_CART: Invalid action '#{transfer_action}', defaulting to merge"
-            merge_carts(source_cart, target_cart)
-            message = "Cart successfully merged to target user"
+            Rails.logger.warn "TRANSFER_CART: Invalid action '#{action_type}', defaulting to merge"
+            merge_carts_improved(source_cart, target_cart)
+            message = "Cart successfully merged to target user (default action)"
           end
 
           # Force reload to get accurate counts after operations
           target_cart.reload
 
-          # Delete the guest cart if it's a guest cart
+          # Delete the guest cart if it's a guest cart and only if explicitly replacing or merging
           # Only do this after we've confirmed the merge worked
-          if is_guest_cart && target_cart.cart_items.any?
+          if is_guest_cart && (action_type == "merge" || action_type == "replace") && target_cart.cart_items.any?
             Rails.logger.info "TRANSFER_CART: Removing guest cart after successful transfer: #{source_cart.id}"
 
             # Get a reference to the token before destroying the cart
@@ -287,7 +288,7 @@ module Api
             targetCartId: target_cart.id,
             itemCount: target_cart.cart_items.count,
             total: target_cart.total_price,
-            guestCartRemoved: is_guest_cart
+            guestCartRemoved: is_guest_cart && (action_type == "merge" || action_type == "replace")
           }, message)
 
         rescue StandardError => e
@@ -381,15 +382,20 @@ module Api
         end
       end
 
-      # Helper method to merge cart items
-      def merge_carts(source_cart, target_cart)
-        # Instead of using Cart's merge_with method which may have issues,
-        # implement a robust merge that ensures items are properly copied
+      # Improved helper method to merge cart items
+      def merge_carts_improved(source_cart, target_cart)
+        # Implement a robust merge that ensures items are properly copied
         ActiveRecord::Base.transaction do
+          # Keep track of product IDs to handle duplicates properly
+          processed_product_ids = Set.new
+
           source_cart.cart_items.each do |item|
             # Ensure the product exists and is valid
             product = Product.find_by(id: item.product_id)
             next unless product && product.is_active
+
+            # Add product ID to processed set
+            processed_product_ids.add(item.product_id)
 
             # Find or create cart item in target cart
             existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
@@ -421,14 +427,20 @@ module Api
         end
       end
 
-      # Helper method to copy cart items without affecting the source cart
-      def copy_cart_items(source_cart, target_cart)
+      # Improved helper method to copy cart items without affecting the source cart
+      def copy_cart_items_improved(source_cart, target_cart)
         # Use a transaction to ensure data integrity during copying
         ActiveRecord::Base.transaction do
+          # Keep track of product IDs to handle duplicates properly
+          processed_product_ids = Set.new
+
           source_cart.cart_items.each do |item|
             # Find existing product - make sure it's valid
             product = Product.find_by(id: item.product_id)
             next unless product && product.is_active
+
+            # Add product ID to processed set
+            processed_product_ids.add(item.product_id)
 
             existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
 

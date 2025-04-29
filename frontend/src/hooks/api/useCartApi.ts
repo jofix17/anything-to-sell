@@ -3,12 +3,12 @@ import apiService from "../../services/api";
 import { ApiResponse } from "../../types";
 import {
   Cart,
-  GuestCartCheckResponse,
-  UserCartCheckResponse,
   AddToCartParams,
   UpdateCartItemParams,
   TransferCartParams,
   TransferCartResponse,
+  GuestCartCheck,
+  ExistingCartCheck,
 } from "../../types/cart";
 import { CART_ENDPOINTS } from "../../utils/constants";
 import { QueryKeys } from "../../utils/queryKeys";
@@ -38,7 +38,7 @@ export const useCheckGuestCart = (options = {}) => {
   return useApiQuery(
     QueryKeys.cart.guestCheck,
     async () =>
-      await apiService.get<ApiResponse<GuestCartCheckResponse>>(
+      await apiService.get<ApiResponse<GuestCartCheck>>(
         CART_ENDPOINTS.CHECK_GUEST_CART
       ),
     {
@@ -56,7 +56,7 @@ export const useCheckUserCart = (options = {}) => {
   return useApiQuery(
     [...QueryKeys.cart.checkExisting, "user"],
     async () =>
-      await apiService.get<ApiResponse<UserCartCheckResponse>>(
+      await apiService.get<ApiResponse<ExistingCartCheck>>(
         CART_ENDPOINTS.CHECK_USER_CART
       ),
     {

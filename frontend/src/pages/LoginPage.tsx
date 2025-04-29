@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Formik, Form, Field } from "formik";
 import * as Yup from "yup";
 import { useNotification } from "../context/NotificationContext";
-import Button from "../components/common/Button";
-import CartMergeModal from "../components/cart/CartMergeModal";
-import { CartMergeAction } from "../components/cart/CartMergeModal";
 import { useCartContext } from "../context/CartContext";
+import Button from "../components/common/Button";
 import { useAuthContext } from "../context/AuthContext";
 import { LoginCredentials } from "../types/auth";
 import TextInput from "../components/common/TextInput";
@@ -21,26 +19,14 @@ const LoginSchema = Yup.object().shape({
 });
 
 const LoginPage: React.FC = () => {
-  const [showCartMergeModal, setShowCartMergeModal] = useState(false);
-  const [isCartMerging, setIsCartMerging] = useState(false);
-  const [guestCartItemCount, setGuestCartItemCount] = useState(0);
-
   // We'll avoid using localError state to prevent multiple notifications
   const errorRef = useRef<string | null>(null);
   const notificationShownRef = useRef(false);
 
   // Context hooks
   const { login, isAuthenticated, isLoading } = useAuthContext();
-  const {
-    cart,
-    hasGuestCart,
-    hasUserCart,
-    transferGuestCartToUser,
-    fetchCart,
-    checkForGuestCart,
-    checkForUserCart,
-  } = useCartContext();
   const { showNotification } = useNotification();
+  const { fetchCart } = useCartContext();
 
   // Navigation hooks
   const navigate = useNavigate();
@@ -51,10 +37,12 @@ const LoginPage: React.FC = () => {
   const isMountedRef = useRef(true);
   const loginAttemptedRef = useRef(false);
   const loginSuccessfulRef = useRef(false);
-  const cartMergeHandledRef = useRef(false);
   const redirectTimerRef = useRef<number | null>(null);
   const postLoginFlowStartedRef = useRef(false);
   const redirectedRef = useRef(false); // Track if we've already redirected
+  
+  // New ref to track if cart fetch is needed
+  const cartFetchNeededRef = useRef(true);
 
   // Initial form values
   const initialFormValues: LoginCredentials & { rememberMe: boolean } = {
@@ -83,23 +71,6 @@ const LoginPage: React.FC = () => {
     };
   }, []);
 
-  // Check for guest cart only once on initial load
-  useEffect(() => {
-    const checkGuestCartOnce = async () => {
-      try {
-        console.log("LoginPage: Initial guest cart check");
-        await checkForGuestCart();
-      } catch (error) {
-        console.error("Error checking guest cart:", error);
-      }
-    };
-
-    // Only run for guest users
-    if (!isAuthenticated) {
-      checkGuestCartOnce();
-    }
-  }, []); // Empty dependency array - run only once on mount
-
   // Redirect if already authenticated (handles refresh cases)
   useEffect(() => {
     if (isAuthenticated && !isLoading && !redirectedRef.current) {
@@ -125,84 +96,19 @@ const LoginPage: React.FC = () => {
   // Handle post-login flow
   const handlePostLoginFlow = async () => {
     console.log("LoginPage: Starting post-login flow");
-
+    
     try {
-      // Check for user cart after login
-      if (isAuthenticated) {
-        await checkForUserCart();
+      // Fetch cart if needed - cart context will handle merging
+      if (cartFetchNeededRef.current) {
+        console.log("LoginPage: Fetching cart as part of post-login flow");
+        await fetchCart();
+        cartFetchNeededRef.current = false;
       }
-
-      // Refresh cart data
-      await refreshCart();
-
-      // Check if we have both a guest cart and a user cart
-      if (hasGuestCart && hasUserCart) {
-        console.log("LoginPage: Need to handle cart merge");
-        // Set guest cart item count for the modal
-        setGuestCartItemCount(cart?.items?.length || 0);
-        // Show cart merge modal
-        setShowCartMergeModal(true);
-      } else {
-        // No cart merge needed, proceed with normal redirect
-        redirectToDestination();
-      }
-    } catch (err) {
-      console.error("Error in post-login flow:", err);
-      // Still redirect if there's an error
-      redirectToDestination();
-    }
-  };
-
-  // Refresh cart function
-  const refreshCart = async () => {
-    try {
-      await fetchCart();
-      return true;
     } catch (error) {
-      console.error("Error refreshing cart:", error);
-      return false;
-    }
-  };
-
-  // Handle cart merge action
-  const handleCartMergeAction = async (action: CartMergeAction) => {
-    setIsCartMerging(true);
-    try {
-      if (action === "merge" || action === "replace") {
-        await transferGuestCartToUser(action);
-      }
-      // For "keep-separate" we don't need to do anything
-      return true;
-    } catch (error) {
-      console.error("Error handling cart merge:", error);
-      return false;
+      console.error("Error in post-login cart handling:", error);
     } finally {
-      setIsCartMerging(false);
-    }
-  };
-
-  // Handle cart merge action
-  const handleMergeAction = async (action: CartMergeAction) => {
-    if (cartMergeHandledRef.current) return;
-    cartMergeHandledRef.current = true;
-
-    try {
-      // Handle the selected action
-      await handleCartMergeAction(action);
-
-      // Refresh cart after merge action
-      await refreshCart();
-
-      // Redirect after cart merge is handled
+      // Redirect after handling cart
       redirectToDestination();
-    } catch (err) {
-      console.error("Error handling cart merge:", err);
-      showNotification("Failed to process cart items", { type: "error" });
-
-      // Still redirect even if cart merge fails
-      redirectToDestination();
-    } finally {
-      setShowCartMergeModal(false);
     }
   };
 
@@ -237,10 +143,10 @@ const LoginPage: React.FC = () => {
     // Reset all state flags
     loginAttemptedRef.current = true;
     loginSuccessfulRef.current = false;
-    cartMergeHandledRef.current = false;
     postLoginFlowStartedRef.current = false;
     errorRef.current = null;
     notificationShownRef.current = false;
+    cartFetchNeededRef.current = true;
 
     try {
       // Attempt login - this returns a boolean indicating success
@@ -296,26 +202,8 @@ const LoginPage: React.FC = () => {
     }
   }, [loginSuccessfulRef.current]);
 
-  // Calculate existing cart item count
-  const existingCartItemCount = cart?.items?.length || 0;
-
   return (
     <>
-      {/* Cart Merge Modal */}
-      {showCartMergeModal && (
-        <CartMergeModal
-          isOpen={showCartMergeModal}
-          onClose={() => {
-            setShowCartMergeModal(false);
-            redirectToDestination();
-          }}
-          onAction={handleMergeAction}
-          existingCartItemCount={existingCartItemCount}
-          guestCartItemCount={guestCartItemCount}
-          isLoading={isCartMerging}
-        />
-      )}
-
       <div className="pt-16 min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">

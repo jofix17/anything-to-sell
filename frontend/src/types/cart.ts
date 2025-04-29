@@ -1,13 +1,14 @@
 import { Product } from "./product";
 
+export type CartTransferAction = "merge" | "replace" | "copy";
 // Objects
 export interface Cart {
   id: string;
   items: CartItem[];
   totalItems: number;
-  totalPrice: string;  // Changed to string to match backend response
-  guestToken: string | null;  // Added null to match backend response
-  userId: string | null;  // Added to match backend response
+  totalPrice: string; // Changed to string to match backend response
+  guestToken: string | null; // Added null to match backend response
+  userId: string | null; // Added to match backend response
 }
 
 export interface CartItem {
@@ -23,29 +24,35 @@ export interface CartContextType {
   cart: Cart | null;
   isLoading: boolean;
   isInitialized: boolean;
+  showTransferModal: boolean;
+  setShowTransferModal: (show: boolean) => void;
+  sourceCart: string | null;
+  targetCart: string | null;
+  fetchCart: () => Promise<void>;
   addToCart: (productId: string, quantity: number) => Promise<boolean>;
   updateCartItem: (itemId: string, quantity: number) => Promise<boolean>;
   removeFromCart: (itemId: string) => Promise<boolean>;
   clearCart: () => Promise<boolean>;
   hasGuestCart: boolean;
   hasUserCart: boolean;
-  transferGuestCartToUser: (actionType?: string) => Promise<boolean>;
-  checkForGuestCart: () => Promise<boolean>;
-  checkForUserCart: () => Promise<boolean>;
-  fetchCart: () => Promise<void>;
+  guestCartItemCount: number;
+  userCartItemCount: number;
+  transferCart: (action: CartTransferAction) => Promise<boolean>;
+  isCartDataStale: () => boolean;
 }
 
 // API RESPONSES
-export interface GuestCartCheckResponse {
+export interface GuestCartCheck {
   hasGuestCart: boolean;
   itemCount: number;
-  total?: string;  // Changed to string to match backend response
+  total?: number; // Changed to string to match backend response
+  cartId?: string;
 }
 
-export interface UserCartCheckResponse {
+export interface ExistingCartCheck {
   hasExistingCart: boolean;
   itemCount: number;
-  total?: string;  // Changed to string to match backend response
+  total?: number; // Changed to string to match backend response
   cartId?: string;
 }
 
