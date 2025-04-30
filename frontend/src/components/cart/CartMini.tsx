@@ -8,8 +8,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useCartContext } from "../../context/CartContext";
 import { useAuthContext } from "../../context/AuthContext";
-import { useQueryClient } from "@tanstack/react-query";
-import { QueryKeys } from "../../utils/queryKeys";
+import { useCheckGuestCart } from "../../hooks/api/useCartApi";
 
 interface MiniCartProps {
   className?: string;
@@ -18,14 +17,21 @@ interface MiniCartProps {
 const MiniCart: React.FC<MiniCartProps> = ({ className = "" }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { cart, isLoading, fetchCart, removeFromCart } = useCartContext();
+  const {
+    cart,
+    isLoading,
+    fetchCart,
+    removeFromCart,
+    isCartDataStale,
+    hasGuestCart,
+  } = useCartContext();
   const { isAuthenticated } = useAuthContext();
-  const queryClient = useQueryClient();
 
-  // Track last fetch time to avoid excessive API calls
-  const lastFetchTimeRef = useRef<number>(0);
-  // Stale time in milliseconds (5 seconds)
-  const STALE_TIME = 5000;
+  // Check if there's a guest cart (only runs when enabled)
+  const { refetch: refetchGuestCart } = useCheckGuestCart({ enabled: false });
+
+  // Track if we've already checked for cart updates during this dropdown open session
+  const cartCheckedRef = useRef<boolean>(false);
 
   // Handle outside click to close dropdown
   useEffect(() => {
@@ -35,6 +41,8 @@ const MiniCart: React.FC<MiniCartProps> = ({ className = "" }) => {
         !dropdownRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
+        // Reset cart checked flag when dropdown closes
+        cartCheckedRef.current = false;
       }
     };
 
@@ -44,22 +52,47 @@ const MiniCart: React.FC<MiniCartProps> = ({ className = "" }) => {
     };
   }, []);
 
-  // Fetch cart data when opened, but only if data is stale
+  // Optimized cart data fetching when dropdown is opened
   useEffect(() => {
-    if (isOpen) {
-      const currentTime = Date.now();
-      const cachedCartData = queryClient.getQueryData(QueryKeys.cart.current);
-      const timeSinceLastFetch = currentTime - lastFetchTimeRef.current;
+    const checkAndFetchCart = async () => {
+      if (isOpen && !cartCheckedRef.current) {
+        // Mark as checked for this session
+        cartCheckedRef.current = true;
 
-      // Fetch data only if:
-      // 1. We don't have cached data OR
-      // 2. The data is stale (last fetch was more than STALE_TIME ago)
-      if (!cachedCartData || timeSinceLastFetch > STALE_TIME) {
-        fetchCart();
-        lastFetchTimeRef.current = currentTime;
+        // Only fetch cart if data is stale according to context
+        if (isCartDataStale()) {
+          // First check if there's a guest cart (if needed)
+          if (!isAuthenticated) {
+            try {
+              const guestCartResult = await refetchGuestCart();
+              const guestCartInfo = guestCartResult.data;
+
+              // Only fetch full cart if we actually have a guest cart with items
+              if (guestCartInfo?.hasGuestCart && guestCartInfo.itemCount > 0) {
+                await fetchCart();
+              }
+            } catch (error) {
+              console.error("Error checking guest cart:", error);
+              // Fallback to direct cart fetch
+              await fetchCart();
+            }
+          } else {
+            // For authenticated users, directly fetch cart
+            await fetchCart();
+          }
+        }
       }
-    }
-  }, [isOpen, fetchCart, queryClient]);
+    };
+
+    checkAndFetchCart();
+  }, [
+    isOpen,
+    fetchCart,
+    isCartDataStale,
+    isAuthenticated,
+    refetchGuestCart,
+    hasGuestCart,
+  ]);
 
   const totalItems = cart?.totalItems || 0;
   const totalPrice = cart?.totalPrice ? parseFloat(cart.totalPrice) : 0;
@@ -72,8 +105,7 @@ const MiniCart: React.FC<MiniCartProps> = ({ className = "" }) => {
   const handleRemoveItem = async (itemId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     await removeFromCart(itemId);
-    // Update last fetch time after cart modification
-    lastFetchTimeRef.current = Date.now();
+    // Cart context will handle invalidation and refetching
   };
 
   return (

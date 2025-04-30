@@ -50,7 +50,7 @@ export const useLogin = () => {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.auth.currentUser });
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-      }
+      },
     }
   );
 };
@@ -82,7 +82,7 @@ export const useRegister = () => {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.auth.currentUser });
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-      }
+      },
     }
   );
 };
@@ -99,10 +99,7 @@ export const useLogout = () => {
       // Invalidate all relevant cache after logout
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.auth.currentUser });
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.guestCheck });
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.checkExisting });
-      }
+      },
     }
   );
 };
@@ -129,7 +126,7 @@ export const useUpdateProfile = () => {
       onSuccess: (data) => {
         queryClient.setQueryData(QueryKeys.auth.currentUser, data);
         queryClient.invalidateQueries({ queryKey: QueryKeys.auth.currentUser });
-      }
+      },
     }
   );
 };
@@ -159,13 +156,11 @@ export const useChangePassword = () => {
  * Hook for requesting password reset with better typing
  */
 export const useForgotPassword = () => {
-  return useApiMutation<null, string>(
-    async (email: string) => {
-      return apiService.post<ApiResponse<null>>(AUTH_ENDPOINTS.FORGOT_PASSWORD, {
-        email,
-      });
-    }
-  );
+  return useApiMutation<null, string>(async (email: string) => {
+    return apiService.post<ApiResponse<null>>(AUTH_ENDPOINTS.FORGOT_PASSWORD, {
+      email,
+    });
+  });
 };
 
 /**
