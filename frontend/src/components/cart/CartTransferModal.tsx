@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Dialog,
   DialogPanel,
@@ -8,6 +8,20 @@ import {
 } from "@headlessui/react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { CartTransferAction } from "../../types/cart";
+
+// Helper function to get action description
+const getActionDescription = (action: CartTransferAction): string => {
+  switch (action) {
+    case "merge":
+      return "Add guest cart items to your existing cart (keeps duplicates)";
+    case "replace":
+      return "Replace your current cart with the guest cart items";
+    case "copy":
+      return "Add guest cart items and keep both carts active";
+    default:
+      return "";
+  }
+};
 
 interface CartTransferModalProps {
   isOpen: boolean;
@@ -24,67 +38,51 @@ export const CartTransferModal: React.FC<CartTransferModalProps> = ({
   guestItemCount,
   userItemCount,
 }) => {
-  const [transferAction, setTransferAction] =
-    useState<CartTransferAction>("merge");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transferAction, setTransferAction] =
+    useState<CartTransferAction>("merge");
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // Reset state when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setError(null);
-      setIsLoading(false);
-      setShowConfirmation(false);
-
-      // Default to merge but use replace if user cart is empty
-      if (userItemCount === 0) {
-        setTransferAction("replace");
-      } else {
-        setTransferAction("merge");
-      }
-    }
-  }, [isOpen, userItemCount]);
-
   const handleTransfer = async () => {
-    // Show confirmation step first if replacing user cart
-    if (
-      transferAction === "replace" &&
-      userItemCount > 0 &&
-      !showConfirmation
-    ) {
-      setShowConfirmation(true);
-      return;
-    }
+    setIsLoading(true);
+    setError(null);
 
     try {
-      setIsLoading(true);
-      setError(null);
+      if (transferAction === "replace") {
+        setShowConfirmation(true);
+        setIsLoading(false);
+        return;
+      }
 
       const success = await onTransfer(transferAction);
-
-      if (!success) {
-        setError("Transfer failed. Please try again.");
+      if (success) {
+        onClose();
+      } else {
+        setError("Failed to process cart. Please try again.");
       }
     } catch (err) {
-      console.error("Error during cart transfer:", err);
-      setError("An unexpected error occurred. Please try again.");
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Helper function to explain transfer action in user-friendly terms
-  const getActionDescription = (action: CartTransferAction): string => {
-    switch (action) {
-      case "merge":
-        return "Add guest cart items to your existing cart (keeps duplicates)";
-      case "replace":
-        return "Replace your current cart with the guest cart items";
-      case "copy":
-        return "Add guest cart items and keep both carts active";
-      default:
-        return "";
+  const handleConfirmedTransfer = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const success = await onTransfer(transferAction);
+      if (success) {
+        onClose();
+      } else {
+        setError("Failed to process cart. Please try again.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -168,7 +166,7 @@ export const CartTransferModal: React.FC<CartTransferModalProps> = ({
                       <button
                         type="button"
                         className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                        onClick={handleTransfer}
+                        onClick={handleConfirmedTransfer}
                         disabled={isLoading}
                       >
                         {isLoading ? (
@@ -371,3 +369,5 @@ export const CartTransferModal: React.FC<CartTransferModalProps> = ({
     </Transition>
   );
 };
+
+export default CartTransferModal;

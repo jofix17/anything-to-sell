@@ -116,38 +116,35 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // Helper function to handle guest cart auto transfer
-  const handleGuestCartAutoTransfer = useCallback(
-    async (userId: string, sourceCartId: string) => {
-      try {
-        await transferCartMutation.mutateAsync({
-          sourceCartId: sourceCartId,
-          targetUserId: userId,
-          actionType: "replace",
-        });
+  const handleGuestCartAutoTransfer = useCallback(async (userId: string, sourceCartId: string) => {
+    try {
+      await transferCartMutation.mutateAsync({
+        sourceCartId: sourceCartId,
+        targetUserId: userId,
+        actionType: "replace",
+      });
 
-        // Reset guest cart state after successful transfer
-        setHasGuestCart(false);
-        setGuestCartItemCount(0);
-        setSourceCart(null);
+      // Reset guest cart state after successful transfer
+      setHasGuestCart(false);
+      setGuestCartItemCount(0);
+      setSourceCart(null);
 
-        // Refresh cart data
-        queryClient.invalidateQueries({ queryKey: ["cart"] });
-        queryClient.invalidateQueries({ queryKey: ["guestCart"] });
-        await fetchCart(true);
+      await fetchCart(true);
 
-        showNotification("Guest cart items have been added to your account", {
+      showNotification(
+        "Guest cart items have been added to your account", 
+        {
           type: "success",
           dismissible: true,
-        });
-
-        return true;
-      } catch (error) {
-        console.error("Auto cart transfer failed:", error);
-        return false;
-      }
-    },
-    [transferCartMutation, fetchCart, showNotification]
-  );
+        }
+      );
+      
+      return true;
+    } catch (error) {
+      console.error("Auto cart transfer failed:", error);
+      return false;
+    }
+  }, [transferCartMutation, fetchCart, showNotification]);
 
   // Method to check for cart conflicts with better duplicate prevention
   const checkCartConflicts = useCallback(
@@ -157,9 +154,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         (checkingCartsRef.current || transferInProgressRef.current) &&
         !force
       ) {
-        console.log(
-          "Skipping duplicate cart conflict check - already in progress"
-        );
+        console.log("Skipping duplicate cart conflict check - already in progress");
         return;
       }
 
@@ -204,20 +199,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           if (isAuthenticated && user) {
             const userCartResult = await refetchUserCart();
             const userCartInfo = userCartResult.data;
-
+            
             if (!userCartInfo) {
               console.log("No user cart info received");
               setHasUserCart(false);
               setUserCartItemCount(0);
-
+              
               // Auto transfer guest cart (no user cart exists)
               if (user && guestCartInfo.cartId) {
-                await handleGuestCartAutoTransfer(
-                  user.id,
-                  guestCartInfo.cartId
-                );
+                await handleGuestCartAutoTransfer(user.id, guestCartInfo.cartId);
               }
-
+              
               setIsInitialized(true);
               cartInitializedRef.current = true;
               checkingCartsRef.current = false;
@@ -249,12 +241,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
               console.log(
                 "Auto transferring guest cart to user (no user cart or empty cart)"
               );
-
+              
               if (user && guestCartInfo.cartId) {
-                await handleGuestCartAutoTransfer(
-                  user.id,
-                  guestCartInfo.cartId
-                );
+                await handleGuestCartAutoTransfer(user.id, guestCartInfo.cartId);
               }
             }
           }
@@ -408,11 +397,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           actionType: action,
         });
 
-        // Invalidate cart queries after successful transfer
-        queryClient.invalidateQueries({ queryKey: ["cart"] });
-        queryClient.invalidateQueries({ queryKey: ["guestCart"] });
-        queryClient.invalidateQueries({ queryKey: ["userCart"] });
-
         // Reset guest cart state
         if (action === "merge" || action === "replace") {
           setHasGuestCart(false);
@@ -455,7 +439,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         transferInProgressRef.current = false;
       }
     },
-    [sourceCart, user, transferCartMutation, showNotification, fetchCart]
+    [
+      sourceCart,
+      user,
+      transferCartMutation,
+      showNotification,
+      fetchCart,
+    ]
   );
 
   // Reset transfer modal flags when modal is closed
@@ -506,7 +496,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     // Create a debounced function for cart checking
     let timeoutId: NodeJS.Timeout | null = null;
-
+    
     // If loginJustCompleted flag is true, perform cart check
     if (
       loginJustCompleted &&
@@ -520,13 +510,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-
-      // Reset cache but don't fetch immediately - this will help
-      // prevent multiple simultaneous API calls
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-      queryClient.invalidateQueries({ queryKey: ["guestCart"] });
-      queryClient.invalidateQueries({ queryKey: ["userCart"] });
-
       // Reset lastFetchTime to ensure fresh data
       lastFetchTimeRef.current = 0;
 
@@ -538,7 +521,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }, 500); // Increased to 500ms to better group updates
     }
-
+    
     // Clean up timeout on unmount
     return () => {
       if (timeoutId) {
@@ -546,24 +529,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     };
   }, [loginJustCompleted, isAuthenticated, checkCartConflicts]);
-
+  
   // Initial cart check on component mount - with better duplicate prevention
   useEffect(() => {
     const initializeCartOnce = () => {
       // Only run if not already initialized and not already checking
-      if (
-        !cartInitializedRef.current &&
-        !isInitialized &&
-        !checkingCartsRef.current
-      ) {
+      if (!cartInitializedRef.current && !isInitialized && !checkingCartsRef.current) {
         console.log("Initial cart check on component mount");
         checkCartConflicts();
       }
     };
-
+    
     // Slight delay to avoid race conditions with other initialization
-    const timeoutId = setTimeout(initializeCartOnce, 100);
-
+    const timeoutId = setTimeout(initializeCartOnce, 100) as NodeJS.Timeout;
+    
     return () => clearTimeout(timeoutId);
   }, [checkCartConflicts, isInitialized]);
 
@@ -589,8 +568,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     hasUserCart,
     guestCartItemCount,
     userCartItemCount,
-    isCartDataStale,
-    checkCartConflicts,
+    isCartDataStale, // Add the new method to the context
+    checkCartConflicts, // Expose the checkCartConflicts method
   };
 
   return (
@@ -601,6 +580,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           isOpen={showTransferModal}
           onClose={() => {
             setShowTransferModal(false);
+            // Don't reset transferModalShownRef here - that happens in the effect
           }}
           onTransfer={transferCart}
           guestItemCount={guestCartItemCount}

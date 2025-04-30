@@ -158,14 +158,6 @@ export const useTransferCart = () => {
           action_type: actionType, // Match backend parameter name
         }
       );
-    },
-    {
-      onSuccess: () => {
-        // Invalidate all cart-related queries after transfer
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.guestCheck });
-        queryClient.invalidateQueries({ queryKey: QueryKeys.cart.checkExisting });
-      }
     }
   );
 };

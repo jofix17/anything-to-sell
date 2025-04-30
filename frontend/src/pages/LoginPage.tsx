@@ -3,7 +3,6 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Formik, Form, Field } from "formik";
 import * as Yup from "yup";
 import { useNotification } from "../context/NotificationContext";
-import { useCartContext } from "../context/CartContext";
 import Button from "../components/common/Button";
 import { useAuthContext } from "../context/AuthContext";
 import { LoginCredentials } from "../types/auth";
@@ -26,7 +25,6 @@ const LoginPage: React.FC = () => {
   // Context hooks
   const { login, isAuthenticated, isLoading } = useAuthContext();
   const { showNotification } = useNotification();
-  const { fetchCart, checkCartConflicts } = useCartContext();
 
   // Navigation hooks
   const navigate = useNavigate();
@@ -37,10 +35,10 @@ const LoginPage: React.FC = () => {
   const isMountedRef = useRef(true);
   const loginAttemptedRef = useRef(false);
   const loginSuccessfulRef = useRef(false);
-  const redirectTimerRef = useRef<number | null>(null);
+  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const postLoginFlowStartedRef = useRef(false);
   const redirectedRef = useRef(false); // Track if we've already redirected
-  
+
   // New ref to track cart processing status
   const cartProcessingRef = useRef(false);
 
@@ -105,25 +103,26 @@ const LoginPage: React.FC = () => {
     cartProcessingRef.current = true;
     
     try {
-      // First explicitly check for cart conflicts
-      console.log("LoginPage: Explicitly checking for cart conflicts");
-      await checkCartConflicts(true);
+      // Let AuthContext and CartContext handle the cart operations naturally
+      // instead of explicitly calling them here, which can cause duplicate calls
       
-      // Wait a moment to ensure cart transfer modal can show if needed
+      // Wait a moment to ensure all context changes propagate
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Then fetch the cart to ensure we have the latest state
-      console.log("LoginPage: Fetching cart as part of post-login flow");
-      await fetchCart();
+      // Rather than explicitly checking cart conflicts here,
+      // we'll set up a timer to redirect after giving contexts time to process
+      const redirectTimer = setTimeout(() => {
+        redirectToDestination();
+      }, 1000) as NodeJS.Timeout;
       
-      // Wait a bit longer to ensure any cart transfer logic completes
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Store the timer in the ref for cleanup
+      redirectTimerRef.current = redirectTimer;
     } catch (error) {
-      console.error("Error in post-login cart handling:", error);
+      console.error("Error in post-login flow:", error);
+      // Even on error, redirect to destination
+      redirectToDestination();
     } finally {
       cartProcessingRef.current = false;
-      // Redirect after handling cart
-      redirectToDestination();
     }
   };
 
