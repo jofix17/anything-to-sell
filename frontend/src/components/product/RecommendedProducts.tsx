@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useCart } from "../../context/CartContext";
 import StarRating from "../common/StarRating";
 import Button from "../common/Button";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { toast } from "react-toastify";
+import { useCartContext } from "../../context/CartContext";
 
 interface Product {
   id: string;
@@ -30,7 +30,7 @@ const RecommendedProducts: React.FC<RecommendedProductsProps> = ({
   limit = 4,
   excludeIds = [],
 }) => {
-  const { addToCart } = useCart();
+  const { addToCart } = useCartContext();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 

@@ -1,9 +1,9 @@
 import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { Link } from "react-router-dom";
-import { useFeaturedProducts } from "../../../services/productService";
 import SkeletonGrid from "../SkeletonGrid";
 import ErrorCard from "../ErrorCard";
 import ProductCard from "../../product/ProductCard";
+import { useFeaturedProducts } from "../../../hooks/api/useProductApi";
 
 const FeaturedProductSection = () => {
   const featuredProductsQuery = useFeaturedProducts();
@@ -30,7 +30,7 @@ const FeaturedProductSection = () => {
           <ErrorCard message="Failed to load featured products. Please try again." />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {featuredProductsQuery.data?.data.map((product) => (
+            {featuredProductsQuery.data?.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </div>

@@ -86,7 +86,7 @@ Rails.application.routes.draw do
       resources :products, only: [ :index, :show ] do
         collection do
           get :featured
-          get :new_arrivals
+          get "new-arrivals", to: "products#new_arrivals"
         end
         resources :reviews, only: [ :index, :create ]
       end

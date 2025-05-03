@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 import Button from "../common/Button";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { toast } from "react-toastify";
-import { useProducts } from "../../services/productService";
 import { Category } from "../../types/category";
 import { useCartContext } from "../../context/CartContext";
 import { Product, ProductFilterParams } from "../../types/product";
+import { useProducts } from "../../hooks/api/useProductApi";
 
 interface RelatedProductsProps {
   currentProductId: string;
@@ -20,14 +20,14 @@ const RelatedProducts: React.FC<RelatedProductsProps> = ({
   limit = 4,
 }) => {
   const { addToCart } = useCartContext();
-  
+
   // Create filter params to get products from the same category
   const filterParams: ProductFilterParams = {
     categoryId: category.id,
     perPage: limit + 1, // Fetch one extra to account for potential current product
-    page: 1
+    page: 1,
   };
-  
+
   // Fetch products in the same category using the standard products endpoint
   const {
     data: relatedProductsResponse,
@@ -39,7 +39,9 @@ const RelatedProducts: React.FC<RelatedProductsProps> = ({
 
   // Extract products from the API response and filter out the current product
   const productsData = relatedProductsResponse?.data || [];
-  const products = productsData.filter(product => product.id !== currentProductId).slice(0, limit);
+  const products = productsData
+    .filter((product) => product.id !== currentProductId)
+    .slice(0, limit);
 
   const handleAddToCart = (product: Product) => {
     addToCart(product.id, 1);
@@ -60,7 +62,9 @@ const RelatedProducts: React.FC<RelatedProductsProps> = ({
 
   return (
     <div className="mt-12 mb-16">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">You may also like</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+        You may also like
+      </h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {products.map((product) => (
           <div

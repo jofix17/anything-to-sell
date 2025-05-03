@@ -1,16 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  useCategories,
-  useProductDetail,
-  useProductReviews,
-} from "../../services/productService";
-import {
   useApproveProduct,
   useRejectProduct,
 } from "../../services/adminService";
 import { format } from "date-fns";
 import { toast } from "react-toastify";
+import { useCategories } from "../../hooks/api/useCategoryApi";
+import { useProductDetail, useProductReviews } from "../../hooks/api/useProductApi";
 
 const AdminProductDetailPage: React.FC = () => {
   const navigate = useNavigate();

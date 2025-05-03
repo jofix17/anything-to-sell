@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  useCategories,
-  useProductDetail,
-  useUpdateProduct,
-  useUploadProductImage,
-  useDeleteProductImage,
-  useSetPrimaryImage,
-} from "../../services/productService";
-import { Category } from "../../types";
+import { useProductDetail } from "../../hooks/api/useProductApi";
+import { useCategories } from "../../hooks/api/useCategoryApi";
+import { Category } from "../../types/category";
+
 
 interface ProductImage {
   id: string;

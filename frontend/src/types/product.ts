@@ -62,3 +62,11 @@ export interface ProductCreateData {
   isActive: boolean; // matches Rails is_active
 }
 
+export interface PendingCountResponse {
+  count: number;
+}
+
+export interface RejectProductParams {
+  id: string;
+  rejectionReason?: string;
+}

@@ -19,6 +19,34 @@ class Product < ApplicationRecord
   scope :on_sale, -> { where("sale_price IS NOT NULL AND sale_price < price") }
 
   # Methods
+  def self.with_active_collections
+    eager_load(collection_products: :collection)
+      .where(collections: { is_active: true })
+  end
+
+  # Method to efficiently preload collection IDs for a set of products
+  def self.preload_collection_ids(products)
+    # Get all product IDs
+    product_ids = products.map(&:id)
+
+    # Get collection IDs in a single query
+    collection_mappings = CollectionProduct
+      .joins(:collection)
+      .where(product_id: product_ids)
+      .where(collections: { is_active: true })
+      .select("product_id, collection_id")
+      .group_by(&:product_id)
+
+    # Assign collection IDs to each product
+    products.each do |product|
+      product.instance_variable_set(
+        :@preloaded_collection_ids,
+        (collection_mappings[product.id] || []).map(&:collection_id)
+      )
+    end
+
+    products
+  end
 
   # Generate a unique SKU
   def self.generate_sku(vendor_id, category_id)

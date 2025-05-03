@@ -1,139 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React from "react";
+import { Link } from "react-router-dom";
 import {
-  HomeIcon,
-  ShoppingBagIcon,
-  UserIcon,
-  ShoppingCartIcon,
-  InformationCircleIcon,
-  PhoneIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
-  ArrowRightEndOnRectangleIcon as LogoutIcon,
-} from '@heroicons/react/24/outline';
-import productService from '../../services/productService';
-import { Category } from '../../types/category';
-import { useAuthContext } from '../../context/AuthContext';
+  XMarkIcon as XIcon,
+} from "@heroicons/react/24/outline";
+import { APP_NAME } from "../../utils/appName";
+import { Category } from "../../types/category";
+import { User } from "../../types/auth";
+
 interface MobileMenuProps {
-  isOpen: boolean;
+  categories: Category[];
+  isCategoriesLoading: boolean;
+  categoriesError: unknown;
+  isCategoryDropdownOpen: boolean;
+  setIsCategoryDropdownOpen: (isOpen: boolean) => void;
+  isAuthenticated: boolean;
+  user: User | null;
+  onLogout: () => void;
   onClose: () => void;
 }
 
-const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
-  const [isAccountOpen, setIsAccountOpen] = useState(false);
-  const { isAuthenticated, user, logout } = useAuthContext();
-  const navigate = useNavigate();
-
-  // Fetch categories
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categoryData = await productService.getCategories();
-        setCategories(categoryData.data);
-      } catch (error) {
-        console.error('Failed to fetch categories:', error);
-      }
-    };
-
-    if (isOpen) {
-      fetchCategories();
-    }
-  }, [isOpen]);
-
-  // Handle logout
-  const handleLogout = async () => {
-    try {
-      await logout();
-      onClose();
-      navigate('/');
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  };
-
-  // Prevent scrolling when menu is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
+const MobileMenu: React.FC<MobileMenuProps> = ({
+  categories,
+  isCategoriesLoading,
+  categoriesError,
+  isCategoryDropdownOpen,
+  setIsCategoryDropdownOpen,
+  isAuthenticated,
+  user,
+  onLogout,
+  onClose,
+}) => {
   return (
-    <div className="fixed inset-0 z-40 bg-white lg:hidden overflow-y-auto">
-      <div className="flex flex-col h-full">
-        {/* Authenticated user info */}
-        {isAuthenticated && (
-          <div className="bg-primary-600 px-4 py-4 text-white">
-            <div className="flex items-center">
-              <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-xl font-bold">
-                {user?.firstName?.[0]}{user?.lastName?.[0]}
-              </div>
-              <div className="ml-3">
-                <p className="font-medium">{user?.firstName} {user?.lastName}</p>
-                <p className="text-sm text-white/80">{user?.email}</p>
-              </div>
-            </div>
-          </div>
-        )}
+    <div className="lg:hidden fixed inset-0 z-40 bg-black bg-opacity-50">
+      <div className="fixed inset-y-0 left-0 w-64 max-w-sm bg-white shadow-lg transform z-50">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+          <span className="font-bold text-lg">{APP_NAME}</span>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            aria-label="Close menu"
+          >
+            <XIcon className="w-5 h-5" />
+          </button>
+        </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-2 py-4 space-y-2">
-          {/* Home */}
+        <nav className="p-4">
           <Link
             to="/"
-            className="flex items-center px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
+            className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
             onClick={onClose}
           >
-            <HomeIcon className="w-6 h-6 mr-3 text-primary-600" />
-            <span className="font-medium">Home</span>
+            Home
           </Link>
 
-          {/* Categories */}
-          <div>
+          {/* Mobile categories dropdown */}
+          <div className="py-2">
             <button
-              onClick={() => setIsCategoriesOpen(!isCategoriesOpen)}
-              className="flex items-center justify-between w-full px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
+              onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+              className="flex items-center justify-between w-full text-base font-semibold text-gray-700 hover:text-primary-600"
+              aria-expanded={isCategoryDropdownOpen}
             >
-              <div className="flex items-center">
-                <ShoppingBagIcon className="w-6 h-6 mr-3 text-primary-600" />
-                <span className="font-medium">Categories</span>
-              </div>
-              {isCategoriesOpen ? (
-                <ChevronDownIcon className="w-5 h-5" />
-              ) : (
-                <ChevronRightIcon className="w-5 h-5" />
-              )}
+              <span>Categories</span>
+              <ChevronDownIcon
+                className={`w-4 h-4 transition-transform ${
+                  isCategoryDropdownOpen ? "rotate-180" : ""
+                }`}
+              />
             </button>
 
-            {isCategoriesOpen && (
-              <div className="ml-12 mt-2 space-y-1">
-                {categories.length === 0 ? (
-                  <p className="px-4 py-2 text-sm text-gray-500">Loading categories...</p>
+            {isCategoryDropdownOpen && (
+              <div className="pl-4 mt-2 space-y-2">
+                {isCategoriesLoading ? (
+                  <div className="text-sm text-gray-500">
+                    Loading categories...
+                  </div>
+                ) : categoriesError ? (
+                  <div className="text-sm text-red-500">
+                    Error loading categories
+                  </div>
                 ) : (
-                  categories.map(category => (
-                    <Link
-                      key={category.id}
-                      to={`/products?category=${category.id}`}
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      {category.name}
-                    </Link>
-                  ))
+                  categories
+                    .filter((cat) => cat.parentId === null)
+                    .map((category) => (
+                      <div key={category.id}>
+                        <Link
+                          to={`/products?category=${category.id}`}
+                          className="block py-1 text-sm text-gray-600 hover:text-primary-600"
+                          onClick={onClose}
+                        >
+                          {category.name}
+                        </Link>
+
+                        {/* Mobile subcategories */}
+                        {categories.filter(
+                          (sub) => sub.parentId === category.id
+                        ).length > 0 && (
+                          <div className="pl-3 mt-1 space-y-1">
+                            {categories
+                              .filter((sub) => sub.parentId === category.id)
+                              .map((subcategory) => (
+                                <Link
+                                  key={subcategory.id}
+                                  to={`/products?category=${subcategory.id}`}
+                                  className="block py-1 text-xs text-gray-500 hover:text-primary-600"
+                                  onClick={onClose}
+                                >
+                                  {subcategory.name}
+                                </Link>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
                 )}
                 <Link
                   to="/products"
-                  className="block px-4 py-2 text-primary-600 font-medium hover:bg-gray-100 rounded-md"
+                  className="block py-1 text-sm font-semibold text-primary-600 hover:text-primary-800"
                   onClick={onClose}
                 >
                   View All Categories
@@ -142,153 +125,109 @@ const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          {/* Shop */}
           <Link
             to="/products"
-            className="flex items-center px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
+            className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
             onClick={onClose}
           >
-            <ShoppingBagIcon className="w-6 h-6 mr-3 text-primary-600" />
-            <span className="font-medium">Shop</span>
+            Shop
           </Link>
 
-          {/* Cart */}
-          <Link
-            to="/cart"
-            className="flex items-center px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
-            onClick={onClose}
-          >
-            <ShoppingCartIcon className="w-6 h-6 mr-3 text-primary-600" />
-            <span className="font-medium">Cart</span>
-          </Link>
-
-          {/* About */}
           <Link
             to="/about"
-            className="flex items-center px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
+            className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
             onClick={onClose}
           >
-            <InformationCircleIcon className="w-6 h-6 mr-3 text-primary-600" />
-            <span className="font-medium">About Us</span>
+            About
           </Link>
 
-          {/* Contact */}
           <Link
             to="/contact"
-            className="flex items-center px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
+            className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
             onClick={onClose}
           >
-            <PhoneIcon className="w-6 h-6 mr-3 text-primary-600" />
-            <span className="font-medium">Contact Us</span>
+            Contact
           </Link>
 
-          {/* Account */}
-          <div>
-            <button
-              onClick={() => setIsAccountOpen(!isAccountOpen)}
-              className="flex items-center justify-between w-full px-4 py-3 text-gray-800 hover:bg-gray-100 rounded-md"
-            >
-              <div className="flex items-center">
-                <UserIcon className="w-6 h-6 mr-3 text-primary-600" />
-                <span className="font-medium">Account</span>
-              </div>
-              {isAccountOpen ? (
-                <ChevronDownIcon className="w-5 h-5" />
-              ) : (
-                <ChevronRightIcon className="w-5 h-5" />
+          <div className="border-t border-gray-200 my-4"></div>
+
+          {/* Mobile user actions */}
+          {isAuthenticated ? (
+            <>
+              <Link
+                to="/profile"
+                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                onClick={onClose}
+              >
+                My Profile
+              </Link>
+
+              <Link
+                to="/orders"
+                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                onClick={onClose}
+              >
+                My Orders
+              </Link>
+
+              <Link
+                to="/wishlist"
+                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                onClick={onClose}
+              >
+                My Wishlist
+              </Link>
+
+              {user?.role === "admin" && (
+                <Link
+                  to="/admin/dashboard"
+                  className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                  onClick={onClose}
+                >
+                  Admin Dashboard
+                </Link>
               )}
-            </button>
 
-            {isAccountOpen && (
-              <div className="ml-12 mt-2 space-y-1">
-                {isAuthenticated ? (
-                  <>
-                    <Link
-                      to="/profile"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      Profile
-                    </Link>
-                    <Link
-                      to="/orders"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      Orders
-                    </Link>
-                    <Link
-                      to="/wishlist"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      Wishlist
-                    </Link>
-                    {user?.role === 'admin' && (
-                      <Link
-                        to="/admin/dashboard"
-                        className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                        onClick={onClose}
-                      >
-                        Admin Dashboard
-                      </Link>
-                    )}
-                    {user?.role === 'vendor' && (
-                      <Link
-                        to="/vendor/dashboard"
-                        className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                        onClick={onClose}
-                      >
-                        Vendor Dashboard
-                      </Link>
-                    )}
-                    <button
-                      onClick={handleLogout}
-                      className="flex items-center w-full px-4 py-2 text-red-600 hover:bg-gray-100 rounded-md"
-                    >
-                      <LogoutIcon className="w-5 h-5 mr-2" />
-                      Logout
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      to="/login"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      Login
-                    </Link>
-                    <Link
-                      to="/register"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      Register
-                    </Link>
-                    <Link
-                      to="/vendor/register"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-primary-600 rounded-md"
-                      onClick={onClose}
-                    >
-                      Become a Vendor
-                    </Link>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+              {user?.role === "vendor" && (
+                <Link
+                  to="/vendor/dashboard"
+                  className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                  onClick={onClose}
+                >
+                  Vendor Dashboard
+                </Link>
+              )}
+
+              <button
+                onClick={() => {
+                  onLogout();
+                  onClose();
+                }}
+                className="block w-full text-left py-2 text-base font-semibold text-red-600 hover:text-red-800"
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                onClick={onClose}
+              >
+                Login
+              </Link>
+
+              <Link
+                to="/register"
+                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
+                onClick={onClose}
+              >
+                Register
+              </Link>
+            </>
+          )}
         </nav>
-
-        {/* Close button */}
-        <div className="border-t border-gray-200 p-4">
-          <button
-            onClick={onClose}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-md"
-          >
-            Close Menu
-          </button>
-        </div>
       </div>
     </div>
   );

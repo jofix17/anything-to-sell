@@ -8,8 +8,8 @@ import {
   usePendingProductsCount,
   useAdminVendors,
 } from "../../services/adminService";
-import { useCategories } from "../../services/productService";
-import { ProductFilterParams } from "../../types";
+import { ProductFilterParams } from "../../types/product";
+import { useCategories } from "../../hooks/api/useCategoryApi";
 
 const AdminProductsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);

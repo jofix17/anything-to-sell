@@ -2,11 +2,11 @@ import { ArrowRightIcon } from "@heroicons/react/24/outline";
 import { Link } from "react-router-dom";
 import SkeletonGrid from "../SkeletonGrid";
 import ErrorCard from "../ErrorCard";
-import { useNewArrivals } from "../../../services/productService";
 import ProductCard from "../../product/ProductCard";
+import { useNewArrivals } from "../../../hooks/api/useProductApi";
 
 const NewArrivalSection = () => {
-  const newArrivalsQuery = useNewArrivals();
+  const { data, isLoading, error } = useNewArrivals();
 
   return (
     <section className="py-16 bg-gray-50">
@@ -24,13 +24,13 @@ const NewArrivalSection = () => {
           </Link>
         </div>
 
-        {newArrivalsQuery.isLoading ? (
+        {isLoading ? (
           <SkeletonGrid count={8} />
-        ) : newArrivalsQuery.error ? (
+        ) : error ? (
           <ErrorCard message="Failed to load new arrivals. Please try again." />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {newArrivalsQuery.data?.data.map((product) => (
+            {data?.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
           </div>

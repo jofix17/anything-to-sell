@@ -4,15 +4,22 @@ import {
   UserIcon,
   HeartIcon,
   Bars3Icon as MenuIcon,
-  MagnifyingGlassIcon as SearchIcon,
   ChevronDownIcon,
   XMarkIcon as XIcon,
 } from "@heroicons/react/24/outline";
-import { useCategories } from "../../services/productService";
-import { APP_NAME } from "../../utils/appName";
+
 import CartMini from "../cart/CartMini";
 import useOutsideClick from "../../hooks/useOutsideClick";
 import { useAuthContext } from "../../context/AuthContext";
+import MobileMenu from "./MobileMenu";
+import { useCategories } from "../../hooks/api/useCategoryApi";
+import Logo from "./Logo";
+import { getColorClasses } from "../../utils/misc";
+import Search from "./Search";
+import { PUBLIC_ENDPOINTS } from "../../utils/constants";
+import HeaderLink from "../header/HeaderLink";
+import CategoryDropdown from "../header/CategoryDropdown";
+import UserDropdown from "../header/UserDropdown";
 
 interface HeaderProps {
   onMobileMenuToggle: () => void;
@@ -23,18 +30,17 @@ const Header: React.FC<HeaderProps> = ({
   onMobileMenuToggle,
   isMobileMenuOpen,
 }) => {
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState<boolean>(false);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] =
+    useState<boolean>(false);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState<boolean>(false);
+
   const { isAuthenticated, user, logout } = useAuthContext();
   const navigate = useNavigate();
 
   // Refs for dropdown containers
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
 
   // Use our custom hook to handle outside clicks
   useOutsideClick(categoryDropdownRef, () => {
@@ -45,19 +51,15 @@ const Header: React.FC<HeaderProps> = ({
     if (isUserDropdownOpen) setIsUserDropdownOpen(false);
   });
 
-  useOutsideClick(searchRef, () => {
-    if (isSearchOpen) setIsSearchOpen(false);
-  });
-
-  // Fetch categories using the React Query hook
+  // Fetch categories using the enhanced React Query hook
   const {
-    data: categoriesData,
+    data: categories,
     isLoading: isCategoriesLoading,
     error: categoriesError,
-  } = useCategories();
-
-  // Extract categories from the API response
-  const categories = categoriesData || [];
+  } = useCategories({
+    // Add specific options for the header component
+    staleTime: 10 * 60 * 1000, // 10 minutes - longer stale time for header navigation
+  });
 
   // Log any errors with categories fetching
   useEffect(() => {
@@ -76,80 +78,51 @@ const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Handle search submission
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/products?query=${encodeURIComponent(searchQuery)}`);
-      setIsSearchOpen(false);
-      setSearchQuery("");
-    }
-  };
-
   // Handle logout
   const handleLogout = async () => {
     try {
-      await logout();
-      navigate("/");
+      logout();
+      navigate(PUBLIC_ENDPOINTS.HOME);
     } catch (error) {
       console.error("Logout failed:", error);
     }
   };
 
-  // Determine the text and hover color classes based on scroll state
-  const getColorClasses = () => {
-    return isScrolled
-      ? "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-      : "text-primary-600 hover:text-gray-600 hover:bg-gray-100";
-  };
-
   return (
     <header
       className={`fixed w-full z-50 transition-all duration-300 ${
-        isScrolled || isMobileMenuOpen || isSearchOpen
+        isScrolled || isMobileMenuOpen
           ? "bg-white shadow-md py-2"
           : "bg-transparent text-primary py-4"
       }`}
     >
       <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between relative">
           {/* Mobile menu button */}
-          <button
-            onClick={onMobileMenuToggle}
-            className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
-          >
-            {isMobileMenuOpen ? (
-              <XIcon className="w-6 h-6" />
-            ) : (
-              <MenuIcon className="w-6 h-6" />
-            )}
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={onMobileMenuToggle}
+              className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none"
+              aria-label="Toggle mobile menu"
+            >
+              {isMobileMenuOpen ? (
+                <XIcon className="w-6 h-6" />
+              ) : (
+                <MenuIcon className="w-6 h-6" />
+              )}
+            </button>
 
-          {/* Logo */}
-          <div className="flex-shrink-0">
-            <Link to="/" className="flex items-center">
-              <span
-                className={`font-bold text-xl ${
-                  isScrolled ? "text-gray-900" : "text-primary-600"
-                }`}
-              >
-                {APP_NAME}
-              </span>
-            </Link>
+            {/* Logo */}
+            <Logo isScrolled={isScrolled} />
           </div>
 
-          {/* Desktop navigation */}
-          <nav className="hidden lg:flex items-center space-x-8">
-            <Link
-              to="/"
-              className={`text-sm font-semibold ${
-                isScrolled
-                  ? "text-gray-700 hover:text-gray-900"
-                  : "text-primary-600"
-              }`}
-            >
-              Home
-            </Link>
+          {/* Desktop navigation - fixed width to prevent shifting */}
+          <nav className="hidden lg:flex items-center space-x-8 flex-shrink-0">
+            <HeaderLink
+              to={PUBLIC_ENDPOINTS.HOME}
+              isScrolled={isScrolled}
+              title="Home"
+            />
 
             {/* Categories dropdown */}
             <div ref={categoryDropdownRef} className="relative">
@@ -174,168 +147,62 @@ const Header: React.FC<HeaderProps> = ({
               </button>
 
               {isCategoryDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-md shadow-lg py-2 z-50">
-                  {isCategoriesLoading ? (
-                    <div className="px-4 py-2 text-sm text-gray-500">
-                      Loading categories...
-                    </div>
-                  ) : categoriesError ? (
-                    <div className="px-4 py-2 text-sm text-red-500">
-                      Error loading categories
-                    </div>
-                  ) : categories.length === 0 ? (
-                    <div className="px-4 py-2 text-sm text-gray-500">
-                      No categories found
-                    </div>
-                  ) : (
-                    categories
-                      .filter((category) => category.parentId === null)
-                      .map((category) => {
-                        // Find subcategories for this parent
-                        const subcategories = categories.filter(
-                          (sub) => sub.parentId === category.id
-                        );
-
-                        return (
-                          <div key={category.id} className="relative group">
-                            <Link
-                              to={`/products?category=${category.id}`}
-                              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex justify-between items-center"
-                              onClick={() => setIsCategoryDropdownOpen(false)}
-                            >
-                              <span>{category.name}</span>
-                              {subcategories.length > 0 && (
-                                <ChevronDownIcon className="w-4 h-4 ml-1" />
-                              )}
-                            </Link>
-
-                            {/* Subcategories dropdown */}
-                            {subcategories.length > 0 && (
-                              <div className="hidden group-hover:block absolute left-full top-0 w-56 bg-white rounded-md shadow-lg py-2 z-50">
-                                {subcategories.map((subcategory) => (
-                                  <Link
-                                    key={subcategory.id}
-                                    to={`/products?category=${subcategory.id}`}
-                                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                    onClick={() =>
-                                      setIsCategoryDropdownOpen(false)
-                                    }
-                                  >
-                                    {subcategory.name}
-                                  </Link>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                  )}
-                  <div className="border-t border-gray-100 mt-2 pt-2">
-                    <Link
-                      to="/products"
-                      className="block px-4 py-2 text-sm font-semibold text-primary-600 hover:bg-gray-100"
-                      onClick={() => setIsCategoryDropdownOpen(false)}
-                    >
-                      View All Categories
-                    </Link>
-                  </div>
-                </div>
+                <CategoryDropdown
+                  categories={categories || []}
+                  isLoading={isCategoriesLoading}
+                  error={categoriesError}
+                  onCategorySelect={() => setIsCategoryDropdownOpen(false)}
+                />
               )}
             </div>
 
-            <Link
-              to="/products"
-              className={`text-sm font-semibold ${
-                isScrolled
-                  ? "text-gray-700 hover:text-gray-900"
-                  : "text-primary-600"
-              }`}
-            >
-              Shop
-            </Link>
+            <HeaderLink
+              to={PUBLIC_ENDPOINTS.PRODUCT.ALL}
+              isScrolled={isScrolled}
+              title="Shop"
+            />
 
-            <Link
-              to="/about"
-              className={`text-sm font-semibold ${
-                isScrolled
-                  ? "text-gray-700 hover:text-gray-900"
-                  : "text-primary-600"
-              }`}
-            >
-              About
-            </Link>
-
-            <Link
-              to="/contact"
-              className={`text-sm font-semibold ${
-                isScrolled
-                  ? "text-gray-700 hover:text-gray-900"
-                  : "text-primary-600"
-              }`}
-            >
-              Contact
-            </Link>
+            <HeaderLink
+              to={PUBLIC_ENDPOINTS.ABOUT}
+              isScrolled={isScrolled}
+              title="About"
+            />
+            <HeaderLink
+              to={PUBLIC_ENDPOINTS.CONTACT}
+              isScrolled={isScrolled}
+              title="Contact"
+            />
           </nav>
 
-          {/* Right side icons */}
-          <div className="flex items-center space-x-4">
-            {/* Search button and dropdown */}
-            <div ref={searchRef} className="relative">
-              <button
-                onClick={() => setIsSearchOpen(!isSearchOpen)}
-                className={`p-2 rounded-md ${getColorClasses()}`}
-              >
-                <SearchIcon className="w-5 h-5" />
-              </button>
-
-              {/* Search bar */}
-              {isSearchOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 sm:w-80 bg-white rounded-md shadow-lg p-2 z-50">
-                  <form onSubmit={handleSearch}>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Search for products..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        autoFocus
-                      />
-                      <div className="absolute inset-y-0 left-0 flex items-center pl-3">
-                        <SearchIcon className="w-5 h-5 text-gray-400" />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsSearchOpen(false)}
-                        className="absolute inset-y-0 right-0 flex items-center pr-3"
-                      >
-                        <XIcon className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
+          {/* Right side icons - fixed width container to prevent layout shifts */}
+          <div className="flex items-center space-x-4 min-w-[250px] justify-end relative">
+            {/* Search with fixed position */}
+            <div className="relative min-w-[64px]">
+              <Search isScrolled={isScrolled} />
             </div>
 
             {/* Wishlist */}
             {isAuthenticated && (
               <Link
                 to="/wishlist"
-                className={`p-2 rounded-md ${getColorClasses()}`}
+                className={`p-2 rounded-md ${getColorClasses(isScrolled)}`}
+                aria-label="Wishlist"
               >
                 <HeartIcon className="w-5 h-5" />
               </Link>
             )}
 
             {/* Cart */}
-            <CartMini className={getColorClasses()} />
+            <CartMini className={getColorClasses(isScrolled)} />
 
             {/* User dropdown */}
             {isAuthenticated ? (
               <div ref={userDropdownRef} className="relative">
                 <button
                   onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                  className={`flex items-center space-x-1 p-2 rounded-md ${getColorClasses()}`}
+                  className={`flex items-center space-x-1 p-2 rounded-md ${getColorClasses(
+                    isScrolled
+                  )}`}
                   aria-expanded={isUserDropdownOpen}
                   aria-haspopup="true"
                 >
@@ -346,71 +213,19 @@ const Header: React.FC<HeaderProps> = ({
                 </button>
 
                 {isUserDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                    <div className="px-4 py-2 border-b border-gray-100">
-                      <p className="text-sm font-medium text-gray-900">
-                        {user?.firstName} {user?.lastName}
-                      </p>
-                      <p className="text-xs text-gray-500">{user?.email}</p>
-                    </div>
-
-                    {/* Profile link */}
-                    <Link
-                      to="/profile"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsUserDropdownOpen(false)}
-                    >
-                      Profile
-                    </Link>
-
-                    {/* Orders link */}
-                    <Link
-                      to="/orders"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsUserDropdownOpen(false)}
-                    >
-                      Orders
-                    </Link>
-
-                    {/* Admin dashboard link for admins */}
-                    {user?.role === "admin" && (
-                      <Link
-                        to="/admin/dashboard"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsUserDropdownOpen(false)}
-                      >
-                        Admin Dashboard
-                      </Link>
-                    )}
-
-                    {/* Vendor dashboard link for vendors */}
-                    {user?.role === "vendor" && (
-                      <Link
-                        to="/vendor/dashboard"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsUserDropdownOpen(false)}
-                      >
-                        Vendor Dashboard
-                      </Link>
-                    )}
-
-                    {/* Logout button */}
-                    <button
-                      onClick={() => {
-                        handleLogout();
-                        setIsUserDropdownOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 border-t border-gray-100 "
-                    >
-                      Logout
-                    </button>
-                  </div>
+                  <UserDropdown
+                    user={user}
+                    onLogout={handleLogout}
+                    onClose={() => setIsUserDropdownOpen(false)}
+                  />
                 )}
               </div>
             ) : (
               <Link
                 to="/login"
-                className={`p-2 rounded-md ${getColorClasses()} flex items-center space-x-1`}
+                className={`p-2 rounded-md ${getColorClasses(
+                  isScrolled
+                )} flex items-center space-x-1`}
               >
                 <span className="hidden sm:block text-sm font-medium">
                   Login
@@ -424,204 +239,17 @@ const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile menu overlay */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-black bg-opacity-50">
-          <div className="fixed inset-y-0 left-0 w-64 max-w-sm bg-white shadow-lg transform z-50">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <span className="font-bold text-lg">{APP_NAME}</span>
-              <button
-                onClick={onMobileMenuToggle}
-                className="p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-              >
-                <XIcon className="w-5 h-5" />
-              </button>
-            </div>
-
-            <nav className="p-4">
-              <Link
-                to="/"
-                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                onClick={onMobileMenuToggle}
-              >
-                Home
-              </Link>
-
-              {/* Mobile categories dropdown */}
-              <div className="py-2">
-                <button
-                  onClick={() =>
-                    setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
-                  }
-                  className="flex items-center justify-between w-full text-base font-semibold text-gray-700 hover:text-primary-600"
-                >
-                  <span>Categories</span>
-                  <ChevronDownIcon
-                    className={`w-4 h-4 transition-transform ${
-                      isCategoryDropdownOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-
-                {isCategoryDropdownOpen && (
-                  <div className="pl-4 mt-2 space-y-2">
-                    {isCategoriesLoading ? (
-                      <div className="text-sm text-gray-500">
-                        Loading categories...
-                      </div>
-                    ) : categoriesError ? (
-                      <div className="text-sm text-red-500">
-                        Error loading categories
-                      </div>
-                    ) : (
-                      categories
-                        .filter((cat) => cat.parentId === null)
-                        .map((category) => (
-                          <div key={category.id}>
-                            <Link
-                              to={`/products?category=${category.id}`}
-                              className="block py-1 text-sm text-gray-600 hover:text-primary-600"
-                              onClick={onMobileMenuToggle}
-                            >
-                              {category.name}
-                            </Link>
-
-                            {/* Mobile subcategories */}
-                            {categories.filter(
-                              (sub) => sub.parentId === category.id
-                            ).length > 0 && (
-                              <div className="pl-3 mt-1 space-y-1">
-                                {categories
-                                  .filter((sub) => sub.parentId === category.id)
-                                  .map((subcategory) => (
-                                    <Link
-                                      key={subcategory.id}
-                                      to={`/products?category=${subcategory.id}`}
-                                      className="block py-1 text-xs text-gray-500 hover:text-primary-600"
-                                      onClick={onMobileMenuToggle}
-                                    >
-                                      {subcategory.name}
-                                    </Link>
-                                  ))}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                    )}
-                    <Link
-                      to="/products"
-                      className="block py-1 text-sm font-semibold text-primary-600 hover:text-primary-800"
-                      onClick={onMobileMenuToggle}
-                    >
-                      View All Categories
-                    </Link>
-                  </div>
-                )}
-              </div>
-
-              <Link
-                to="/products"
-                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                onClick={onMobileMenuToggle}
-              >
-                Shop
-              </Link>
-
-              <Link
-                to="/about"
-                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                onClick={onMobileMenuToggle}
-              >
-                About
-              </Link>
-
-              <Link
-                to="/contact"
-                className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                onClick={onMobileMenuToggle}
-              >
-                Contact
-              </Link>
-
-              <div className="border-t border-gray-200 my-4"></div>
-
-              {/* Mobile user actions */}
-              {isAuthenticated ? (
-                <>
-                  <Link
-                    to="/profile"
-                    className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                    onClick={onMobileMenuToggle}
-                  >
-                    My Profile
-                  </Link>
-
-                  <Link
-                    to="/orders"
-                    className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                    onClick={onMobileMenuToggle}
-                  >
-                    My Orders
-                  </Link>
-
-                  <Link
-                    to="/wishlist"
-                    className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                    onClick={onMobileMenuToggle}
-                  >
-                    My Wishlist
-                  </Link>
-
-                  {user?.role === "admin" && (
-                    <Link
-                      to="/admin/dashboard"
-                      className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                      onClick={onMobileMenuToggle}
-                    >
-                      Admin Dashboard
-                    </Link>
-                  )}
-
-                  {user?.role === "vendor" && (
-                    <Link
-                      to="/vendor/dashboard"
-                      className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                      onClick={onMobileMenuToggle}
-                    >
-                      Vendor Dashboard
-                    </Link>
-                  )}
-
-                  <button
-                    onClick={() => {
-                      handleLogout();
-                      onMobileMenuToggle();
-                    }}
-                    className="block w-full text-left py-2 text-base font-semibold text-red-600 hover:text-red-800"
-                  >
-                    Logout
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    to="/login"
-                    className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                    onClick={onMobileMenuToggle}
-                  >
-                    Login
-                  </Link>
-
-                  <Link
-                    to="/register"
-                    className="block py-2 text-base font-semibold text-gray-700 hover:text-primary-600"
-                    onClick={onMobileMenuToggle}
-                  >
-                    Register
-                  </Link>
-                </>
-              )}
-            </nav>
-          </div>
-        </div>
+        <MobileMenu
+          categories={categories || []}
+          isCategoriesLoading={isCategoriesLoading}
+          categoriesError={categoriesError}
+          isCategoryDropdownOpen={isCategoryDropdownOpen}
+          setIsCategoryDropdownOpen={setIsCategoryDropdownOpen}
+          isAuthenticated={isAuthenticated}
+          user={user}
+          onLogout={handleLogout}
+          onClose={onMobileMenuToggle}
+        />
       )}
     </header>
   );

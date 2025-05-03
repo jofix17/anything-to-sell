@@ -1,78 +1,76 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import {
-  FunnelIcon as FilterIcon,
-  Squares2X2Icon as ViewGridIcon,
-  Bars4Icon as ViewListIcon,
-  XMarkIcon as XIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-} from "@heroicons/react/24/outline";
-import ProductList from "../components/product/ProductList";
-import Skeleton from "../components/common/Skeleton";
-import { useProducts, useCategories } from "../services/productService";
-import { useToggleWishlist, useWishlist } from "../services/wishlistService";
+// pages/ProductsPage.tsx (updated)
+import React, { useState, useEffect, useMemo } from "react";
 import { useNotification } from "../context/NotificationContext";
-import SearchBar from "../components/common/SearchBar";
-import Dropdown from "../components/common/Dropdown";
-import Pagination from "../components/common/Pagination";
 import { useAuthContext } from "../context/AuthContext";
-import { ProductFilterParams, ProductSortType } from "../types/product";
+import { Category } from "../types/category";
+import { useToggleWishlist, useWishlist } from "../services/wishlistService";
+import { useProducts } from "../hooks/api/useProductApi";
+import { useCategories } from "../hooks/api/useCategoryApi";
 import { ApiResponse } from "../types";
 import { WishlistItem } from "../types/wishlist";
+import useComponentPerformance from "../hooks/useComponentPerformance";
+import useProductFilters from "../hooks/useProductFilters";
+
+// Import components
+import ProductsPageHeader from "../components/product/list/ProductsPageHeader";
+import ProductFilterSidebar from "../components/product/list/ProductFilterSidebar";
+import ProductListContainer from "../components/product/list/ProductListContainer";
+import ActiveFilters from "../components/product/list/ActiveFilter";
+import ProductsHeader from "../components/product/list/ProductHeader";
+import CategorySkeleton from "../components/product/list/CategorySkeleton";
 
 const ProductsPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated } = useAuthContext();
   const { showNotification } = useNotification();
 
-  // Filters UI state
-  const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
-  const [expandedSections, setExpandedSections] = useState<
-    Record<string, boolean>
-  >({
-    categories: true,
-    price: true,
-    ratings: true,
-  });
+  // Track component performance in development
+  useComponentPerformance(
+    "ProductsPage",
+    process.env.NODE_ENV === "development"
+  );
 
-  // Price range presets
-  const [priceRanges] = useState<
-    Array<{ min: number; max: number; label: string }>
-  >([
-    { min: 0, max: 50, label: "Under $50" },
-    { min: 50, max: 100, label: "$50 - $100" },
-    { min: 100, max: 200, label: "$100 - $200" },
-    { min: 200, max: 500, label: "$200 - $500" },
-    { min: 500, max: -1, label: "Over $500" },
-  ]);
-
-  // Extract filter params from URL
-  const page = parseInt(searchParams.get("page") || "1");
-  const perPage = parseInt(searchParams.get("perPage") || "12");
-  const query = searchParams.get("query") || "";
-  const categoryId = searchParams.get("category") || "";
-  const minPrice = searchParams.get("minPrice") || "";
-  const maxPrice = searchParams.get("maxPrice") || "";
-  const sort = searchParams.get("sort") || "newest";
-  const onSale = searchParams.get("onSale") === "true";
-  const inStock = searchParams.get("inStock") === "true";
-
-  // Construct filter params object
-  const filterParams: ProductFilterParams = {
+  // Use our custom filter hook
+  const {
+    searchParams,
     page,
     perPage,
-    ...(query && { query }),
-    ...(categoryId && { categoryId: categoryId }),
-    ...(minPrice && { minPrice: parseFloat(minPrice) }),
-    ...(maxPrice && { maxPrice: parseFloat(maxPrice) }),
-    ...(sort && { sortBy: sort as ProductSortType }),
-    ...(onSale && { onSale }),
-    ...(inStock && { inStock }),
-  };
+    categoryId,
+    minPrice,
+    maxPrice,
+    sort,
+    onSale,
+    inStock,
+    filterParams,
+    handleSearchChange,
+    handlePageChange,
+    handlePerPageChange,
+    handleCategoryChange,
+    handlePriceRangeChange,
+    handleSortChange,
+    handleOnSaleChange,
+    handleInStockChange,
+    clearAllFilters,
+  } = useProductFilters();
 
-  // Fetch products with the filter params
+  // Filters UI state
+  const [isFilterOpen, setIsFilterOpen] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">(
+    (localStorage.getItem("productViewMode") as "grid" | "list") || "grid"
+  );
+
+  // Price range presets - defined once
+  const priceRanges = useMemo(
+    () => [
+      { min: 0, max: 50, label: "Under ₱50" },
+      { min: 50, max: 100, label: "₱50 - ₱100" },
+      { min: 100, max: 200, label: "₱100 - ₱200" },
+      { min: 200, max: 500, label: "₱200 - ₱500" },
+      { min: 500, max: -1, label: "Over ₱500" },
+    ],
+    []
+  );
+
+  // Fetch products with the filter params - this only runs when filterParams changes
   const {
     data: productsResponse,
     isLoading: isProductsLoading,
@@ -80,22 +78,23 @@ const ProductsPage: React.FC = () => {
     refetch: refetchProducts,
   } = useProducts(filterParams);
 
-  // Extract nested data structure (response.data.data)
-  const productsData = productsResponse?.data;
-
   // Fetch categories
   const { data: categoriesData, isLoading: isCategoriesLoading } =
     useCategories();
 
-  // Fetch user's wishlist items
+  // Fetch user's wishlist items - only runs when authenticated
   const { data: wishlistData, refetch: refetchWishlist } = useWishlist({
     enabled: isAuthenticated,
   });
 
-  // Extract wishlist product IDs
-  const wishlistedProductIds = wishlistData?.data
-    ? wishlistData.data.map((item) => item.productId)
-    : [];
+  // Extract wishlist product IDs - memoized to prevent re-calculations
+  const wishlistedProductIds = useMemo(
+    () =>
+      wishlistData?.data
+        ? wishlistData.data.map((item: WishlistItem) => item.productId)
+        : [],
+    [wishlistData?.data]
+  );
 
   // Wishlist toggle mutation
   const toggleWishlistMutation = useToggleWishlist({
@@ -115,112 +114,7 @@ const ProductsPage: React.FC = () => {
     },
   });
 
-  // Handle page change
-  const handlePageChange = (newPage: number) => {
-    setSearchParams({
-      ...Object.fromEntries(searchParams),
-      page: newPage.toString(),
-    });
-  };
-
-  // Handle per page change
-  const handlePerPageChange = (newPerPage: number) => {
-    setSearchParams({
-      ...Object.fromEntries(searchParams),
-      page: "1", // Reset to first page when changing items per page
-      perPage: newPerPage.toString(),
-    });
-  };
-
-  // Handle search query change
-  const handleSearchChange = (newQuery: string) => {
-    setSearchParams({
-      ...Object.fromEntries(searchParams),
-      page: "1", // Reset to first page when searching
-      query: newQuery,
-    });
-  };
-
-  // Handle category filter
-  const handleCategoryChange = (categoryId: string | null) => {
-    setSearchParams({
-      ...Object.fromEntries(searchParams),
-      page: "1", // Reset to first page when changing filter
-      ...(categoryId ? { category: categoryId } : {}),
-    });
-
-    if (!categoryId) {
-      // Remove category param if null
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete("category");
-      setSearchParams(newParams);
-    }
-  };
-
-  // Handle price range filter
-  const handlePriceRangeChange = (minPrice: number, maxPrice: number) => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set("page", "1"); // Reset to first page when changing filter
-
-    if (minPrice === 0 && maxPrice === 0) {
-      // Clear price filters
-      newParams.delete("minPrice");
-      newParams.delete("maxPrice");
-    } else {
-      if (minPrice > 0) {
-        newParams.set("minPrice", minPrice.toString());
-      } else {
-        newParams.delete("minPrice");
-      }
-
-      if (maxPrice > 0) {
-        newParams.set("maxPrice", maxPrice.toString());
-      } else {
-        newParams.delete("maxPrice");
-      }
-    }
-
-    setSearchParams(newParams);
-  };
-
-  // Handle sort change
-  const handleSortChange = (newSort: string) => {
-    setSearchParams({
-      ...Object.fromEntries(searchParams),
-      page: "1", // Reset to first page when changing sort
-      sort: newSort,
-    });
-  };
-
-  // Handle on sale filter
-  const handleOnSaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set("page", "1"); // Reset to first page when changing filter
-
-    if (e.target.checked) {
-      newParams.set("onSale", "true");
-    } else {
-      newParams.delete("onSale");
-    }
-
-    setSearchParams(newParams);
-  };
-
-  // Handle in stock filter
-  const handleInStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set("page", "1"); // Reset to first page when changing filter
-
-    if (e.target.checked) {
-      newParams.set("inStock", "true");
-    } else {
-      newParams.delete("inStock");
-    }
-
-    setSearchParams(newParams);
-  };
-
-  // Toggle wishlist
+  // Toggle wishlist - implemented as an async function
   const handleToggleWishlist = async (productId: string) => {
     if (!isAuthenticated) {
       showNotification("Please login to add items to your wishlist", {
@@ -232,39 +126,35 @@ const ProductsPage: React.FC = () => {
     toggleWishlistMutation.mutate(productId);
   };
 
-  // Toggle filter section expand/collapse
-  const toggleSection = (section: string) => {
-    setExpandedSections({
-      ...expandedSections,
-      [section]: !expandedSections[section],
-    });
+  // Handle view mode change with persistence
+  const handleViewModeChange = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    // Save preference to localStorage
+    localStorage.setItem("productViewMode", mode);
   };
 
-  // Clear all filters
-  const handleClearFilters = () => {
-    setSearchParams({
-      page: "1",
-      perPage: perPage.toString(),
-    });
-  };
+  // Sort options for dropdown - memoized to prevent recreation
+  const sortOptions = useMemo(
+    () => [
+      { value: "newest", label: "Newest" },
+      { value: "price_asc", label: "Price: Low to High" },
+      { value: "price_desc", label: "Price: High to Low" },
+      { value: "popular", label: "Popularity" },
+    ],
+    []
+  );
 
-  // Sort options for dropdown
-  const sortOptions = [
-    { value: "newest", label: "Newest" },
-    { value: "price_asc", label: "Price: Low to High" },
-    { value: "price_desc", label: "Price: High to Low" },
-    { value: "popular", label: "Popularity" },
-  ];
-
-  // Current active filters for UI display
-  const getActiveFilters = () => {
-    const activeFilters: { label: string; removeFilter: () => void }[] = [];
+  // Current active filters for UI display - memoized to prevent recalculation
+  const activeFilters = useMemo(() => {
+    const filters: { label: string; removeFilter: () => void }[] = [];
 
     // Category filter
     if (categoryId) {
-      const category = categoriesData?.find((c) => c.id === categoryId);
+      const category = categoriesData?.find(
+        (c: Category) => c.id === categoryId
+      );
       if (category) {
-        activeFilters.push({
+        filters.push({
           label: `Category: ${category.name}`,
           removeFilter: () => handleCategoryChange(null),
         });
@@ -282,7 +172,7 @@ const ProductsPage: React.FC = () => {
         priceLabel += `Under $${maxPrice}`;
       }
 
-      activeFilters.push({
+      filters.push({
         label: priceLabel,
         removeFilter: () => handlePriceRangeChange(0, 0),
       });
@@ -290,37 +180,44 @@ const ProductsPage: React.FC = () => {
 
     // On sale filter
     if (onSale) {
-      activeFilters.push({
+      filters.push({
         label: "On Sale",
-        removeFilter: () => {
-          const newParams = new URLSearchParams(searchParams);
-          newParams.delete("onSale");
-          setSearchParams(newParams);
-        },
+        removeFilter: () =>
+          handleOnSaleChange({
+            target: { checked: false },
+          } as React.ChangeEvent<HTMLInputElement>),
       });
     }
 
     // In stock filter
     if (inStock) {
-      activeFilters.push({
+      filters.push({
         label: "In Stock",
-        removeFilter: () => {
-          const newParams = new URLSearchParams(searchParams);
-          newParams.delete("inStock");
-          setSearchParams(newParams);
-        },
+        removeFilter: () =>
+          handleInStockChange({
+            target: { checked: false },
+          } as React.ChangeEvent<HTMLInputElement>),
       });
     }
 
-    return activeFilters;
-  };
-
-  const activeFilters = getActiveFilters();
+    return filters;
+  }, [
+    categoryId,
+    categoriesData,
+    minPrice,
+    maxPrice,
+    onSale,
+    inStock,
+    handleCategoryChange,
+    handlePriceRangeChange,
+    handleOnSaleChange,
+    handleInStockChange,
+  ]);
 
   // Refresh data when component mounts or URL params change
   useEffect(() => {
     refetchProducts();
-  }, [searchParams, refetchProducts]);
+  }, [filterParams, refetchProducts]);
 
   // Show error notification if there's an error fetching products
   useEffect(() => {
@@ -334,287 +231,66 @@ const ProductsPage: React.FC = () => {
     }
   }, [productsError, showNotification]);
 
-  if (isProductsLoading && !productsData) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-20 min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        {/* Page title and filter toggle */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-            Products
-          </h1>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="md:hidden flex items-center text-gray-600 hover:text-gray-900"
-            >
-              <FilterIcon className="h-5 w-5 mr-1" />
-              Filters
-            </button>
-            <button
-              onClick={() => navigate("/")}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-            >
-              Back to Home
-            </button>
-          </div>
-        </div>
+        {/* Page title and filter toggle - always visible */}
+        <ProductsPageHeader
+          toggleFilters={() => setIsFilterOpen(!isFilterOpen)}
+        />
 
-        {/* Active filters */}
+        {/* Active filters - visible when filters are present */}
         {activeFilters.length > 0 && (
-          <div className="mb-6 bg-white rounded-lg shadow-md p-4">
-            <div className="flex items-center flex-wrap gap-2">
-              <span className="text-sm text-gray-700">Active Filters:</span>
-              {activeFilters.map((filter, index) => (
-                <span
-                  key={index}
-                  className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800"
-                >
-                  {filter.label}
-                  <button
-                    onClick={filter.removeFilter}
-                    className="ml-1 text-primary-600 hover:text-primary-800"
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </button>
-                </span>
-              ))}
-
-              {/* Clear all filters */}
-              <button
-                onClick={handleClearFilters}
-                className="text-sm text-primary-600 hover:text-primary-800 ml-2"
-              >
-                Clear All
-              </button>
-            </div>
-          </div>
+          <ActiveFilters
+            activeFilters={activeFilters}
+            clearAllFilters={clearAllFilters}
+          />
         )}
 
         {/* Filters and Products Grid */}
         <div className="flex flex-col md:flex-row gap-6">
-          {/* Filters sidebar */}
-          <div
-            className={`
-              md:w-64 flex-shrink-0 bg-white p-4 rounded-lg shadow-sm
-              ${
-                isFilterOpen
-                  ? "fixed inset-0 z-40 overflow-auto"
-                  : "hidden md:block"
-              }
-            `}
-          >
-            {/* Mobile filter header */}
-            <div className="flex items-center justify-between md:hidden mb-4">
-              <h2 className="text-lg font-semibold">Filters</h2>
-              <button
-                onClick={() => setIsFilterOpen(false)}
-                className="p-2 text-gray-500 hover:text-gray-700"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Search Bar */}
-            <div className="mb-6">
-              <SearchBar
-                value={query}
-                onChange={handleSearchChange}
-                placeholder="Search products..."
-                className="w-full"
+          {/* Filters sidebar - with category skeletons when loading */}
+          <div className="md:w-64 flex-shrink-0">
+            {isCategoriesLoading ? (
+              <CategorySkeleton />
+            ) : (
+              <ProductFilterSidebar
+                isOpen={isFilterOpen}
+                onClose={() => setIsFilterOpen(false)}
+                searchParams={searchParams}
+                onSearchChange={handleSearchChange}
+                categories={categoriesData}
+                isCategoriesLoading={isCategoriesLoading}
+                categoryId={categoryId}
+                onCategoryChange={handleCategoryChange}
+                priceRanges={priceRanges}
+                minPrice={minPrice}
+                maxPrice={maxPrice}
+                onPriceRangeChange={handlePriceRangeChange}
+                onSale={onSale}
+                onOnSaleChange={handleOnSaleChange}
+                inStock={inStock}
+                onInStockChange={handleInStockChange}
               />
-            </div>
-
-            {/* Categories filter */}
-            <div className="mb-6">
-              <button
-                onClick={() => toggleSection("categories")}
-                className="flex items-center justify-between w-full text-left font-medium mb-2"
-              >
-                <span>Categories</span>
-                {expandedSections.categories ? (
-                  <ChevronUpIcon className="h-5 w-5" />
-                ) : (
-                  <ChevronDownIcon className="h-5 w-5" />
-                )}
-              </button>
-
-              {expandedSections.categories && (
-                <div className="space-y-2 ml-2">
-                  {isCategoriesLoading ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-5 w-3/4" />
-                      <Skeleton className="h-5 w-2/3" />
-                      <Skeleton className="h-5 w-4/5" />
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => handleCategoryChange(null)}
-                        className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                          !categoryId
-                            ? "bg-primary-100 text-primary-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`}
-                      >
-                        All Categories
-                      </button>
-                      {categoriesData?.map((category) => (
-                        <button
-                          key={category.id}
-                          onClick={() => handleCategoryChange(category.id)}
-                          className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                            categoryId === category.id.toString()
-                              ? "bg-primary-100 text-primary-800"
-                              : "text-gray-700 hover:bg-gray-100"
-                          }`}
-                        >
-                          {category.name}
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Price range filter */}
-            <div className="mb-6">
-              <button
-                onClick={() => toggleSection("price")}
-                className="flex items-center justify-between w-full text-left font-medium mb-2"
-              >
-                <span>Price</span>
-                {expandedSections.price ? (
-                  <ChevronUpIcon className="h-5 w-5" />
-                ) : (
-                  <ChevronDownIcon className="h-5 w-5" />
-                )}
-              </button>
-
-              {expandedSections.price && (
-                <div className="space-y-2 ml-2">
-                  <button
-                    onClick={() => handlePriceRangeChange(0, 0)}
-                    className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                      !minPrice && !maxPrice
-                        ? "bg-primary-100 text-primary-800"
-                        : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    All Prices
-                  </button>
-
-                  {priceRanges.map((range, index) => (
-                    <button
-                      key={index}
-                      onClick={() =>
-                        handlePriceRangeChange(range.min, range.max)
-                      }
-                      className={`text-sm block w-full text-left py-1 px-2 rounded ${
-                        minPrice === range.min.toString() &&
-                        (range.max === -1
-                          ? !maxPrice
-                          : maxPrice === range.max.toString())
-                          ? "bg-primary-100 text-primary-800"
-                          : "text-gray-700 hover:bg-gray-100"
-                      }`}
-                    >
-                      {range.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Additional filters */}
-            <div className="mb-6">
-              <h3 className="font-medium mb-2">Availability</h3>
-              <div className="space-y-2 ml-2">
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={onSale}
-                    onChange={handleOnSaleChange}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700 ml-2">On Sale</span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={inStock}
-                    onChange={handleInStockChange}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-700 ml-2">In Stock</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Apply filters button (mobile only) */}
-            <div className="md:hidden">
-              <button
-                onClick={() => setIsFilterOpen(false)}
-                className="w-full bg-primary-600 text-white py-2 px-4 rounded hover:bg-primary-700"
-              >
-                Apply Filters
-              </button>
-            </div>
+            )}
           </div>
 
           {/* Products container */}
           <div className="flex-grow">
-            {/* Sort and layout options */}
-            <div className="bg-white p-4 rounded-lg shadow-sm flex flex-wrap items-center justify-between mb-6">
-              <div className="flex items-center mb-2 sm:mb-0">
-                <span className="text-sm text-gray-700 mr-2">Sort by:</span>
-                <Dropdown
-                  value={sort}
-                  onChange={handleSortChange}
-                  options={sortOptions}
-                  className="w-40"
-                />
-              </div>
-
-              <div className="flex items-center">
-                <span className="text-sm text-gray-700 mr-2 hidden sm:inline">
-                  Showing{" "}
-                  {productsData ? (
-                    <>
-                      {Math.min(
-                        (page - 1) * perPage + 1,
-                        productsResponse.total
-                      )}{" "}
-                      - {Math.min(page * perPage, productsResponse.total)} of{" "}
-                      {productsResponse.total} products
-                    </>
-                  ) : (
-                    "0 products"
-                  )}
-                </span>
-
-                {/* View mode toggle - could be implemented in a real app */}
-                <div className="hidden sm:flex items-center ml-4">
-                  <button className="p-1.5 rounded-md bg-primary-100 text-primary-600">
-                    <ViewGridIcon className="h-5 w-5" />
-                  </button>
-                  <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-500 ml-1">
-                    <ViewListIcon className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
+            {/* Sort and layout options - always visible */}
+            <ProductsHeader
+              sortOptions={sortOptions}
+              currentSort={sort}
+              onSortChange={handleSortChange}
+              productsData={productsResponse}
+              page={page}
+              perPage={perPage}
+              viewMode={viewMode}
+              setViewMode={handleViewModeChange}
+            />
 
             {/* Error Display */}
-            {productsError && (
+            {productsError && !isProductsLoading && (
               <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                 <p>
                   Error loading products:{" "}
@@ -631,32 +307,20 @@ const ProductsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Products list */}
-            {productsData && (
-              <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                <ProductList
-                  products={productsData}
-                  isLoading={isProductsLoading}
-                  error={productsError ? String(productsError) : null}
-                  perPage={perPage}
-                  wishlistedProductIds={wishlistedProductIds}
-                  onToggleWishlist={handleToggleWishlist}
-                />
-
-                {/* Pagination */}
-                <div className="border-t border-gray-200 px-4 py-3">
-                  <Pagination
-                    currentPage={page}
-                    totalPages={productsResponse.totalPages}
-                    onPageChange={handlePageChange}
-                    perPage={perPage}
-                    onPerPageChange={handlePerPageChange}
-                    totalItems={productsResponse.total}
-                    perPageOptions={[12, 24, 36, 48]}
-                  />
-                </div>
-              </div>
-            )}
+            {/* Product list container with skeletons during loading */}
+            <ProductListContainer
+              productsData={productsResponse}
+              isProductsLoading={isProductsLoading}
+              productsError={productsError}
+              perPage={perPage}
+              page={page}
+              wishlistedProductIds={wishlistedProductIds}
+              onToggleWishlist={handleToggleWishlist}
+              onPageChange={handlePageChange}
+              onPerPageChange={handlePerPageChange}
+              viewMode={viewMode}
+              refetchProducts={refetchProducts}
+            />
           </div>
         </div>
       </div>

@@ -4,12 +4,10 @@ import * as Yup from "yup";
 import {
   useCreateCategory,
   useUpdateCategory,
-  useDeleteCategory
+  useDeleteCategory,
 } from "../../services/adminService";
-import {
-  useCategories
-} from "../../services/productService";
-import { Category, CategoryCreateData } from "../../types";
+import { Category, CategoryCreateData } from "../../types/category";
+import { useCategories } from "../../hooks/api/useCategoryApi";
 
 const CategorySchema = Yup.object().shape({
   name: Yup.string().required("Category name is required"),
@@ -19,7 +17,9 @@ const CategorySchema = Yup.object().shape({
 
 const AdminCategoriesPage: React.FC = () => {
   // State for UI
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
+    null
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -37,13 +37,9 @@ const AdminCategoriesPage: React.FC = () => {
   } | null>(null);
 
   // Use React Query hooks
-  const { 
-    data: categoriesResponse, 
-    isLoading, 
-    error 
-  } = useCategories();
+  const { data: categoriesResponse, isLoading, error } = useCategories();
 
-  const categories = categoriesResponse?.data || [];
+  const categories = categoriesResponse || [];
 
   const createCategoryMutation = useCreateCategory({
     onSuccess: () => {
@@ -58,7 +54,7 @@ const AdminCategoriesPage: React.FC = () => {
         type: "error",
         message: error.message || "Failed to create category",
       });
-    }
+    },
   });
 
   const updateCategoryMutation = useUpdateCategory({
@@ -74,7 +70,7 @@ const AdminCategoriesPage: React.FC = () => {
         type: "error",
         message: error.message || "Failed to update category",
       });
-    }
+    },
   });
 
   const deleteCategoryMutation = useDeleteCategory({
@@ -90,7 +86,7 @@ const AdminCategoriesPage: React.FC = () => {
         type: "error",
         message: error.message || "Failed to delete category",
       });
-    }
+    },
   });
 
   // UI handlers
@@ -173,7 +169,7 @@ const AdminCategoriesPage: React.FC = () => {
 
     updateCategoryMutation.mutate({
       id: selectedCategory.id,
-      categoryData
+      categoryData,
     });
   };
 
@@ -657,13 +653,14 @@ const AdminCategoriesPage: React.FC = () => {
                       <button
                         type="submit"
                         disabled={
-                          formSubmitting || 
-                          createCategoryMutation.isPending || 
+                          formSubmitting ||
+                          createCategoryMutation.isPending ||
                           updateCategoryMutation.isPending
                         }
                         className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:bg-indigo-400"
                       >
-                        {createCategoryMutation.isPending || updateCategoryMutation.isPending
+                        {createCategoryMutation.isPending ||
+                        updateCategoryMutation.isPending
                           ? "Saving..."
                           : modalMode === "create"
                           ? "Add Category"
@@ -672,7 +669,10 @@ const AdminCategoriesPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={closeModal}
-                        disabled={createCategoryMutation.isPending || updateCategoryMutation.isPending}
+                        disabled={
+                          createCategoryMutation.isPending ||
+                          updateCategoryMutation.isPending
+                        }
                         className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
                       >
                         Cancel

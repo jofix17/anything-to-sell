@@ -3,7 +3,7 @@ import { ArrowRightIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { Link } from "react-router-dom";
 import ErrorCard from "../ErrorCard";
 import SkeletonGrid from "../SkeletonGrid";
-import { useCategories } from "../../../services/productService";
+import { useCategories } from "../../../hooks/api/useCategoryApi";
 
 const CategoriesSection = () => {
   const categoriesQuery = useCategories();

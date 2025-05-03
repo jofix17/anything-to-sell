@@ -1,47 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useVendorProducts, useUpdateProductStatus, useUpdateInventory } from '../../services/vendorService';
-import { useCategories, useDeleteProduct } from '../../services/productService';
-import { Product, Category, ProductStatus } from '../../types';
-
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import {
+  useVendorProducts,
+  useUpdateProductStatus,
+  useUpdateInventory,
+} from "../../services/vendorService";
+import { useCategories } from "../../hooks/api/useCategoryApi";
+import { Category } from "../../types/category";
+import { Product, ProductStatus } from "../../types/product";
 const VendorProductsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [isEditingInventory, setIsEditingInventory] = useState(false);
-  const [inventoryUpdates, setInventoryUpdates] = useState<{[key: string]: number}>({});
+  const [inventoryUpdates, setInventoryUpdates] = useState<{
+    [key: string]: number;
+  }>({});
 
   // Fetch product categories
-  const { 
-    data: categoriesResponse,
-    error: categoriesError 
-  } = useCategories();
-  
+  const { data: categoriesResponse, error: categoriesError } = useCategories();
+
   // Extract categories from response
-  const categories: Category[] = categoriesResponse?.data || [];
+  const categories: Category[] = categoriesResponse || [];
 
   // Prepare query params for products
   const queryParams = {
     page: currentPage,
     perPage: 10,
-    status: statusFilter !== 'all' ? statusFilter as ProductStatus : undefined,
+    status:
+      statusFilter !== "all" ? (statusFilter as ProductStatus) : undefined,
     categoryId: categoryFilter || undefined,
-    query: searchQuery || undefined
+    query: searchQuery || undefined,
   };
 
   // Fetch products
-  const { 
-    data: productsResponse, 
-    isLoading, 
-    refetch 
+  const {
+    data: productsResponse,
+    isLoading,
+    refetch,
   } = useVendorProducts(queryParams, {
     onError: (error: Error) => {
-      setError('Failed to load products');
-      console.error('Error fetching products:', error);
-    }
+      setError("Failed to load products");
+      console.error("Error fetching products:", error);
+    },
   });
 
   // Extract products data from response
@@ -54,9 +58,9 @@ const VendorProductsPage: React.FC = () => {
       refetch();
     },
     onError: (error: Error) => {
-      setError('Failed to update product status');
-      console.error('Error updating product status:', error);
-    }
+      setError("Failed to update product status");
+      console.error("Error updating product status:", error);
+    },
   });
 
   const updateInventoryMutation = useUpdateInventory({
@@ -65,9 +69,9 @@ const VendorProductsPage: React.FC = () => {
       setIsEditingInventory(false);
     },
     onError: (error: Error) => {
-      setError('Failed to update inventory');
-      console.error('Error updating inventory:', error);
-    }
+      setError("Failed to update inventory");
+      console.error("Error updating inventory:", error);
+    },
   });
 
   const deleteProductMutation = useDeleteProduct({
@@ -75,15 +79,15 @@ const VendorProductsPage: React.FC = () => {
       refetch();
     },
     onError: (error: Error) => {
-      setError('Failed to delete product');
-      console.error('Error deleting product:', error);
-    }
+      setError("Failed to delete product");
+      console.error("Error deleting product:", error);
+    },
   });
 
   // Handle categories error
   useEffect(() => {
     if (categoriesError) {
-      console.error('Error fetching categories:', categoriesError);
+      console.error("Error fetching categories:", categoriesError);
     }
   }, [categoriesError]);
 
@@ -101,9 +105,9 @@ const VendorProductsPage: React.FC = () => {
 
   // Handle product selection
   const toggleProductSelection = (productId: string) => {
-    setSelectedProducts(prev => 
+    setSelectedProducts((prev) =>
       prev.includes(productId)
-        ? prev.filter(id => id !== productId)
+        ? prev.filter((id) => id !== productId)
         : [...prev, productId]
     );
   };
@@ -112,28 +116,38 @@ const VendorProductsPage: React.FC = () => {
     if (selectedProducts.length === products.length) {
       setSelectedProducts([]);
     } else {
-      setSelectedProducts(products.map(product => product.id));
+      setSelectedProducts(products.map((product) => product.id));
     }
   };
 
   // Handle product status toggle
-  const handleStatusToggle = async (productId: string, currentStatus: boolean) => {
-    updateProductStatusMutation.mutate({ 
-      productId, 
-      isActive: !currentStatus 
+  const handleStatusToggle = async (
+    productId: string,
+    currentStatus: boolean
+  ) => {
+    updateProductStatusMutation.mutate({
+      productId,
+      isActive: !currentStatus,
     });
   };
 
   // Handle bulk actions
-  const handleBulkAction = async (action: 'activate' | 'deactivate' | 'delete') => {
+  const handleBulkAction = async (
+    action: "activate" | "deactivate" | "delete"
+  ) => {
     if (selectedProducts.length === 0) return;
-    
-    if (action === 'delete' && !window.confirm(`Are you sure you want to delete ${selectedProducts.length} selected products?`)) {
+
+    if (
+      action === "delete" &&
+      !window.confirm(
+        `Are you sure you want to delete ${selectedProducts.length} selected products?`
+      )
+    ) {
       return;
     }
 
     try {
-      if (action === 'delete') {
+      if (action === "delete") {
         // Delete products one by one
         for (const id of selectedProducts) {
           await deleteProductMutation.mutateAsync(id);
@@ -143,13 +157,13 @@ const VendorProductsPage: React.FC = () => {
         for (const id of selectedProducts) {
           await updateProductStatusMutation.mutateAsync({
             productId: id,
-            isActive: action === 'activate'
+            isActive: action === "activate",
           });
         }
       }
-      
+
       setSelectedProducts([]);
-    } catch (error) {
+    } catch {
       // Errors are handled in the mutation onError callbacks
     }
   };
@@ -157,8 +171,8 @@ const VendorProductsPage: React.FC = () => {
   // Handle inventory editing
   const startInventoryEditing = () => {
     // Initialize inventory updates with current values
-    const updates: {[key: string]: number} = {};
-    products.forEach(product => {
+    const updates: { [key: string]: number } = {};
+    products.forEach((product) => {
       updates[product.id] = product.inventory;
     });
     setInventoryUpdates(updates);
@@ -168,20 +182,22 @@ const VendorProductsPage: React.FC = () => {
   const handleInventoryChange = (productId: string, value: string) => {
     const numValue = parseInt(value);
     if (!isNaN(numValue) && numValue >= 0) {
-      setInventoryUpdates(prev => ({
+      setInventoryUpdates((prev) => ({
         ...prev,
-        [productId]: numValue
+        [productId]: numValue,
       }));
     }
   };
 
   const saveInventoryUpdates = async () => {
     // Format the updates for the API
-    const updates = Object.entries(inventoryUpdates).map(([productId, inventory]) => ({
-      productId,
-      inventory
-    }));
-    
+    const updates = Object.entries(inventoryUpdates).map(
+      ([productId, inventory]) => ({
+        productId,
+        inventory,
+      })
+    );
+
     // Use the mutation to update inventory
     updateInventoryMutation.mutate(updates);
   };
@@ -194,14 +210,14 @@ const VendorProductsPage: React.FC = () => {
   // Calculate stock status
   const getStockStatus = (inventory: number) => {
     if (inventory <= 0) {
-      return { label: 'Out of Stock', className: 'bg-red-100 text-red-800' };
+      return { label: "Out of Stock", className: "bg-red-100 text-red-800" };
     } else if (inventory < 10) {
-      return { label: 'Low Stock', className: 'bg-yellow-100 text-yellow-800' };
+      return { label: "Low Stock", className: "bg-yellow-100 text-yellow-800" };
     } else {
-      return { label: 'In Stock', className: 'bg-green-100 text-green-800' };
+      return { label: "In Stock", className: "bg-green-100 text-green-800" };
     }
   };
-  
+
   return (
     <div className="px-4 py-6">
       <div className="flex justify-between items-center mb-6">
@@ -210,8 +226,18 @@ const VendorProductsPage: React.FC = () => {
           to="/vendor/products/add"
           className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-200 flex items-center"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          <svg
+            className="w-5 h-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+            />
           </svg>
           Add Product
         </Link>
@@ -228,7 +254,10 @@ const VendorProductsPage: React.FC = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label htmlFor="statusFilter" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="statusFilter"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Status
             </label>
             <select
@@ -245,17 +274,22 @@ const VendorProductsPage: React.FC = () => {
             </select>
           </div>
           <div>
-            <label htmlFor="categoryFilter" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="categoryFilter"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Category
             </label>
             <select
               id="categoryFilter"
-              value={categoryFilter || ''}
-              onChange={(e) => setCategoryFilter(e.target.value ? e.target.value : null)}
+              value={categoryFilter || ""}
+              onChange={(e) =>
+                setCategoryFilter(e.target.value ? e.target.value : null)
+              }
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="">All Categories</option>
-              {categories.map(category => (
+              {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>
@@ -264,7 +298,10 @@ const VendorProductsPage: React.FC = () => {
           </div>
           <div>
             <form onSubmit={handleSearch}>
-              <label htmlFor="searchQuery" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="searchQuery"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Search
               </label>
               <div className="flex">
@@ -280,8 +317,18 @@ const VendorProductsPage: React.FC = () => {
                   type="submit"
                   className="bg-indigo-600 text-white px-4 rounded-r-md hover:bg-indigo-700"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
                   </svg>
                 </button>
               </div>
@@ -294,23 +341,24 @@ const VendorProductsPage: React.FC = () => {
       {selectedProducts.length > 0 && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 flex justify-between items-center">
           <span className="text-indigo-700 font-medium">
-            {selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''} selected
+            {selectedProducts.length} product
+            {selectedProducts.length > 1 ? "s" : ""} selected
           </span>
           <div className="flex space-x-2">
             <button
-              onClick={() => handleBulkAction('activate')}
+              onClick={() => handleBulkAction("activate")}
               className="px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition"
             >
               Activate
             </button>
             <button
-              onClick={() => handleBulkAction('deactivate')}
+              onClick={() => handleBulkAction("deactivate")}
               className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 transition"
             >
               Deactivate
             </button>
             <button
-              onClick={() => handleBulkAction('delete')}
+              onClick={() => handleBulkAction("delete")}
               className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition"
             >
               Delete
@@ -329,7 +377,7 @@ const VendorProductsPage: React.FC = () => {
               disabled={updateInventoryMutation.isPending}
               className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-50"
             >
-              {updateInventoryMutation.isPending ? 'Saving...' : 'Save Changes'}
+              {updateInventoryMutation.isPending ? "Saving..." : "Save Changes"}
             </button>
             <button
               onClick={cancelInventoryEditing}
@@ -354,26 +402,44 @@ const VendorProductsPage: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     <div className="flex items-center">
                       <input
                         type="checkbox"
-                        checked={selectedProducts.length === products.length && products.length > 0}
+                        checked={
+                          selectedProducts.length === products.length &&
+                          products.length > 0
+                        }
                         onChange={toggleSelectAll}
                         className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                       />
                     </div>
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Product
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Category
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Price
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Inventory
                     {!isEditingInventory && (
                       <button
@@ -381,22 +447,38 @@ const VendorProductsPage: React.FC = () => {
                         className="ml-2 text-indigo-600 hover:text-indigo-800"
                         title="Edit Inventory"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                          />
                         </svg>
                       </button>
                     )}
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Status
                   </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {products.map(product => (
+                {products.map((product) => (
                   <tr key={product.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input
@@ -411,29 +493,44 @@ const VendorProductsPage: React.FC = () => {
                         <div className="h-10 w-10 flex-shrink-0">
                           <img
                             className="h-10 w-10 rounded-md object-cover"
-                            src={product.images[0]?.imageUrl || '/api/placeholder/40/40'}
+                            src={
+                              product.images[0]?.imageUrl ||
+                              "/api/placeholder/40/40"
+                            }
                             alt={product.name}
                           />
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                          <div className="text-sm text-gray-500">ID: {product.id}</div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {product.name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            ID: {product.id}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-900">
-                        {categories.find(cat => cat.id === product.category?.id)?.name || 'Unknown'}
+                        {categories.find(
+                          (cat) => cat.id === product.category?.id
+                        )?.name || "Unknown"}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {product.salePrice ? (
                         <div>
-                          <span className="text-sm text-gray-900 font-medium">${product.salePrice.toFixed(2)}</span>
-                          <span className="text-sm text-gray-500 line-through ml-2">${product.price.toFixed(2)}</span>
+                          <span className="text-sm text-gray-900 font-medium">
+                            ${product.salePrice.toFixed(2)}
+                          </span>
+                          <span className="text-sm text-gray-500 line-through ml-2">
+                            ${product.price.toFixed(2)}
+                          </span>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-900">${product.price.toFixed(2)}</span>
+                        <span className="text-sm text-gray-900">
+                          ${product.price.toFixed(2)}
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -442,13 +539,21 @@ const VendorProductsPage: React.FC = () => {
                           type="number"
                           min="0"
                           value={inventoryUpdates[product.id] || 0}
-                          onChange={(e) => handleInventoryChange(product.id, e.target.value)}
+                          onChange={(e) =>
+                            handleInventoryChange(product.id, e.target.value)
+                          }
                           className="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm"
                         />
                       ) : (
                         <div className="flex items-center">
-                          <span className="text-sm text-gray-900">{product.inventory}</span>
-                          <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStockStatus(product.inventory).className}`}>
+                          <span className="text-sm text-gray-900">
+                            {product.inventory}
+                          </span>
+                          <span
+                            className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              getStockStatus(product.inventory).className
+                            }`}
+                          >
                             {getStockStatus(product.inventory).label}
                           </span>
                         </div>
@@ -456,11 +561,11 @@ const VendorProductsPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        {product.status === 'pending' ? (
+                        {product.status === "pending" ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                             Pending Approval
                           </span>
-                        ) : product.status === 'rejected' ? (
+                        ) : product.status === "rejected" ? (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                             Rejected
                           </span>
@@ -469,12 +574,20 @@ const VendorProductsPage: React.FC = () => {
                             <input
                               type="checkbox"
                               checked={product.isActive}
-                              onChange={() => handleStatusToggle(product.id, product.isActive)}
+                              onChange={() =>
+                                handleStatusToggle(product.id, product.isActive)
+                              }
                               className="form-checkbox h-4 w-4 text-indigo-600 transition duration-150 ease-in-out"
                               disabled={updateProductStatusMutation.isPending}
                             />
-                            <span className={`ml-2 text-sm ${product.isActive ? 'text-green-600' : 'text-gray-500'}`}>
-                              {product.isActive ? 'Active' : 'Inactive'}
+                            <span
+                              className={`ml-2 text-sm ${
+                                product.isActive
+                                  ? "text-green-600"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {product.isActive ? "Active" : "Inactive"}
                             </span>
                           </label>
                         )}
@@ -489,7 +602,11 @@ const VendorProductsPage: React.FC = () => {
                       </Link>
                       <button
                         onClick={() => {
-                          if (window.confirm('Are you sure you want to delete this product?')) {
+                          if (
+                            window.confirm(
+                              "Are you sure you want to delete this product?"
+                            )
+                          ) {
                             deleteProductMutation.mutate(product.id);
                           }
                         }}
@@ -506,12 +623,24 @@ const VendorProductsPage: React.FC = () => {
           </div>
         ) : (
           <div className="text-center py-16">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+              />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No products found</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No products found
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchQuery 
+              {searchQuery
                 ? `No products matching "${searchQuery}"`
                 : "Get started by creating a new product."}
             </p>
@@ -520,8 +649,18 @@ const VendorProductsPage: React.FC = () => {
                 to="/vendor/products/add"
                 className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
-                <svg className="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                <svg
+                  className="-ml-1 mr-2 h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  />
                 </svg>
                 Add Product
               </Link>
@@ -552,22 +691,36 @@ const VendorProductsPage: React.FC = () => {
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
-                Showing <span className="font-medium">page {currentPage}</span> of <span className="font-medium">{totalPages}</span>
+                Showing <span className="font-medium">page {currentPage}</span>{" "}
+                of <span className="font-medium">{totalPages}</span>
               </p>
             </div>
             <div>
-              <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <nav
+                className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px"
+                aria-label="Pagination"
+              >
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
                   className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
                   <span className="sr-only">Previous</span>
-                  <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                  <svg
+                    className="h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                 </button>
-                
+
                 {/* Page numbers */}
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   let pageNum;
@@ -587,8 +740,8 @@ const VendorProductsPage: React.FC = () => {
                       onClick={() => handlePageChange(pageNum)}
                       className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                         pageNum === currentPage
-                          ? 'z-10 bg-indigo-50 border-indigo-500 text-indigo-600'
-                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                          ? "z-10 bg-indigo-50 border-indigo-500 text-indigo-600"
+                          : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50"
                       }`}
                     >
                       {pageNum}
@@ -602,8 +755,18 @@ const VendorProductsPage: React.FC = () => {
                   className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                 >
                   <span className="sr-only">Next</span>
-                  <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  <svg
+                    className="h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                 </button>
               </nav>

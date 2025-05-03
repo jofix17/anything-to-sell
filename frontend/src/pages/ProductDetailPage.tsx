@@ -8,7 +8,6 @@ import QuantitySelector from "../components/common/QuantitySelector";
 import Button from "../components/common/Button";
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import ProductBreadcrumb from "../components/product/ProductBreadcrumb";
-import { useProductDetail } from "../services/productService";
 import {
   useToggleWishlist,
   useIsProductInWishlist,
@@ -18,6 +17,7 @@ import RelatedProducts from "../components/product/RelatedProducts";
 import { useAuthContext } from "../context/AuthContext";
 import { useCartContext } from "../context/CartContext";
 import { WishlistItem } from "../types/wishlist";
+import { useProductDetail } from "../hooks/api/useProductApi";
 
 type ProductTab = "description" | "specifications" | "reviews";
 
@@ -371,7 +371,7 @@ const ProductDetailPage: React.FC = () => {
                     d="M5 13l4 4L19 7"
                   />
                 </svg>
-                <p>Free shipping on orders over $50</p>
+                <p>Free shipping on orders over ₱50</p>
               </div>
               <div className="flex items-start gap-2">
                 <svg

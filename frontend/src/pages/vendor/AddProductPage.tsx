@@ -1,11 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  useCategories,
-  useCreateProduct,
-  useUploadProductImage,
-} from "../../services/productService";
-import { Category } from "../../types";
+import { useCategories } from "../../hooks/api/useCategoryApi";
+import { Category } from "../../types/category";
 
 const VendorAddProductPage: React.FC = () => {
   const navigate = useNavigate();
