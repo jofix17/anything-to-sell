@@ -1,10 +1,9 @@
 class ProductSerializer < ActiveModel::Serializer
   attributes :id, :sku, :name, :description, :price, :sale_price, :is_active, :images,
-             :inventory, :status, :rejection_reason, :created_at, :updated_at, :collection_ids
+             :inventory, :status, :collection_ids, :in_stock, :review_summary
 
   belongs_to :category
   belongs_to :user, key: :vendor, serializer: UserSerializer
-  # has_many :product_images, key: :images, serializer: ProductImageSerializer
 
   def collection_ids
     if object.association(:collection_products).loaded? &&
@@ -22,7 +21,6 @@ class ProductSerializer < ActiveModel::Serializer
     if object.association(:product_images).loaded?
       # If images are preloaded, use them directly
       object.product_images.map do |image|
-        
         {
           id: image.id,
           image_url: image.image_url,
@@ -39,6 +37,17 @@ class ProductSerializer < ActiveModel::Serializer
         }
       end
     end
+  end
+
+  def review_summary
+    summary = object.cached_review_summary
+    summary[:reviews] = {}
+
+    summary
+  end
+
+  def in_stock
+    object.in_stock?
   end
 
   # Format dates for consistency

@@ -1,5 +1,5 @@
 class CategorySerializer < ActiveModel::Serializer
-  attributes :id, :name, :description, :slug, :parent_id, :image_url, :created_at, :updated_at
+  attributes :id, :name, :description, :slug, :parent_id
 
   has_many :subcategories, serializer: CategorySerializer
 

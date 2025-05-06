@@ -1,7 +1,6 @@
 import apiService from "../../services/api";
 import { ApiResponse, PaginatedResponse } from "../../types";
 import { Product, ProductFilterParams } from "../../types/product";
-import { Review } from "../../types/review";
 import { CACHE_CONFIG, PRODUCT_ENDPOINTS } from "../../utils/constants";
 import { QueryKeys } from "../../utils/queryKeys";
 import { useApiQuery, usePaginatedQuery } from "../useQueryHooks";
@@ -80,26 +79,6 @@ export const useNewArrivals = (limit = 8, options = {}) => {
       staleTime: CACHE_CONFIG.STALE_TIMES.LONG, // 30 minutes
       retry: CACHE_CONFIG.RETRY.NORMAL,
       ...options,
-    }
-  );
-};
-
-/**
- * Custom hook to fetch product reviews
- */
-export const useProductReviews = (productId: string, options = {}) => {
-  return useApiQuery<Review[]>(
-    QueryKeys.products.reviews(productId),
-    async () =>
-      await apiService.get<ApiResponse<Review[]>>(
-        PRODUCT_ENDPOINTS.REVIEWS(productId)
-      ),
-    {
-      refetchOnWindowFocus: false,
-      staleTime: CACHE_CONFIG.STALE_TIMES.MEDIUM, // 5 minutes
-      retry: CACHE_CONFIG.RETRY.NORMAL,
-      ...options,
-      enabled: !!productId, // Only run query if productId is provided
     }
   );
 };

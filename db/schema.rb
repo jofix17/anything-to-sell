@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2025_04_16_174529) do
+ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -84,6 +84,42 @@ ActiveRecord::Schema[7.2].define(version: 2025_04_16_174529) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["slug"], name: "index_collections_on_slug", unique: true
+  end
+
+  create_table "discount_code_usages", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.uuid "discount_code_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["discount_code_id"], name: "index_discount_code_usages_on_discount_code_id"
+    t.index ["user_id"], name: "index_discount_code_usages_on_user_id"
+  end
+
+  create_table "discount_codes", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "code", null: false
+    t.integer "discount_type", null: false
+    t.decimal "discount_value", precision: 10, scale: 2, null: false
+    t.decimal "min_purchase", precision: 10, scale: 2
+    t.datetime "expires_at"
+    t.integer "status", default: 0, null: false
+    t.uuid "user_id"
+    t.uuid "product_id"
+    t.uuid "category_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category_id"], name: "index_discount_codes_on_category_id"
+    t.index ["product_id"], name: "index_discount_codes_on_product_id"
+    t.index ["user_id"], name: "index_discount_codes_on_user_id"
+  end
+
+  create_table "helpful_marks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "user_id", null: false
+    t.uuid "review_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["review_id"], name: "index_helpful_marks_on_review_id"
+    t.index ["user_id", "review_id"], name: "index_helpful_marks_on_user_id_and_review_id", unique: true
+    t.index ["user_id"], name: "index_helpful_marks_on_user_id"
   end
 
   create_table "order_histories", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -165,6 +201,21 @@ ActiveRecord::Schema[7.2].define(version: 2025_04_16_174529) do
     t.index ["user_id"], name: "index_products_on_user_id"
   end
 
+  create_table "reviews", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "product_id", null: false
+    t.uuid "user_id", null: false
+    t.integer "rating", null: false
+    t.text "comment", null: false
+    t.integer "status", default: 0
+    t.integer "helpful_count", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["product_id", "status", "rating"], name: "index_reviews_on_product_id_and_status_and_rating"
+    t.index ["product_id"], name: "index_reviews_on_product_id"
+    t.index ["user_id", "product_id"], name: "index_reviews_on_user_id_and_product_id", unique: true
+    t.index ["user_id"], name: "index_reviews_on_user_id"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "email"
     t.string "password_digest"
@@ -196,6 +247,13 @@ ActiveRecord::Schema[7.2].define(version: 2025_04_16_174529) do
   add_foreign_key "categories", "categories", column: "parent_id"
   add_foreign_key "collection_products", "collections"
   add_foreign_key "collection_products", "products"
+  add_foreign_key "discount_code_usages", "discount_codes"
+  add_foreign_key "discount_code_usages", "users"
+  add_foreign_key "discount_codes", "categories"
+  add_foreign_key "discount_codes", "products"
+  add_foreign_key "discount_codes", "users"
+  add_foreign_key "helpful_marks", "reviews"
+  add_foreign_key "helpful_marks", "users"
   add_foreign_key "order_histories", "orders"
   add_foreign_key "order_items", "orders"
   add_foreign_key "order_items", "products"
@@ -205,6 +263,8 @@ ActiveRecord::Schema[7.2].define(version: 2025_04_16_174529) do
   add_foreign_key "product_images", "products"
   add_foreign_key "products", "categories"
   add_foreign_key "products", "users"
+  add_foreign_key "reviews", "products"
+  add_foreign_key "reviews", "users"
   add_foreign_key "wishlist_items", "products"
   add_foreign_key "wishlist_items", "users"
 end

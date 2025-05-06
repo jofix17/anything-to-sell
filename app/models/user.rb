@@ -4,6 +4,7 @@ class User < ApplicationRecord
   has_one :cart, dependent: :destroy
   has_many :addresses, dependent: :destroy
   has_many :wishlist_items, dependent: :destroy
+  has_many :reviews, dependent: :destroy
 
   enum :role, { buyer: 0, vendor: 1, admin: 99 }
   enum :status, { inactive: 0, suspended: 1, active: 2 }
@@ -37,5 +38,29 @@ class User < ApplicationRecord
   def create_vendor_store
     # Create a default store for the vendor
     Store.create_for_vendor(self)
+  end
+
+  def submitted_reviews
+    reviews.recent
+  end
+
+  # Approved reviews created by this user
+  def approved_reviews
+    reviews.approved_only.recent
+  end
+
+  # Products this user has reviewed
+  def reviewed_products
+    Product.joins(:reviews).where(reviews: { user_id: id }).distinct
+  end
+
+  # Check if the user has reviewed a specific product
+  def has_reviewed?(product)
+    Review.user_has_reviewed?(id, product.id)
+  end
+
+  # Get the review for a specific product
+  def review_for_product(product)
+    reviews.find_by(product_id: product.id)
   end
 end

@@ -88,7 +88,18 @@ Rails.application.routes.draw do
           get :featured
           get "new-arrivals", to: "products#new_arrivals"
         end
-        resources :reviews, only: [ :index, :create ]
+
+        resources :reviews do
+          collection do
+            get :stats
+          end
+        end
+      end
+
+      resources :reviews, only: [] do
+        member do
+          post :mark_helpful
+        end
       end
 
       # Add a new resource for collections
@@ -97,6 +108,17 @@ Rails.application.routes.draw do
       end
 
       resources :categories, only: [ :index, :show ]
+
+      resources :discount_codes do
+        collection do
+          post :validate
+          get :list_available
+        end
+
+        member do
+          post :apply
+        end
+      end
 
       resource :cart, only: [ :show ] do
         post "items", to: "carts#add_item"

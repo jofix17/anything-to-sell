@@ -144,6 +144,32 @@ export const QueryKeys = {
       filterSignificantParams(params),
     ],
   },
+  reviews: {
+    all: ["reviews"],
+    list: (productId: string) => [...QueryKeys.reviews.all, "list", productId],
+    detail: (productId: string, reviewId: string) => [
+      ...QueryKeys.reviews.all,
+      "detail",
+      productId,
+      reviewId,
+    ],
+    stats: (productId: string) => [
+      ...QueryKeys.reviews.all,
+      "stats",
+      productId,
+    ],
+  },
+
+  discountCodes: {
+    all: ["discountCodes"],
+    list: (params = {}) => [...QueryKeys.discountCodes.all, "list", params],
+    detail: (id: string) => [...QueryKeys.discountCodes.all, "detail", id],
+    available: (productId?: string) => [
+      ...QueryKeys.discountCodes.all,
+      "available",
+      productId,
+    ],
+  },
   admin: {
     dashboard: ["admin", "dashboard"],
     users: (params: Record<string, unknown> = {}) => [

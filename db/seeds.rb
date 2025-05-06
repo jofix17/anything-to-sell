@@ -11,6 +11,7 @@ NUM_PRODUCTS_PER_VENDOR = 20
 NUM_ORDERS = 100
 NUM_ORDER_ITEMS_MAX = 5
 NUM_REVIEWS = 200
+NUM_DISCOUNT_CODES = 15
 
 # Helper method to create a realistic product description
 def generate_description(product_name, category_name)
@@ -24,13 +25,6 @@ end
 # Helper method to generate random dates within a range
 def random_date(from, to)
   Time.at(rand(from.to_i..to.to_i))
-end
-
-# Helper method to create SKU
-def generate_sku(vendor_id, category_id)
-  prefix = "#{vendor_id.to_s.rjust(4, '0')}-#{category_id.to_s.rjust(4, '0')}"
-  random_part = SecureRandom.hex(3).upcase
-  "#{prefix}-#{random_part}"
 end
 
 # Generate random names
@@ -218,9 +212,6 @@ created_vendors.each_with_index do |vendor, v_index|
 
     product_name = "#{brand} #{adjectives.sample} #{model_numbers.sample}"
 
-    # Generate SKU
-    sku = generate_sku(vendor.id, category.id)
-
     # Generate price and sale price
     base_price = rand(5.0..999.99).round(2)
     has_sale = rand < 0.3 # 30% chance of having a sale price
@@ -238,16 +229,29 @@ created_vendors.each_with_index do |vendor, v_index|
         inventory: rand(5..200),
         category: category,
         user: vendor,
-        sku: sku,
         status: [ 'active', 'pending' ].sample, # Mix of active and pending products
         is_active: rand < 0.9 # 90% are active
       )
 
-      # Create a placeholder image for the product
-      product.product_images.create!(
-        image_url: "https://picsum.photos/seed/#{product.id}/400/300",
-        is_primary: true
-      )
+      # Create multiple random product images (between 1 and 10 images)
+      num_images = rand(1..10)
+
+      num_images.times do |img_index|
+        # Only the first image should be primary
+        is_primary = (img_index == 0)
+
+        # Create different dimensions for variety
+        width = [ 400, 600, 800 ].sample
+        height = [ 300, 400, 600 ].sample
+
+        # Random seed for variety in images
+        random_seed = "#{product.id}_#{img_index}_#{SecureRandom.hex(4)}"
+
+        product.product_images.create!(
+          image_url: "https://picsum.photos/seed/#{random_seed}/#{width}/#{height}",
+          is_primary: is_primary
+        )
+      end
 
       created_products << product
     rescue => e
@@ -466,69 +470,228 @@ NUM_ORDERS.times do |i|
   end
 end
 
-# puts "Creating product reviews..."
-# NUM_REVIEWS.times do |i|
-#   puts "Creating review #{i+1}/#{NUM_REVIEWS}" if (i+1) % 50 == 0
+puts "Creating product reviews..."
+review_count = 0
 
-#   # Skip if no delivered orders
-#   delivered_orders = created_orders.select { |o| o.status == 'delivered' }
-#   break if delivered_orders.empty?
+# Review text templates for different ratings
+review_templates = {
+  1 => [
+    "Very disappointed with this product. Would not recommend.",
+    "Poor quality. Broke after first use.",
+    "Waste of money. Doesn't work as described.",
+    "Terrible product. Save your money.",
+    "Completely unsatisfied with this purchase."
+  ],
+  2 => [
+    "Below average quality. Expected more for the price.",
+    "Has some issues. Not what I was hoping for.",
+    "Mediocre product with several flaws.",
+    "Disappointing performance. Wouldn't buy again.",
+    "Not worth the price. Has too many problems."
+  ],
+  3 => [
+    "Average product. Nothing special but gets the job done.",
+    "Decent quality. Some minor issues but works okay.",
+    "It's alright. Not bad, not great, just average.",
+    "Meets basic expectations. Nothing more, nothing less.",
+    "Acceptable for the price, but there are better options."
+  ],
+  4 => [
+    "Good product overall. Minor issues but satisfied with purchase.",
+    "Works well. Happy with my purchase.",
+    "Quality is better than expected. Would recommend.",
+    "Solid product that delivers as promised.",
+    "Very happy with this purchase. Works great."
+  ],
+  5 => [
+    "Absolutely love this product! Exceeded all expectations.",
+    "Fantastic quality and performance. Highly recommend!",
+    "Perfect in every way. Couldn't be happier!",
+    "Outstanding product. Worth every penny.",
+    "Best purchase I've made this year. 10/10 would buy again!"
+  ]
+}
 
-#   # Pick a delivered order
-#   order = delivered_orders.sample
+# Create a small test review to verify functionality
+begin
+  test_user = User.where(role: :buyer).first
+  test_product = Product.where(status: :active).first
 
-#   # Pick a product from the order
-#   order_items = order.order_items.to_a
-#   next if order_items.empty?
+  if test_user && test_product && !Review.exists?(user_id: test_user.id, product_id: test_product.id)
+    test_review = Review.create!(
+      user: test_user,
+      product: test_product,
+      rating: 5,
+      comment: "Test review from seeds - if you see this, review creation works!",
+      status: :approved
+    )
+    puts "Successfully created test review with ID: #{test_review.id}"
+    review_count += 1
+  else
+    puts "Warning: Could not create test review - either buyers/products unavailable or review already exists!"
+  end
+rescue => e
+  puts "Error creating test review: #{e.message}"
+  puts "Make sure the reviews table exists with the correct columns"
+end
 
-#   order_item = order_items.sample
+# Create a hash to keep track of user-product pairs that have been reviewed
+reviewed_pairs = {}
 
-#  # Generate rating and review text
-#   rating = rand(1..5)
+# Get all active products and buyers
+active_products = Product.where(status: :active).to_a
+buyers = User.where(role: :buyer).to_a
 
-#   review_templates = {
-#     1 => [ "Very disappointed with this product. Would not recommend." ],
-#     2 => [ "Below average quality. Expected more for the price." ],
-#     3 => [ "Average product. Nothing special but gets the job done." ],
-#     4 => [ "Good product overall. Minor issues but satisfied with purchase." ],
-#     5 => [ "Absolutely love this product! Exceeded all expectations." ]
-#   }
+puts "Found #{active_products.size} active products and #{buyers.size} buyers for review creation"
 
-#   review_text = review_templates[rating].sample
+# Continue with bulk review creation
+max_attempts = NUM_REVIEWS * 3 # Allow for some failures
+attempts = 0
 
-#   begin
-#     Review.create!(
-#       user: order.user,
-#       product: order_item.product,
-#       rating: rating,
-#       comment: review_text
-#     )
-#   rescue => e
-#     puts "Error creating review: #{e.message}"
-#   end
-# end
+while review_count < NUM_REVIEWS && attempts < max_attempts
+  attempts += 1
 
-# puts "Creating discount codes..."
-# discount_codes = [
-#   { code: 'WELCOME10', discount_type: 'percentage', discount_value: 10, min_purchase: 0 },
-#   { code: 'SPRING25', discount_type: 'percentage', discount_value: 25, min_purchase: 100 },
-#   { code: 'SUMMER20', discount_type: 'percentage', discount_value: 20, min_purchase: 50 }
-# ]
+  # Select a random buyer and product
+  buyer = buyers.sample
+  product = active_products.sample
 
-# discount_codes.each do |dc|
-#   begin
-#     DiscountCode.create!(
-#       code: dc[:code],
-#       discount_type: dc[:discount_type],
-#       discount_value: dc[:discount_value],
-#       min_purchase: dc[:min_purchase],
-#       expires_at: 1.year.from_now,
-#       is_active: true
-#     )
-#   rescue => e
-#     puts "Error creating discount code: #{e.message}"
-#   end
-# end
+  next unless buyer && product # Skip if either is nil
+
+  # Create a unique key for this pair
+  pair_key = "#{buyer.id}_#{product.id}"
+
+  # Skip if this user has already reviewed this product
+  next if reviewed_pairs[pair_key]
+
+  # Generate rating and review text
+  rating = rand(1..5)
+  review_text = review_templates[rating].sample
+
+  # Determine review status (most are approved, some pending)
+  status = rand < 0.9 ? :approved : :pending
+
+  # Randomize creation date
+  review_date = random_date(3.months.ago, Time.now)
+
+  begin
+    Review.create!(
+      user: buyer,
+      product: product,
+      rating: rating,
+      comment: review_text,
+      status: status,
+      created_at: review_date,
+      updated_at: review_date
+    )
+
+    # Mark this pair as reviewed
+    reviewed_pairs[pair_key] = true
+
+    review_count += 1
+    if review_count % 50 == 0
+      puts "Created review ##{review_count} for product '#{product.name}'"
+    end
+  rescue => e
+    puts "Error creating review: #{e.message} for user #{buyer.id}, product #{product.id}"
+  end
+end
+
+puts "Creating discount codes..."
+# Discount code types and templates
+discount_types = [ :percentage, :fixed_amount ]
+discount_codes = [
+  { code: 'WELCOME10', discount_type: :percentage, discount_value: 10, min_purchase: 0 },
+  { code: 'SPRING25', discount_type: :percentage, discount_value: 25, min_purchase: 100 },
+  { code: 'SUMMER20', discount_type: :percentage, discount_value: 20, min_purchase: 50 },
+  { code: 'FALL15', discount_type: :percentage, discount_value: 15, min_purchase: 25 },
+  { code: 'WINTER30', discount_type: :percentage, discount_value: 30, min_purchase: 150 }
+]
+
+# First create predefined discount codes
+discount_codes.each do |dc|
+  begin
+    DiscountCode.create!(
+      code: dc[:code],
+      discount_type: dc[:discount_type],
+      discount_value: dc[:discount_value],
+      min_purchase: dc[:min_purchase],
+      expires_at: 1.year.from_now,
+      status: :active,
+      user: admin # Admin is the creator
+    )
+  rescue => e
+    puts "Error creating discount code: #{e.message}"
+  end
+end
+
+# Generate additional discount codes
+(NUM_DISCOUNT_CODES - discount_codes.length).times do |i|
+  # Generate a random code
+  code = "CODE#{SecureRandom.hex(3).upcase}"
+  discount_type = discount_types.sample
+
+  # Value depends on discount type
+  discount_value = if discount_type == :percentage
+                     rand(5..40) # 5% to 40% off
+  else
+                     rand(5..50).to_f # $5 to $50 off
+  end
+
+  # 50% chance of having a minimum purchase requirement
+  min_purchase = rand < 0.5 ? rand(25..200).to_f : nil
+
+  # Expiration date (between 1 month and 1 year from now)
+  expires_at = Time.now + rand(1..12).months
+
+  # Status (mostly active)
+  status = rand < 0.8 ? :active : :inactive
+
+  # 30% chance of being associated with a specific product or category
+  product = nil
+  category = nil
+
+  if rand < 0.3
+    if rand < 0.5 && !created_products.empty?
+      product = created_products.sample
+    elsif !created_categories.empty?
+      category = (created_categories + created_subcategories).sample
+    end
+  end
+
+  # Create the discount code
+  begin
+    DiscountCode.create!(
+      code: code,
+      discount_type: discount_type,
+      discount_value: discount_value,
+      min_purchase: min_purchase,
+      expires_at: expires_at,
+      status: status,
+      user: [ admin, *created_vendors ].sample,
+      product: product,
+      category: category
+    )
+  rescue => e
+    puts "Error creating discount code: #{e.message}"
+  end
+end
+
+# Generate some discount code usages
+puts "Creating discount code usages..."
+created_orders.sample(created_orders.size / 4).each do |order|
+  # Get an active discount code
+  discount_code = DiscountCode.where(status: :active).sample
+  next unless discount_code
+
+  begin
+    DiscountCodeUsage.create!(
+      user: order.user,
+      discount_code: discount_code
+    )
+  rescue => e
+    puts "Error creating discount code usage: #{e.message}"
+  end
+end
 
 puts "Creating wishlists..."
 created_buyers.each do |buyer|
@@ -556,6 +719,8 @@ puts "- Created #{Product.count} products"
 puts "- Featured collection: #{featured_collection.collection_products.count} products"
 puts "- New Arrivals collection: #{new_arrivals_collection.collection_products.count} products"
 puts "- Created #{Order.count} orders"
-# puts "- Created #{Review.count} product reviews"
-# puts "- Created #{DiscountCode.count} discount codes"
+puts "- Created #{Review.count} product reviews"
+puts "- Created #{DiscountCode.count} discount codes"
+puts "- Created #{DiscountCodeUsage.count} discount code usages"
 puts "- Created #{WishlistItem.count} wishlist items"
+puts "- Created multiple random images (1-10) for each product"

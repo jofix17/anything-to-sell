@@ -4,6 +4,7 @@ class Product < ApplicationRecord
   has_many :product_images, dependent: :destroy
   has_many :collection_products, dependent: :destroy
   has_many :collections, through: :collection_products
+  has_many :reviews, dependent: :destroy
 
   enum :status, { pending: 0, active: 1, inactive: 2, rejected: 3 }
 
@@ -17,6 +18,37 @@ class Product < ApplicationRecord
   scope :in_category, ->(category_id) { where(category_id: category_id) }
   scope :in_stock, -> { where("inventory > 0") }
   scope :on_sale, -> { where("sale_price IS NOT NULL AND sale_price < price") }
+  scope :newest, -> { order(created_at: :desc) }
+  scope :price_asc, -> { order(price: :asc) }
+  scope :price_desc, -> { order(price: :desc) }
+  before_validation :generate_sku, on: :create
+
+  def self.top_rated
+    rated_products =
+      left_joins(:reviews)
+      .where("reviews.status = ? OR reviews.id IS NULL", Review.statuses[:approved])
+      .group("products.id")
+      .select("products.id, COALESCE(AVG(reviews.rating), 0) as calculated_rating")
+
+    # Join back to the original products table with calculated_rating included
+    joins("JOIN (#{rated_products.to_sql}) AS rated_products ON products.id = rated_products.id")
+      .select("products.*, rated_products.calculated_rating")
+      .order("rated_products.calculated_rating DESC, products.created_at DESC")
+  end
+
+  # Method to handle all sorting options
+  def self.apply_sorting(sort_by)
+    case sort_by.to_s.downcase
+    when "price_asc"
+      price_asc
+    when "price_desc"
+      price_desc
+    when "top_rated"
+      top_rated
+    else
+      newest
+    end
+  end
 
   # Methods
   def self.with_active_collections
@@ -48,11 +80,53 @@ class Product < ApplicationRecord
     products
   end
 
+  def self.preload_review_summary(products)
+    product_ids = products.map(&:id)
+
+    # Get all approved reviews
+    approved_reviews = Review.where(product_id: product_ids, status: Review.statuses[:approved])
+
+    # Calculate average ratings in a single query
+    ratings = approved_reviews.group(:product_id).average(:rating)
+
+    # Count reviews per product in a single query
+    review_counts = approved_reviews.group(:product_id).count
+
+    # Assign review summary to products
+    products.each do |product|
+      product_id = product.id
+      avg_rating = ratings[product_id] || 0.0
+      count = review_counts[product_id] || 0
+
+      # Store the data as an instance variable
+      product.instance_variable_set(
+        :@preloaded_review_summary,
+        {
+          rating: avg_rating.to_f.round(1),
+          review_count: count
+        }
+      )
+    end
+
+    products
+  end
+
   # Generate a unique SKU
   def self.generate_sku(vendor_id, category_id)
     prefix = "#{vendor_id.to_s.rjust(4, '0')}-#{category_id.to_s.rjust(4, '0')}"
     random_part = SecureRandom.hex(3).upcase
     "#{prefix}-#{random_part}"
+  end
+
+  def cached_review_summary
+    if instance_variable_defined?(:@preloaded_review_summary)
+      instance_variable_get(:@preloaded_review_summary)
+    else
+      {
+        rating: average_rating,
+        review_count: total_reviews
+      }
+    end
   end
 
   # Get current price (sale price if available, regular price otherwise)
@@ -95,5 +169,42 @@ class Product < ApplicationRecord
   def discount_percentage
     return 0 unless on_sale?
     ((price - sale_price) / price * 100).round
+  end
+
+  def approved_reviews
+    reviews.approved_only.recent
+  end
+
+  # Calculate average rating
+  def average_rating
+    reviews.approved_only.average(:rating).to_f.round(1)
+  end
+
+  # Total number of approved reviews
+  def total_reviews
+    reviews.approved_only.count
+  end
+
+  # Rating distribution for this product
+  def rating_distribution
+    Review.rating_distribution(id)
+  end
+
+  # Has the user reviewed this product?
+  def reviewed_by?(user)
+    Review.user_has_reviewed?(user.id, id)
+  end
+
+  # Recent reviews (limited to a specific number)
+  def recent_reviews(limit = 5)
+    reviews.approved_only.recent.limit(limit)
+  end
+
+  def generate_sku
+    return if sku.present?
+
+    if user_id.present? && category_id.present?
+      self.sku = self.class.generate_sku(user_id, category_id)
+    end
   end
 end

@@ -3,16 +3,23 @@ import React, { useState } from 'react';
 interface ProductImageGalleryProps {
   images: string[];
   productName: string;
+  discount?: number;
+  hasSalePrice?: boolean;
 }
 
-const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({ images, productName }) => {
+const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({ 
+  images, 
+  productName, 
+  discount = 0,
+  hasSalePrice = false
+}) => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   // If no images are provided, show a placeholder
   if (!images.length) {
     return (
-      <div className="aspect-square bg-gray-200 rounded-lg flex items-center justify-center">
+      <div className="aspect-square bg-gray-200 rounded-lg flex items-center justify-center shadow-md">
         <span className="text-gray-500">No image available</span>
       </div>
     );
@@ -43,7 +50,7 @@ const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({ images, produ
     <div className="space-y-4">
       {/* Main Image */}
       <div 
-        className="aspect-square overflow-hidden rounded-lg bg-gray-100 cursor-zoom-in"
+        className="aspect-square overflow-hidden rounded-lg bg-gray-100 cursor-zoom-in relative shadow-md"
         onClick={() => openLightbox(selectedImageIndex)}
       >
         <img
@@ -51,19 +58,54 @@ const ProductImageGallery: React.FC<ProductImageGalleryProps> = ({ images, produ
           alt={`${productName} - Image ${selectedImageIndex + 1}`}
           className="h-full w-full object-cover object-center"
         />
+        
+        {/* Sale Badge */}
+        {hasSalePrice && discount > 0 && (
+          <div className="absolute top-4 right-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full shadow-sm">
+            {discount}% OFF
+          </div>
+        )}
+
+        {/* Image Navigation Buttons - Only show when more than one image */}
+        {images.length > 1 && (
+          <>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateLightbox('prev');
+              }}
+              className="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-70 rounded-full p-2 shadow-sm hover:bg-opacity-100 transition-opacity"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-5 h-5 text-gray-700">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                navigateLightbox('next');
+              }}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-70 rounded-full p-2 shadow-sm hover:bg-opacity-100 transition-opacity"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="w-5 h-5 text-gray-700">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Thumbnail Gallery */}
       {images.length > 1 && (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-5 gap-2">
           {images.map((image, index) => (
             <button
               key={index}
               type="button"
               onClick={() => setSelectedImageIndex(index)}
-              className={`relative aspect-square overflow-hidden rounded-md bg-gray-100 hover:ring-2 hover:ring-blue-500 ${
+              className={`relative aspect-square overflow-hidden rounded-md transition-all hover:shadow-md ${
                 selectedImageIndex === index 
-                  ? 'ring-2 ring-blue-600' 
+                  ? 'ring-2 ring-blue-600 shadow-sm' 
                   : 'ring-1 ring-gray-200'
               }`}
             >

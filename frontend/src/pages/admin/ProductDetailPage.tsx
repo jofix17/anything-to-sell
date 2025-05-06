@@ -7,7 +7,8 @@ import {
 import { format } from "date-fns";
 import { toast } from "react-toastify";
 import { useCategories } from "../../hooks/api/useCategoryApi";
-import { useProductDetail, useProductReviews } from "../../hooks/api/useProductApi";
+import { useProductDetail } from "../../hooks/api/useProductApi";
+import { useProductReviews } from "../../hooks/api/useReviewApi";
 
 const AdminProductDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -357,7 +358,9 @@ const AdminProductDetailPage: React.FC = () => {
                       </span>
                       <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
                         {Math.round(
-                          (1 - Number(product.salePrice) / Number(product.price)) * 100
+                          (1 -
+                            Number(product.salePrice) / Number(product.price)) *
+                            100
                         )}
                         % OFF
                       </span>

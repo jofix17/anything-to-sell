@@ -49,21 +49,42 @@ export const PRODUCT_ENDPOINTS = {
   NEW_ARRIVALS: "/products/new-arrivals",
 };
 
+export const REVIEW_ENDPOINTS = {
+  REVIEWS: (productId: string) => `/products/${productId}/reviews`,
+  REVIEW: (productId: string, reviewId: string) =>
+    `/products/${productId}/reviews/${reviewId}`,
+  STATS: (productId: string) => `/products/${productId}/reviews/stats`,
+  APPROVE: (productId: string, reviewId: string) =>
+    `/products/${productId}/reviews/${reviewId}/approve`,
+  REJECT: (productId: string, reviewId: string) =>
+    `/products/${productId}/reviews/${reviewId}/reject`,
+  MARK_HELPFUL: (reviewId: string) => `/reviews/${reviewId}/mark_helpful`,
+};
+
+// Discount code API endpoints
+export const DISCOUNT_CODE_ENDPOINTS = {
+  DISCOUNT_CODES: "/discount_codes",
+  DISCOUNT_CODE: (id: string) => `/discount_codes/${id}`,
+  VALIDATE: "/discount_codes/validate",
+  AVAILABLE: "/discount_codes/list_available",
+  APPLY: (id: string) => `/discount_codes/${id}/apply`,
+};
+
 // Admin API Endpoints
 export const ADMIN_PRODUCT_ENDPOINTS = {
-  PRODUCTS: "/api/v1/admin/products",
-  PRODUCT: (id: string) => `/api/v1/admin/products/${id}`,
-  PENDING: "/api/v1/admin/products/pending",
-  PENDING_COUNT: "/api/v1/admin/products/pending/count",
-  APPROVE: (id: string) => `/api/v1/admin/products/${id}/approve`,
-  REJECT: (id: string) => `/api/v1/admin/products/${id}/reject`,
+  PRODUCTS: "/admin/products",
+  PRODUCT: (id: string) => `/admin/products/${id}`,
+  PENDING: "/admin/products/pending",
+  PENDING_COUNT: "/admin/products/pending/count",
+  APPROVE: (id: string) => `/admin/products/${id}/approve`,
+  REJECT: (id: string) => `/admin/products/${id}/reject`,
 };
 
 export const ADMIN_ORDER_ENDPOINTS = {
-  ORDERS: "/api/v1/admin/orders",
-  ORDER: (id: string) => `/api/v1/admin/orders/${id}`,
-  UPDATE_STATUS: (id: string) => `/api/v1/admin/orders/${id}/status`,
-  DASHBOARD_STATS: "/api/v1/admin/dashboard/stats",
+  ORDERS: "/admin/orders",
+  ORDER: (id: string) => `/admin/orders/${id}`,
+  UPDATE_STATUS: (id: string) => `/admin/orders/${id}/status`,
+  DASHBOARD_STATS: "/admin/dashboard/stats",
 };
 
 // Storage keys

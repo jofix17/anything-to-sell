@@ -1,15 +1,26 @@
 import { User } from "./auth";
+import { Product } from "./product";
 
 export type SortType = "newest" | "highest" | "lowest" | "mostHelpful";
+export enum ReviewStatus {
+  PENDING = "pending",
+  APPROVED = "approved",
+  REJECTED = "rejected",
+}
 
 export interface Review {
   id: string;
-  productId: string; // matches Rails product_id
-  user: User;
+  userId: string;
+  productId: string;
   rating: number;
   comment: string;
-  createdAt: string; // matches Rails created_at
-  updatedAt: string; // matches Rails updated_at
+  status: ReviewStatus;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+  product?: Product;
+  helpfulCount: number;
+  userHasMarkedHelpful?: boolean;
 }
 
 export interface ReviewSummary {
@@ -18,20 +29,37 @@ export interface ReviewSummary {
   reviews: Review[];
 }
 
+export interface ReviewFormData {
+  rating: number;
+  comment: string;
+}
+
 export interface ReviewCreateData {
   productId: string; // matches Rails product_id
   rating: number;
   comment: string;
 }
 
-export interface RatingSummary {
-  average: number;
-  totalCount: number;
-  distribution: {
+export interface ReviewStats {
+  averageRating: number;
+  totalReviews: number;
+  ratingDistribution: {
     5: number;
     4: number;
     3: number;
     2: number;
     1: number;
   };
+}
+
+export interface MarkHelpfulResponse {
+  helpful_count: number;
+}
+
+export interface ReviewQueryParams {
+  page?: number;
+  per_page?: number;
+  rating?: number | null;
+  sort_by?: string;
+  [key: string]: unknown;
 }

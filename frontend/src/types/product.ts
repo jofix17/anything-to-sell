@@ -4,7 +4,8 @@ import { Category } from "./category";
 import { ReviewSummary } from "./review";
 
 export type ProductStatus = "active" | "inactive" | "pending" | "rejected";
-export type ProductSortType = "price_asc" | "price_desc" | "newest" | "popular";
+export type ProductSortType = "price_asc" | "price_desc" | "newest" | "top_rated";
+export type ProductTabType = "description" | "specifications" | "reviews";
 
 export interface Product {
   id: string;
@@ -19,6 +20,7 @@ export interface Product {
   tags: string[];
   isActive: boolean; // matches Rails is_active
   isApproved: boolean; // matches Rails is_approved
+  inStock: boolean; // matches Rails in_stock
   inventory: number;
   updatedAt: string; // matches Rails updated_at
   createdAt: string; // matches Rails created_at

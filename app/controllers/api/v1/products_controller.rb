@@ -7,6 +7,7 @@ module Api
           :category,
           :user,
           :product_images,
+          :reviews,
           collection_products: :collection
         )
         .where(is_active: true, status: "active")
@@ -36,23 +37,29 @@ module Api
           @products = @products.where("name ILIKE ? OR description ILIKE ?", query, query)
         end
 
-        sort_by = params[:sort_by] || params[:sort] || "newest"
-        order_by = case sort_by.to_s.downcase
-        when "price_asc" then "price ASC"
-        when "price_desc" then "price DESC"
-        when "newest" then "created_at DESC"
-        when "popular" then "popularity DESC"
-        else "created_at DESC"
-        end
-        @products = @products.order(order_by)
-
         total_count = @products.count
+
+        if params[:sort_by] == "top_rated"
+          # Join with a subquery that has calculated ratings
+          rated_products = Product.left_joins(:reviews)
+                                  .where("reviews.status = ? OR reviews.id IS NULL", 1)
+                                  .group("products.id")
+                                  .select("products.id, COALESCE(AVG(reviews.rating), 0) as calculated_rating")
+
+          # Apply this to your filtered products
+          @products = @products.joins("LEFT JOIN (#{rated_products.to_sql}) AS rated_prods ON products.id = rated_prods.id")
+                                .order("rated_prods.calculated_rating DESC NULLS LAST, products.created_at DESC")
+        else
+          @products = @products.apply_sorting(params[:sort_by] || "newest")
+        end
 
         page = (params[:page] || 1).to_i
         per_page = (params[:per_page] || 12).to_i
         offset = (page - 1) * per_page
 
         paginated_products = @products.limit(per_page).offset(offset)
+
+        paginated_products = Product.preload_review_summary(paginated_products)
 
         success_response({
           data: ActiveModelSerializers::SerializableResource.new(
@@ -76,6 +83,8 @@ module Api
           collection_products: :collection
         )
         .find(params[:id])
+
+        Product.preload_review_summary([ @product ])
 
         if !@product.is_active || @product.status != "active"
           return error_response("Product not available", :not_found)
@@ -104,6 +113,8 @@ module Api
         .where(is_active: true, status: "active")
         .limit(params[:limit] || 8)
 
+        @products = Product.preload_review_summary(@products)
+
         success_response(
           ActiveModelSerializers::SerializableResource.new(
             @products,
@@ -125,6 +136,8 @@ module Api
         .where(collections: { slug: "new-arrivals" })
         .where(is_active: true, status: "active")
         .limit(params[:limit] || 8)
+
+        @products = Product.preload_review_summary(@products)
 
         success_response(
           ActiveModelSerializers::SerializableResource.new(
