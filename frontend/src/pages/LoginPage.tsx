@@ -29,6 +29,8 @@ const LoginPage: React.FC = () => {
   // Navigation hooks
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Default return path
   const from = location.state?.from?.pathname || "/";
 
   // Refs to manage component state
@@ -49,11 +51,22 @@ const LoginPage: React.FC = () => {
     rememberMe: false,
   };
 
-  // Get redirect from URL if present
+  // Get redirect from URL if present - handling both returnUrl and redirect parameters
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
+    
+    // Check for returnUrl parameter first (used by CartPage)
+    const returnUrlPath = searchParams.get("returnUrl");
+    if (returnUrlPath) {
+      console.log("LoginPage: Found returnUrl parameter:", returnUrlPath);
+      sessionStorage.setItem("redirectAfterLogin", returnUrlPath);
+      return;
+    }
+    
+    // Check for redirect parameter as fallback
     const redirectPath = searchParams.get("redirect");
     if (redirectPath) {
+      console.log("LoginPage: Found redirect parameter:", redirectPath);
       sessionStorage.setItem("redirectAfterLogin", redirectPath);
     }
   }, [location.search]);
@@ -134,15 +147,35 @@ const LoginPage: React.FC = () => {
     redirectedRef.current = true;
 
     // Get redirect path from session storage
-    const redirectPath = sessionStorage.getItem("redirectAfterLogin") || from;
+    const redirectPath = sessionStorage.getItem("redirectAfterLogin");
+    
+    // Debugging information
+    console.log("LoginPage: Redirect path from session storage:", redirectPath);
+
+    // Use the redirect path from session storage, URL parameters, or fallback to from
+    let finalPath = "/";
+    
+    if (redirectPath) {
+      finalPath = redirectPath;
+    } else {
+      // Check URL parameters directly as fallback
+      const searchParams = new URLSearchParams(location.search);
+      const returnUrlParam = searchParams.get("returnUrl");
+      
+      if (returnUrlParam) {
+        finalPath = returnUrlParam;
+      } else {
+        finalPath = from;
+      }
+    }
 
     // Clear the redirect path from session storage
     sessionStorage.removeItem("redirectAfterLogin");
 
-    console.log("LoginPage: Redirecting to", redirectPath);
+    console.log("LoginPage: Redirecting to", finalPath);
 
     // Navigate immediately
-    navigate(redirectPath, { replace: true });
+    navigate(finalPath, { replace: true });
   };
 
   // Form submission handler

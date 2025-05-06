@@ -64,7 +64,10 @@ const CartPage: React.FC = () => {
 
   const handleCheckout = () => {
     if (!isAuthenticated) {
-      // Redirect to login page with returnUrl to come back to checkout
+      // Store the current URL in session storage to handle the redirect after login
+      sessionStorage.setItem("redirectAfterLogin", "/checkout");
+
+      // Redirect to login page with returnUrl query parameter
       navigate("/login?returnUrl=/checkout");
     } else {
       navigate("/checkout");

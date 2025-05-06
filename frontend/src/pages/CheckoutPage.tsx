@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   useAddresses,
   useCreateAddress,
@@ -21,6 +21,7 @@ const stripePromise = loadStripe(
 
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { cart, fetchCart } = useCartContext();
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<
     string | null
@@ -54,6 +55,18 @@ const CheckoutPage: React.FC = () => {
   const createAddressMutation = useCreateAddress();
   const createOrderMutation = useCreateOrder();
   const createPaymentIntentMutation = useCreatePaymentIntent();
+
+  // Check if we've been redirected here from login
+  useEffect(() => {
+    // Check if redirected from login
+    const fromLogin = location.state?.fromLogin === true;
+    if (fromLogin) {
+      console.log("CheckoutPage: Redirected from login");
+
+      // Refresh cart data to ensure it's synced with the authenticated user
+      fetchCart();
+    }
+  }, [location, fetchCart]);
 
   // Set default address if available
   useEffect(() => {
@@ -112,6 +125,7 @@ const CheckoutPage: React.FC = () => {
     e.preventDefault();
     try {
       setIsLoading(true);
+      setError(null);
       const response = await createAddressMutation.mutateAsync(newAddress);
       const newAddressData = response.data;
 
@@ -148,6 +162,7 @@ const CheckoutPage: React.FC = () => {
 
     try {
       setIsLoading(true);
+      setError(null);
 
       // Create the order
       const orderResponse = await createOrderMutation.mutateAsync({
