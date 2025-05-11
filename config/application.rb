@@ -46,6 +46,7 @@ module AnythingToSell
 
     config.eager_load_paths << Rails.root.join("app/services")
     config.autoload_paths << Rails.root.join("app", "middleware")
+    config.autoload_paths += %W[#{Rails.root}/app/queries]
 
     config.middleware.use CaseTransformMiddleware
     config.generators do |g|

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
+ActiveRecord::Schema[7.2].define(version: 2025_05_09_130946) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -62,6 +62,18 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
     t.index ["name"], name: "index_categories_on_name"
     t.index ["parent_id"], name: "index_categories_on_parent_id"
     t.index ["slug"], name: "index_categories_on_slug", unique: true
+  end
+
+  create_table "category_properties", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "category_id", null: false
+    t.uuid "property_definition_id", null: false
+    t.boolean "is_required", default: false
+    t.integer "display_order", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["category_id", "property_definition_id"], name: "idx_on_category_id_property_definition_id_ad40ba582e", unique: true
+    t.index ["category_id"], name: "index_category_properties_on_category_id"
+    t.index ["property_definition_id"], name: "index_category_properties_on_property_definition_id"
   end
 
   create_table "collection_products", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -180,8 +192,38 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
     t.index ["product_id"], name: "index_product_images_on_product_id"
   end
 
-  create_table "products", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+  create_table "product_property_values", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "product_id", null: false
+    t.uuid "property_definition_id", null: false
+    t.string "value_string"
+    t.decimal "value_decimal", precision: 15, scale: 5
+    t.boolean "value_boolean"
+    t.jsonb "value_json"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["product_id", "property_definition_id"], name: "idx_on_product_id_property_definition_id_c4b30c8ed6", unique: true
+    t.index ["product_id"], name: "index_product_property_values_on_product_id"
+    t.index ["property_definition_id"], name: "index_product_property_values_on_property_definition_id"
+  end
+
+  create_table "product_variants", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "product_id", null: false
     t.string "sku", null: false
+    t.decimal "price", precision: 10, scale: 2
+    t.decimal "sale_price", precision: 10, scale: 2
+    t.integer "inventory", default: 0
+    t.jsonb "properties", default: {}
+    t.boolean "is_default", default: false
+    t.boolean "is_active", default: true
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["product_id", "is_default"], name: "index_product_variants_on_product_id_and_is_default", unique: true, where: "(is_default = true)"
+    t.index ["product_id"], name: "index_product_variants_on_product_id"
+    t.index ["sku"], name: "index_product_variants_on_sku", unique: true
+  end
+
+  create_table "products", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "sku"
     t.string "name", null: false
     t.text "description"
     t.decimal "price", precision: 10, scale: 2, null: false
@@ -192,13 +234,29 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
     t.boolean "is_active", default: false
     t.integer "status", default: 0
     t.text "rejection_reason"
+    t.boolean "has_variants", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["category_id"], name: "index_products_on_category_id"
     t.index ["name"], name: "index_products_on_name"
-    t.index ["sku"], name: "index_products_on_sku", unique: true
+    t.index ["sku"], name: "index_products_on_sku"
     t.index ["status"], name: "index_products_on_status"
     t.index ["user_id"], name: "index_products_on_user_id"
+  end
+
+  create_table "property_definitions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "name", null: false
+    t.string "display_name", null: false
+    t.string "property_type", null: false
+    t.boolean "is_variant", default: false
+    t.boolean "is_required", default: false
+    t.jsonb "config", default: {}
+    t.integer "display_order", default: 0
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["is_variant"], name: "index_property_definitions_on_is_variant"
+    t.index ["name"], name: "index_property_definitions_on_name"
+    t.index ["property_type"], name: "index_property_definitions_on_property_type"
   end
 
   create_table "reviews", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -245,6 +303,8 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
   add_foreign_key "cart_items", "products"
   add_foreign_key "carts", "users"
   add_foreign_key "categories", "categories", column: "parent_id"
+  add_foreign_key "category_properties", "categories"
+  add_foreign_key "category_properties", "property_definitions"
   add_foreign_key "collection_products", "collections"
   add_foreign_key "collection_products", "products"
   add_foreign_key "discount_code_usages", "discount_codes"
@@ -261,6 +321,9 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_05_103515) do
   add_foreign_key "orders", "addresses", column: "shipping_address_id"
   add_foreign_key "orders", "users"
   add_foreign_key "product_images", "products"
+  add_foreign_key "product_property_values", "products"
+  add_foreign_key "product_property_values", "property_definitions"
+  add_foreign_key "product_variants", "products"
   add_foreign_key "products", "categories"
   add_foreign_key "products", "users"
   add_foreign_key "reviews", "products"

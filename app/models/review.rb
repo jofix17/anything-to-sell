@@ -19,17 +19,47 @@ class Review < ApplicationRecord
   scope :recent, -> { order(created_at: :desc) }
   before_create :approve_automatically
 
-  # Calculate average rating for a product
-  def self.average_rating_for_product(product_id)
-    where(product_id: product_id, status: :approved)
-      .average(:rating)
-      .to_f
-      .round(1)
-  end
+  class << self
+    def ratings_and_counts_for_products(product_ids)
+      # Get ratings
+      ratings = where(product_id: product_ids, status: statuses[:approved])
+                .group(:product_id)
+                .average(:rating)
 
-  # Count total reviews for a product
-  def self.count_for_product(product_id)
-    where(product_id: product_id, status: :approved).count
+      # Get counts
+      counts = where(product_id: product_ids, status: statuses[:approved])
+               .group(:product_id)
+               .count
+
+      [ ratings, counts ]
+    end
+
+    # Calculate average rating for a product
+    def average_rating_for_product(product_id)
+      where(product_id: product_id, status: :approved)
+        .average(:rating)
+        .to_f
+        .round(1)
+    end
+
+    # Count total reviews for a product
+    def count_for_product(product_id)
+      where(product_id: product_id, status: :approved).count
+    end
+
+    # Check if user has already reviewed this product
+    def user_has_reviewed?(user_id, product_id)
+      exists?(user_id: user_id, product_id: product_id)
+    end
+
+    # Distribution of ratings (for statistics)
+    def rating_distribution(product_id)
+      approved_only
+        .where(product_id: product_id)
+        .group(:rating)
+        .count
+        .transform_keys(&:to_i)
+    end
   end
 
   # Approve a review
@@ -40,20 +70,6 @@ class Review < ApplicationRecord
   # Reject a review
   def reject!
     update(status: :rejected)
-  end
-
-  # Check if user has already reviewed this product
-  def self.user_has_reviewed?(user_id, product_id)
-    exists?(user_id: user_id, product_id: product_id)
-  end
-
-  # Distribution of ratings (for statistics)
-  def self.rating_distribution(product_id)
-    approved_only
-      .where(product_id: product_id)
-      .group(:rating)
-      .count
-      .transform_keys(&:to_i)
   end
 
   # Check if user has marked this review as helpful
