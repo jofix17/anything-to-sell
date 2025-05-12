@@ -76,8 +76,12 @@ class ProductVariant < ApplicationRecord
   def validate_properties
     return if properties.blank?
 
-    # Get variant properties for this product's category
-    variant_properties = product.category.property_definitions.where(is_variant: true)
+    # Use preloaded variant properties if available
+    variant_properties = if product.category.association(:category_properties).loaded?
+                          product.category.variant_properties
+    else
+                          product.category.property_definitions.where(is_variant: true)
+    end
 
     variant_properties.each do |property|
       property_name = property.name

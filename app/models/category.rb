@@ -41,7 +41,16 @@ class Category < ApplicationRecord
   end
 
   def variant_properties
-    @variant_properties ||= property_definitions.where(is_variant: true).to_a
+    if association(:category_properties).loaded? &&
+       category_properties.all? { |cp| cp.association(:property_definition).loaded? }
+      # Use preloaded data
+      @variant_properties ||= category_properties
+                              .select { |cp| cp.property_definition.is_variant }
+                              .map(&:property_definition)
+    else
+      # Fall back to database query
+      @variant_properties ||= property_definitions.where(is_variant: true).to_a
+    end
   end
 
   # Get all non-variant properties for this category

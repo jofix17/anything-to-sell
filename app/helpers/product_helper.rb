@@ -38,10 +38,17 @@ module ProductHelper
   def self.prepare_for_serialization(products)
     return [] if products.blank?
 
+    # First preload review summaries
     preloaded_products = Product.preload_review_summary(products)
 
-    # Explicitly preload users separately after getting the review summaries
-    ActiveRecord::Associations::Preloader.new(records: preloaded_products, associations: :user).call
+    # Preload all the necessary associations in a single go
+    ActiveRecord::Associations::Preloader.new(
+      records: preloaded_products,
+      associations: [
+        :user,
+        { category: { category_properties: :property_definition } }
+      ]
+    ).call
 
     preloaded_products
   end
