@@ -1,7 +1,7 @@
 class CartItemSerializer < ActiveModel::Serializer
-  attributes :id, :product_id, :quantity, :price, :product
+  attributes :id, :quantity, :price, :product, :product_variant
 
   def product
-    ProductSerializer.new(object.product).as_json
+    SimpleProductSerializer.new(object.product).as_json
   end
 end

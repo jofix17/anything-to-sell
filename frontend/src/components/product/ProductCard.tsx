@@ -38,12 +38,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
       )
     : 0;
 
-  // Get primary image or fallback
-  const primaryImage =
+  const primaryImageOnList =
     product.images && product.images.length > 0
       ? product.images.find((img) => img.isPrimary)?.imageUrl ||
-        product.images[0].imageUrl
+        product.images?.[0]?.imageUrl
       : "/placeholder-product.jpg";
+
+  // Get primary image or fallback
+  const primaryImage = product.primaryImage?.imageUrl || primaryImageOnList;
 
   // Handle add to cart
   const handleAddToCart = async (e: React.MouseEvent) => {
@@ -162,10 +164,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Vendor name if available */}
         {product.vendor && (
           <p className="mt-1 text-xs text-gray-500">
-            by{" "}
-            <span className="text-gray-700">
-              {product.vendor.firstName} {product.vendor.lastName}
-            </span>
+            by <span className="text-gray-700">{product.vendor.name}</span>
           </p>
         )}
 

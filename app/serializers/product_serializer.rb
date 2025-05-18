@@ -1,10 +1,13 @@
 class ProductSerializer < ActiveModel::Serializer
   attributes :id, :sku, :name, :description, :price, :sale_price, :is_active, :images,
              :inventory, :status, :collection_ids, :in_stock, :review_summary,
-             :has_variants, :property_values, :variants, :variant_options
+             :has_variants, :property_values, :variants, :variant_options, :vendor
 
   belongs_to :category, serializer: SimpleCategorySerializer
-  belongs_to :user, key: :vendor, serializer: UserSerializer
+
+  def vendor
+    SimpleUserSerializer.new(object.user)
+  end
 
   def collection_ids
     if object.association(:collection_products).loaded? &&

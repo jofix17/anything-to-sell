@@ -16,51 +16,6 @@ class Cart < ApplicationRecord
   # Callbacks
   before_validation :ensure_unique_guest_token, if: -> { guest_token.present? }
 
-  # Methods
-  def is_empty?
-    cart_items.empty?
-  end
-
-  # Add a product to the cart
-  def add_product(product, quantity = 1)
-    current_item = cart_items.find_by(product_id: product.id)
-
-    if current_item
-      # If product already exists in cart, increment quantity
-      current_item.quantity += quantity
-      current_item.save
-    else
-      # If product doesn't exist in cart, create new cart item
-      price = product.sale_price || product.price
-      current_item = cart_items.create(product_id: product.id, quantity: quantity, price: price)
-    end
-
-    current_item
-  end
-
-  # Remove a product from the cart
-  def remove_product(product)
-    current_item = cart_items.find_by(product_id: product.id)
-    current_item&.destroy
-  end
-
-  # Update product quantity in cart
-  def update_quantity(product, quantity)
-    current_item = cart_items.find_by(product_id: product.id)
-
-    if current_item
-      if quantity <= 0
-        current_item.destroy
-        return nil
-      else
-        current_item.update(quantity: quantity)
-        return current_item
-      end
-    end
-
-    nil
-  end
-
   # Empty the cart
   def clear
     cart_items.destroy_all
@@ -73,32 +28,7 @@ class Cart < ApplicationRecord
 
   # Total price of items in cart
   def total_price
-    cart_items.sum { |item| item.product.current_price * item.quantity }
-  end
-
-  # Merge another cart into this one
-  def merge_with(other_cart)
-    return unless other_cart && other_cart.cart_items.any?
-
-    other_cart.cart_items.each do |item|
-      existing_item = cart_items.find_by(product_id: item.product_id)
-
-      if existing_item
-        # Update quantity if product already exists
-        existing_item.update(quantity: existing_item.quantity + item.quantity)
-      else
-        # Move item to this cart
-        item.update(cart_id: id)
-      end
-    end
-
-    # Return the other cart for potential deletion by caller
-    other_cart
-  end
-
-  # Convert to user cart
-  def convert_to_user_cart(user_id)
-    update(user_id: user_id, guest_token: nil)
+    cart_items.sum { |item| item.price * item.quantity }
   end
 
   # Convert cart to order

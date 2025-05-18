@@ -5,14 +5,16 @@ import {
   TrashIcon,
   ArrowRightIcon,
 } from "@heroicons/react/24/outline";
+
 import { useCartContext } from "../context/CartContext";
 import { useAuthContext } from "../context/AuthContext";
-import CartItemsList from "../components/cart/CartItemList";
-import OrderSummary from "../components/cart/OrderSummary";
-import EmptyCart from "../components/cart/EmptyCart";
+
 import ErrorMessage from "../components/common/ErrorMessage";
 import LoadingSpinner from "../components/common/LoadingSpinner";
-
+import { calculateCartTotals } from "../utils/cartUtilities";
+import EmptyCart from "../components/cart/EmptyCart";
+import CartItems from "../components/cart/CartItems";
+import OrderSummary from "../components/cart/OrderSummary";
 const CartPage: React.FC = () => {
   const {
     cart,
@@ -69,13 +71,23 @@ const CartPage: React.FC = () => {
     if (!isAuthenticated) {
       // Store the current URL in session storage to handle the redirect after login
       sessionStorage.setItem("redirectAfterLogin", "/checkout");
-
       // Redirect to login page with returnUrl query parameter
       navigate("/login?returnUrl=/checkout");
     } else {
       navigate("/checkout");
     }
   };
+
+  // Calculate cart values using the custom hook
+  const cartCalculations = calculateCartTotals({
+    items: cart?.items || [],
+    options: {
+      includeShipping: true,
+      includeTax: true,
+      shippingRate: 10.0,
+      taxRate: 0.07,
+    },
+  });
 
   // Render loading state
   if (isLoading) {
@@ -99,7 +111,11 @@ const CartPage: React.FC = () => {
   if (!cart || cart.items.length === 0) {
     return (
       <div className="container mx-auto px-4 py-8 min-h-screen">
-        <EmptyCart />
+        <EmptyCart
+          message="Your cart is empty"
+          linkText="Start Shopping"
+          linkUrl="/products"
+        />
       </div>
     );
   }
@@ -129,8 +145,9 @@ const CartPage: React.FC = () => {
               )}
             </div>
 
-            <CartItemsList
+            <CartItems
               items={cart.items}
+              variant="full"
               onQuantityChange={handleQuantityChange}
               onRemoveItem={handleRemoveItem}
             />
@@ -150,9 +167,15 @@ const CartPage: React.FC = () => {
         {/* Order Summary Section */}
         <div className="lg:col-span-1">
           <OrderSummary
-            totalPrice={cart.totalPrice}
+            items={cart.items}
+            subtotal={cartCalculations.subtotal}
+            shippingCost={null}
+            taxAmount={null}
+            showShippingMessage={true}
+            showTaxMessage={true}
             isAuthenticated={isAuthenticated}
             onCheckout={handleCheckout}
+            className="sticky top-20"
           />
         </div>
       </div>

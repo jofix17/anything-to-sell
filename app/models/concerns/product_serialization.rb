@@ -5,7 +5,7 @@ module ProductSerialization
 
   def serialize_products(products, include_variants: false, include_properties: false)
     serializer_options = {
-      each_serializer: ProductSerializer,
+      each_serializer: SimpleProductSerializer,
       include_variants: include_variants,
       include_properties: include_properties,
       include: [ "category", "user", "product_images" ]

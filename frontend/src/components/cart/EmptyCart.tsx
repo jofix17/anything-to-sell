@@ -1,19 +1,30 @@
-import { ShoppingCartIcon } from "@heroicons/react/24/outline";
+import React from "react";
 import { Link } from "react-router-dom";
+import { ShoppingCartIcon } from "@heroicons/react/24/outline";
 
-const EmptyCart: React.FC = () => {
+interface EmptyCartProps {
+  message?: string;
+  linkText?: string;
+  linkUrl?: string;
+}
+
+const EmptyCart: React.FC<EmptyCartProps> = ({
+  message = "Your cart is empty",
+  linkText = "Continue Shopping",
+  linkUrl = "/products",
+}) => {
   return (
-    <div className="flex flex-col items-center justify-center h-64">
-      <ShoppingCartIcon className="h-16 w-16 text-gray-300 mb-4" />
-      <h2 className="text-2xl font-bold mb-2">Your cart is empty</h2>
-      <p className="text-gray-600 mb-6">
-        Add some products to your cart to continue shopping
+    <div className="text-center py-16">
+      <ShoppingCartIcon className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+      <h2 className="text-2xl font-bold mb-4">{message}</h2>
+      <p className="text-gray-600 mb-8">
+        Add some products to your cart before checking out.
       </p>
       <Link
-        to="/products"
-        className="bg-blue-600 text-white py-2 px-6 rounded-md hover:bg-blue-700"
+        to={linkUrl}
+        className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition duration-200"
       >
-        Browse Products
+        {linkText}
       </Link>
     </div>
   );

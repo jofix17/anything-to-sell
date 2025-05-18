@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import ProductBreadcrumb from "../components/product/ProductBreadcrumb";
 import QuantitySelector from "../components/common/QuantitySelector";
 import Button from "../components/common/Button";
@@ -10,34 +10,44 @@ import ProductImageGallery from "../components/product/ProductImageGallery";
 import ProductTabs from "../components/product/ProductTabs";
 import RelatedProducts from "../components/product/RelatedProducts";
 import RecommendedProducts from "../components/product/RecommendedProducts";
+import ProductVariantSelector from "../components/product/variant/ProductVariantSelector";
+import { Variant } from "../types/product";
+import { useNotification } from "../context/NotificationContext";
 
 const ProductDetailPage: React.FC = () => {
-  // Use our enhanced product detail hook
   const {
     isLoading,
     error,
-    processedData,
+    data,
     quantity,
     activeTab,
     inWishlist,
     toggleWishlistMutation,
     handleQuantityChange,
-    handleAddToCart,
-    handleBuyNow,
     handleToggleWishlist,
     handleShareProduct,
     setActiveTab,
+    handleAddToCart,
+    selectedVariant,
+    setSelectedVariant,
   } = useProductDetail();
+  const { showNotification } = useNotification();
+  // Add state for selected variant
+  const navigate = useNavigate();
+  // Handler for variant change
+  const handleVariantChange = (variant: Variant) => {
+    setSelectedVariant(variant);
+  };
 
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen mt-8">
-        <LoadingSpinner size="large" />
+        <LoadingSpinner />
       </div>
     );
   }
 
-  if (error || !processedData) {
+  if (error || !data) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-8 text-center">
         <h2 className="text-2xl font-bold text-red-600 mb-4">
@@ -65,7 +75,66 @@ const ProductDetailPage: React.FC = () => {
     rating,
     reviewCount,
     breadcrumbItems,
-  } = processedData;
+  } = data;
+
+  // Handle variants
+  const hasVariants =
+    product.hasVariants && product.variants && product.variants.length > 0;
+
+  // Get the current variant information for price display
+  const currentVariant =
+    selectedVariant ||
+    (hasVariants
+      ? (product.variants?.find((v) => v.isDefault) || product.variants?.[0]) ??
+        null
+      : null);
+
+  // Determine which price to display
+  const displayPrice = currentVariant ? currentVariant.price : product.price;
+
+  const displaySalePrice = currentVariant
+    ? currentVariant.salePrice
+    : product.salePrice;
+
+  const displayInventory = currentVariant
+    ? currentVariant.inventory
+    : product.inventory;
+
+  const variantIsInStock = currentVariant ? currentVariant.inStock : isInStock;
+
+  // Calculate current discount based on selected variant
+  const currentDiscount = currentVariant
+    ? currentVariant.discountPercentage
+    : discount;
+
+  // Prepare Add to Cart function with variant support
+  const handleAddToCartWithVariant = () => {
+    console.log({ currentVariant, selectedVariant });
+    if (product) {
+      try {
+        // You might need to adjust your addToCart function to handle variants
+        handleAddToCart();
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to add item to cart";
+        showNotification(errorMessage, { type: "error" });
+      }
+    }
+  };
+
+  // Create a similar function for Buy Now with variant support
+  const handleBuyNowWithVariant = () => {
+    try {
+      handleAddToCartWithVariant();
+      navigate("/checkout");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to proceed to checkout";
+      showNotification(errorMessage, { type: "error" });
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -79,8 +148,8 @@ const ProductDetailPage: React.FC = () => {
           <ProductImageGallery
             images={productImages}
             productName={product.name}
-            discount={discount}
-            hasSalePrice={!!product.salePrice}
+            discount={currentDiscount}
+            hasSalePrice={!!displaySalePrice}
           />
         </div>
 
@@ -117,54 +186,71 @@ const ProductDetailPage: React.FC = () => {
 
           {/* Price Section */}
           <div className="mb-6">
-            {product.salePrice ? (
+            {displaySalePrice ? (
               <div className="flex items-center gap-3">
                 <span className="text-3xl font-bold text-gray-900">
-                  ${product.salePrice}
+                  ${displaySalePrice}
                 </span>
                 <span className="text-xl text-gray-500 line-through">
-                  ${product.price}
+                  ${displayPrice}
                 </span>
+                {currentDiscount > 0 && (
+                  <span className="bg-red-100 text-red-800 text-sm font-medium px-2.5 py-0.5 rounded">
+                    {currentDiscount}% OFF
+                  </span>
+                )}
               </div>
             ) : (
               <span className="text-3xl font-bold text-gray-900">
-                ${product.price}
+                ${displayPrice}
               </span>
             )}
           </div>
+
+          {/* Variant Selector */}
+          {hasVariants && (
+            <div className="mb-6 pb-4 border-b border-gray-200">
+              <ProductVariantSelector
+                variants={product.variants}
+                variantOptions={product.variantOptions}
+                onVariantChange={handleVariantChange}
+                initialVariant={product.variants?.find((v) => v.isDefault)}
+              />
+            </div>
+          )}
 
           {/* Stock Status */}
           <div className="flex items-center gap-2 mb-6">
             <div
               className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                isInStock
+                variantIsInStock
                   ? "bg-green-100 text-green-800"
                   : "bg-red-100 text-red-800"
               }`}
             >
               <div
                 className={`w-2 h-2 rounded-full mr-1.5 ${
-                  isInStock ? "bg-green-500" : "bg-red-500"
+                  variantIsInStock ? "bg-green-500" : "bg-red-500"
                 }`}
               ></div>
-              {isInStock ? "In Stock" : "Out of Stock"}
+              {variantIsInStock ? "In Stock" : "Out of Stock"}
             </div>
-            {isInStock && (
+            {variantIsInStock && (
               <span className="text-gray-600 text-sm">
-                {product.inventory} items available
+                {displayInventory} items available
               </span>
             )}
           </div>
 
           {/* Short Description */}
           <div className="mb-6 text-gray-700">
-            <p>{product.description.substring(0, 150)}...</p>
+            <p>{product.description?.substring(0, 150)}...</p>
           </div>
 
           {/* Purchase Actions Section */}
           <div className="mb-6 pb-6 border-b border-gray-200">
             <div className="space-y-4">
-              {isInStock && (
+              {variantIsInStock && (
                 <div className="flex items-center gap-4">
                   <span className="text-gray-700 font-medium w-24">
                     Quantity:
@@ -172,15 +258,15 @@ const ProductDetailPage: React.FC = () => {
                   <QuantitySelector
                     quantity={quantity}
                     onChange={handleQuantityChange}
-                    max={product.inventory}
+                    max={displayInventory}
                   />
                 </div>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button
-                  onClick={handleAddToCart}
-                  disabled={!isInStock}
+                  onClick={handleAddToCartWithVariant}
+                  disabled={!variantIsInStock}
                   variant="primary"
                   size="large"
                   fullWidth
@@ -189,8 +275,8 @@ const ProductDetailPage: React.FC = () => {
                   Add to Cart
                 </Button>
                 <Button
-                  onClick={handleBuyNow}
-                  disabled={!isInStock}
+                  onClick={handleBuyNowWithVariant}
+                  disabled={!variantIsInStock}
                   variant="secondary"
                   size="large"
                   fullWidth

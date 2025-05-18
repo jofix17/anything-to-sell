@@ -13,8 +13,26 @@ import { WishlistItem } from "../types/wishlist";
 import { Product, ProductTabType } from "../types/product";
 import { useWishlist } from "../context/WishlistContext";
 
+// Define Variant interface (should match with your existing types)
+interface Variant {
+  id: string;
+  sku: string;
+  price: string;
+  salePrice: string;
+  inventory: number;
+  isDefault: boolean;
+  isActive: boolean;
+  properties: {
+    [key: string]: string;
+  };
+  displayTitle: string;
+  currentPrice: string;
+  discountPercentage: number;
+  inStock: boolean;
+}
+
 /**
- * Enhanced custom hook to manage product detail page state and logic
+ * Enhanced custom hook to manage product detail page state and logic with variant support
  */
 export const useProductDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -27,7 +45,9 @@ export const useProductDetail = () => {
   const [activeTab, setActiveTab] = useState<ProductTabType>("description");
   const [error, setError] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
+  const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null);
   const { isInWishlist } = useWishlist();
+  
   // Fetch product data using React Query
   const {
     data: productResponse,
@@ -49,6 +69,14 @@ export const useProductDetail = () => {
       showNotification(errorMessage, { type: "error" });
     }
   }, [productError, showNotification]);
+
+  // Set the default variant when product data is loaded
+  useEffect(() => {
+    if (productResponse && productResponse.hasVariants && productResponse.variants) {
+      const defaultVariant = productResponse.variants.find(v => v.isDefault) || productResponse.variants[0];
+      setSelectedVariant(defaultVariant);
+    }
+  }, [productResponse]);
 
   // Check if product is in wishlist
   const {
@@ -109,13 +137,39 @@ export const useProductDetail = () => {
     setQuantity(newQuantity);
   };
 
+  // Handle variant selection
+  const handleVariantChange = (variant: Variant) => {
+    setSelectedVariant(variant);
+    
+    // Reset quantity if the new variant has less inventory than current quantity
+    if (variant.inventory < quantity) {
+      setQuantity(Math.max(1, variant.inventory));
+    }
+    
+    // You might want to show a notification about the variant change
+    showNotification(`Selected: ${variant.displayTitle.split(' - ')[1] || variant.displayTitle}`, { 
+      type: "info",
+      duration: 1500 
+    });
+  };
+
+  // Enhanced addToCart with variant support
   const handleAddToCart = () => {
     if (product) {
       try {
-        addToCart(product.id, quantity);
-        showNotification(`Added ${quantity} ${product.name} to cart!`, {
-          type: "success",
-        });
+        // Use selected variant if available
+        const productToAdd = selectedVariant || product;
+        const productId = productToAdd.id;
+        const isVariant = !!selectedVariant;
+        
+        // Add to cart (you'll need to enhance your addToCart function to handle variants)
+        addToCart(product.id, quantity, isVariant ? productId : undefined);
+        
+        // Show success message
+        showNotification(
+          `Added ${quantity} ${product.name}${selectedVariant ? ` (${selectedVariant.displayTitle.split(' - ')[1] || ''})` : ''} to cart!`, 
+          { type: "success" }
+        );
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Failed to add item to cart";
@@ -176,21 +230,34 @@ export const useProductDetail = () => {
     }
   };
 
-  // Process product data for better display
+  // Process product data for better display, with variant support
   const processProductData = (product: Product | undefined) => {
     if (!product) return null;
 
-    const isInStock = product.inventory > 0;
-    const discount = product.salePrice
-      ? Math.round(
-          ((Number(product.price) - Number(product.salePrice)) /
-            Number(product.price)) *
-            100
-        )
-      : 0;
+    // Get current variant information
+    const currentVariant = selectedVariant || 
+      (product.hasVariants && product.variants && product.variants.length > 0
+        ? product.variants.find(v => v.isDefault) || product.variants[0]
+        : null);
+
+    // Determine stock status based on variant or product
+    const isInStock = currentVariant 
+      ? currentVariant.inStock 
+      : product.inventory > 0;
+
+    // Calculate discount percentage
+    const discount = currentVariant 
+      ? currentVariant.discountPercentage 
+      : (product.salePrice
+        ? Math.round(
+            ((Number(product.price) - Number(product.salePrice)) /
+             Number(product.price)) *
+              100
+          )
+        : 0);
 
     // Extract product images for the gallery
-    const productImages = product.images.map((img) => img.imageUrl);
+    const productImages = product.images?.map((img) => img.imageUrl) ?? [];
 
     // Get rating and review count
     const rating = product.reviewSummary?.rating || 0;
@@ -215,6 +282,7 @@ export const useProductDetail = () => {
       rating,
       reviewCount,
       breadcrumbItems,
+      currentVariant,
     };
   };
 
@@ -227,13 +295,16 @@ export const useProductDetail = () => {
     inWishlist,
     toggleWishlistMutation,
     selectedImageIndex,
-    processedData: processProductData(product),
+    selectedVariant,
+    setSelectedVariant,
+    data: processProductData(product),
     handleQuantityChange,
     handleAddToCart,
     handleBuyNow,
     handleToggleWishlist,
     handleImageSelect,
     handleShareProduct,
+    handleVariantChange,
     setActiveTab,
     refetchProduct,
     isInWishlist,

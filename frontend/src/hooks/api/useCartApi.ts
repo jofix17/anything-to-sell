@@ -75,16 +75,17 @@ export const useCheckUserCart = (options = {}) => {
  */
 export const useAddToCart = () => {
   return useApiMutation<Cart, AddToCartParams>(
-    async ({ productId, quantity }: AddToCartParams) => {
+    async ({ productId, quantity, variantId }: AddToCartParams) => {
       return apiService.post<ApiResponse<Cart>>(CART_ENDPOINTS.ITEMS, {
-        product_id: productId, // Match backend parameter name
+        productId,
+        variantId,
         quantity,
       });
     },
     {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-      }
+      },
     }
   );
 };
@@ -105,7 +106,7 @@ export const useUpdateCartItem = () => {
     {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-      }
+      },
     }
   );
 };
@@ -123,7 +124,7 @@ export const useRemoveCartItem = () => {
     {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-      }
+      },
     }
   );
 };
@@ -139,7 +140,7 @@ export const useClearCart = () => {
     {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: QueryKeys.cart.current });
-      }
+      },
     }
   );
 };
@@ -153,9 +154,9 @@ export const useTransferCart = () => {
       return apiService.post<ApiResponse<TransferCartResponse>>(
         CART_ENDPOINTS.TRANSFER_CART,
         {
-          source_cart_id: sourceCartId, // Match backend parameter name
-          target_user_id: targetUserId, // Match backend parameter name
-          action_type: actionType, // Match backend parameter name
+          sourceCartId,
+          targetUserId,
+          actionType,
         }
       );
     }

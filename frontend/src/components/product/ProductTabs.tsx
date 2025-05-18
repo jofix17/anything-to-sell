@@ -142,70 +142,16 @@ const ProductTabs: React.FC<ProductTabsProps> = ({
                     {product.category.name}
                   </td>
                 </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Brand
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">
-                    {product.vendor.name}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Weight
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">280g</td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Dimensions
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">
-                    7.5 x 6.1 x 3.2 inches
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Warranty
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">2 years</td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Color Options
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">
-                    <div className="flex gap-2">
-                      <span className="inline-block h-6 w-6 rounded-full bg-black border border-gray-300"></span>
-                      <span className="inline-block h-6 w-6 rounded-full bg-white border border-gray-300"></span>
-                      <span className="inline-block h-6 w-6 rounded-full bg-blue-600 border border-gray-300"></span>
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Connectivity
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">
-                    Bluetooth 5.0, 3.5mm audio jack
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Battery Life
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">
-                    Up to 30 hours
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
-                    Water Resistance
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-700">
-                    IPX4 (splash resistant)
-                  </td>
-                </tr>
+                {Object.entries(product.propertyValues).map(([key, prop]) => (
+                  <tr key={key}>
+                    <td className="py-4 px-6 text-sm font-medium text-gray-900 bg-gray-50 w-1/3">
+                      {prop.displayName}
+                    </td>
+                    <td className="py-4 px-6 text-sm text-gray-700">
+                      {prop.value}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

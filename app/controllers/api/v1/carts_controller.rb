@@ -10,11 +10,6 @@ module Api
         # Force auth_token check if @current_user not already set
         @current_user = auth_token_user if @current_user.nil?
 
-        Rails.logger.info "SHOW: Cart request for user: #{@current_user&.id || 'guest'}"
-        Rails.logger.info "SHOW: Session contains guest token: #{session[:guest_cart_token].present?}"
-        Rails.logger.info "SHOW: Authorization header present: #{request.headers['Authorization'].present?}"
-        Rails.logger.info "CART: #{@cart.inspect}"
-
         # Handle case when @cart is nil - create an empty cart response
         if @cart.nil?
           # For guest users, create a new cart
@@ -41,32 +36,58 @@ module Api
 
         product = Product.find(params[:product_id])
         quantity = params[:quantity].to_i
+        variant_id = params[:variant_id] # Get the variant ID from params
 
         if quantity <= 0
           return error_response("Quantity must be greater than 0", :unprocessable_entity)
         end
 
-        if product.inventory < quantity
+        # Find the variant if variant_id is provided
+        variant = nil
+        if variant_id.present?
+          variant = product.product_variants.find_by(id: variant_id)
+          unless variant
+            return error_response("Variant not found", :not_found)
+          end
+
+          # Check variant inventory instead of product inventory
+          if variant.inventory < quantity
+            return error_response("Not enough inventory available for this variant", :unprocessable_entity)
+          end
+        elsif product.inventory < quantity
           return error_response("Not enough inventory available", :unprocessable_entity)
         end
 
         # Ensure we have a cart
         ensure_cart
 
-        cart_item = @cart.cart_items.find_by(product_id: product.id)
+        # Find cart item by both product_id and product_variant_id
+        cart_item = if variant
+                      @cart.cart_items.find_by(product_id: product.id, product_variant_id: variant.id)
+        else
+                      @cart.cart_items.find_by(product_id: product.id, product_variant_id: nil)
+        end
 
         if cart_item
           # Update existing cart item
           cart_item.update(quantity: cart_item.quantity + quantity)
-          Rails.logger.info "ADD_ITEM: Updated existing cart item quantity to #{cart_item.quantity} for product: #{product.id}"
+          Rails.logger.info "ADD_ITEM: Updated existing cart item quantity to #{cart_item.quantity} for product: #{product.id}#{variant ? ", variant: #{variant.id}" : ""}"
         else
-          # Create new cart item
-          @cart.cart_items.create(
+          # Determine the price based on variant or product
+          price = if variant
+                    variant.sale_price || variant.price
+          else
+                    product.sale_price || product.price
+          end
+
+          # Create new cart item with variant information if provided
+          @cart.cart_items.create!(
             product_id: product.id,
+            product_variant_id: variant&.id,
             quantity: quantity,
-            price: product.sale_price || product.price
+            price: price
           )
-          Rails.logger.info "ADD_ITEM: Created new cart item with quantity #{quantity} for product: #{product.id}"
+          Rails.logger.info "ADD_ITEM: Created new cart item with quantity #{quantity} for product: #{product.id}#{variant ? ", variant: #{variant.id}" : ""}"
         end
 
         success_response(CartSerializer.new(@cart).as_json, "Item added to cart")
@@ -229,7 +250,7 @@ module Api
           case action_type
           when "merge"
             Rails.logger.info "TRANSFER_CART: Merging source cart into target cart"
-            merge_carts_improved(source_cart, target_cart)
+            merge_carts(source_cart, target_cart)
             message = "Cart successfully merged to target user"
 
           when "replace"
@@ -237,19 +258,19 @@ module Api
             # Clear the target cart first
             target_cart.cart_items.destroy_all
             # Then merge the source cart items
-            merge_carts_improved(source_cart, target_cart)
+            merge_carts(source_cart, target_cart)
             message = "Target user's cart has been replaced with source cart items"
 
           when "copy"
             Rails.logger.info "TRANSFER_CART: Copying source cart to target cart (keeping both)"
             # Copy items without destroying the source cart
-            copy_cart_items_improved(source_cart, target_cart)
+            copy_cart_items(source_cart, target_cart)
             message = "Cart successfully copied to target user"
 
           else
             # Default to merge
             Rails.logger.warn "TRANSFER_CART: Invalid action '#{action_type}', defaulting to merge"
-            merge_carts_improved(source_cart, target_cart)
+            merge_carts(source_cart, target_cart)
             message = "Cart successfully merged to target user (default action)"
           end
 
@@ -383,42 +404,81 @@ module Api
       end
 
       # Improved helper method to merge cart items
-      def merge_carts_improved(source_cart, target_cart)
+      def merge_carts(source_cart, target_cart)
         # Implement a robust merge that ensures items are properly copied
         ActiveRecord::Base.transaction do
-          # Keep track of product IDs to handle duplicates properly
-          processed_product_ids = Set.new
+          # Use a more comprehensive approach to track processed items
+          processed_items = []
 
           source_cart.cart_items.each do |item|
             # Ensure the product exists and is valid
             product = Product.find_by(id: item.product_id)
             next unless product && product.is_active
 
-            # Add product ID to processed set
-            processed_product_ids.add(item.product_id)
+            # Track that we've processed this item
+            processed_items << {
+              product_id: item.product_id,
+              variant_id: item.product_variant_id
+            }
 
-            # Find or create cart item in target cart
-            existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+            # Find or create cart item in target cart - match on both product_id AND variant_id
+            existing_item = target_cart.cart_items.find_by(
+              product_id: item.product_id,
+              product_variant_id: item.product_variant_id
+            )
 
             if existing_item
               # Update quantity for existing item
               new_quantity = existing_item.quantity + item.quantity
+
+              # Get the correct inventory based on whether this is a variant or not
+              max_inventory = if item.product_variant_id
+                variant = product.product_variants.find_by(id: item.product_variant_id)
+                variant&.inventory || product.inventory
+              else
+                product.inventory
+              end
+
               # Ensure we don't exceed inventory
-              new_quantity = [ new_quantity, product.inventory ].min
+              new_quantity = [ new_quantity, max_inventory ].min
+
+              # Update the existing item
               existing_item.update!(quantity: new_quantity)
-              Rails.logger.info "MERGE_CARTS: Updated existing item quantity to #{new_quantity} for product: #{item.product_id}"
+
+              Rails.logger.info "MERGE_CARTS: Updated existing item quantity to #{new_quantity} for product: #{item.product_id}#{item.product_variant_id ? ", variant: #{item.product_variant_id}" : ""}"
             else
-              # Create a new item in target cart
+              # Determine inventory limit
+              max_inventory = if item.product_variant_id
+                variant = product.product_variants.find_by(id: item.product_variant_id)
+                variant&.inventory || product.inventory
+              else
+                product.inventory
+              end
+
               # Ensure quantity doesn't exceed inventory
-              quantity = [ item.quantity, product.inventory ].min
-              # Create with appropriate price (current price from product or existing price)
-              price = product.sale_price || product.price
-              target_cart.cart_items.create!(
+              quantity = [ item.quantity, max_inventory ].min
+
+              # Determine the correct price based on variant or product
+              price = if item.product_variant_id
+                variant = product.product_variants.find_by(id: item.product_variant_id)
+                if variant
+                  variant.sale_price || variant.price
+                else
+                  item.price # Fall back to the original price if variant not found
+                end
+              else
+                product.sale_price || product.price
+              end
+
+              # Create new cart item with ALL the original properties
+              new_item = target_cart.cart_items.create!(
                 product_id: item.product_id,
+                product_variant_id: item.product_variant_id,
                 quantity: quantity,
                 price: price
               )
-              Rails.logger.info "MERGE_CARTS: Created new item with quantity #{quantity} for product: #{item.product_id}"
+
+              Rails.logger.info "MERGE_CARTS: Created new item with quantity #{quantity} for product: #{item.product_id}#{item.product_variant_id ? ", variant: #{item.product_variant_id}" : ""}"
             end
           end
 
@@ -428,40 +488,81 @@ module Api
       end
 
       # Improved helper method to copy cart items without affecting the source cart
-      def copy_cart_items_improved(source_cart, target_cart)
+      def copy_cart_items(source_cart, target_cart)
         # Use a transaction to ensure data integrity during copying
         ActiveRecord::Base.transaction do
-          # Keep track of product IDs to handle duplicates properly
-          processed_product_ids = Set.new
+          # Use a more comprehensive approach to track processed items
+          processed_items = []
 
           source_cart.cart_items.each do |item|
             # Find existing product - make sure it's valid
             product = Product.find_by(id: item.product_id)
             next unless product && product.is_active
 
-            # Add product ID to processed set
-            processed_product_ids.add(item.product_id)
+            # Track that we've processed this item
+            processed_items << {
+              product_id: item.product_id,
+              variant_id: item.product_variant_id
+            }
 
-            existing_item = target_cart.cart_items.find_by(product_id: item.product_id)
+            # Find an existing item with the same product AND variant
+            existing_item = target_cart.cart_items.find_by(
+              product_id: item.product_id,
+              product_variant_id: item.product_variant_id
+            )
 
             if existing_item
               # Update quantity for existing item
               new_quantity = existing_item.quantity + item.quantity
+
+              # Get the correct inventory based on whether this is a variant or not
+              max_inventory = if item.product_variant_id
+                variant = product.product_variants.find_by(id: item.product_variant_id)
+                variant&.inventory || product.inventory
+              else
+                product.inventory
+              end
+
               # Make sure we don't exceed inventory
-              new_quantity = [ new_quantity, product.inventory ].min
+              new_quantity = [ new_quantity, max_inventory ].min
+
+              # Update the existing item
               existing_item.update!(quantity: new_quantity)
-              Rails.logger.info "COPY_CART_ITEMS: Updated existing item quantity to #{new_quantity} for product: #{item.product_id}"
+
+              Rails.logger.info "COPY_CART_ITEMS: Updated existing item quantity to #{new_quantity} for product: #{item.product_id}#{item.product_variant_id ? ", variant: #{item.product_variant_id}" : ""}"
             else
-              # Create a new item in the target cart
-              # Make sure quantity doesn't exceed inventory
-              quantity = [ item.quantity, product.inventory ].min
-              price = product.sale_price || product.price
+              # Determine inventory limit
+              max_inventory = if item.product_variant_id
+                variant = product.product_variants.find_by(id: item.product_variant_id)
+                variant&.inventory || product.inventory
+              else
+                product.inventory
+              end
+
+              # Ensure quantity doesn't exceed inventory
+              quantity = [ item.quantity, max_inventory ].min
+
+              # Determine the correct price based on variant or product
+              price = if item.product_variant_id
+                variant = product.product_variants.find_by(id: item.product_variant_id)
+                if variant
+                  variant.sale_price || variant.price
+                else
+                  item.price # Fall back to the original price if variant not found
+                end
+              else
+                product.sale_price || product.price
+              end
+
+              # Create a new cart item with ALL the original properties
               new_item = target_cart.cart_items.create!(
                 product_id: item.product_id,
+                product_variant_id: item.product_variant_id,
                 quantity: quantity,
                 price: price
               )
-              Rails.logger.info "COPY_CART_ITEMS: Created new item with ID #{new_item.id} for product: #{item.product_id}"
+
+              Rails.logger.info "COPY_CART_ITEMS: Created new item with ID #{new_item.id} for product: #{item.product_id}#{item.product_variant_id ? ", variant: #{item.product_variant_id}" : ""}"
             end
           end
 

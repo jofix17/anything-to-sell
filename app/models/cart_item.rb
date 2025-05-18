@@ -3,9 +3,14 @@ class CartItem < ApplicationRecord
   # Associations
   belongs_to :cart
   belongs_to :product
+  belongs_to :product_variant, optional: true
 
   # Validations
-  validates :product_id, uniqueness: { scope: :cart_id, message: "has already been added to the cart" }
+  validates :product_id, uniqueness: {
+    scope: [ :cart_id, :product_variant_id ],
+    message: "has already been added to the cart"
+  }
+
   validates :quantity, numericality: { greater_than: 0, only_integer: true }
 
   # Callbacks

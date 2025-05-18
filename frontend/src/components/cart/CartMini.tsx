@@ -1,4 +1,3 @@
-// src/components/cart/MiniCart.tsx
 import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -9,6 +8,7 @@ import {
 import { useCartContext } from "../../context/CartContext";
 import { useAuthContext } from "../../context/AuthContext";
 import { useCheckGuestCart } from "../../hooks/api/useCartApi";
+import CartItems from "./CartItems";
 
 interface MiniCartProps {
   className?: string;
@@ -102,8 +102,7 @@ const MiniCart: React.FC<MiniCartProps> = ({ className = "" }) => {
     setIsOpen(!isOpen);
   };
 
-  const handleRemoveItem = async (itemId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
+  const handleRemoveItem = async (itemId: string) => {
     await removeFromCart(itemId);
     // Cart context will handle invalidation and refetching
   };
@@ -157,49 +156,11 @@ const MiniCart: React.FC<MiniCartProps> = ({ className = "" }) => {
           ) : (
             <>
               <div className="max-h-80 overflow-y-auto">
-                {cart?.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 border-b flex hover:bg-gray-50"
-                  >
-                    <div className="w-16 h-16 flex-shrink-0">
-                      <img
-                        src={
-                          item.product.images[0]?.imageUrl ||
-                          "/placeholder-image.jpg"
-                        }
-                        alt={item.product.name}
-                        className="w-full h-full object-cover rounded"
-                      />
-                    </div>
-                    <div className="ml-3 flex-1">
-                      <div className="flex justify-between">
-                        <Link
-                          to={`/products/${item.product.id}`}
-                          className="text-sm font-medium hover:text-blue-600 line-clamp-1"
-                          onClick={() => setIsOpen(false)}
-                        >
-                          {item.product.name}
-                        </Link>
-                        <button
-                          onClick={(e) => handleRemoveItem(item.id, e)}
-                          className="text-gray-400 hover:text-red-500"
-                          aria-label={`Remove ${item.product.name} from cart`}
-                        >
-                          <XMarkIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="flex justify-between mt-1">
-                        <span className="text-xs text-gray-500">
-                          Qty: {item.quantity}
-                        </span>
-                        <span className="text-sm font-medium">
-                          ${(item.price * item.quantity).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                <CartItems
+                  items={cart?.items || []}
+                  variant="mini"
+                  onRemoveItem={handleRemoveItem}
+                />
               </div>
 
               <div className="p-4 bg-gray-50">

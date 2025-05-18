@@ -4,52 +4,68 @@ import { Category } from "./category";
 import { ReviewSummary } from "./review";
 
 export type ProductStatus = "active" | "inactive" | "pending" | "rejected";
-export type ProductSortType = "price_asc" | "price_desc" | "newest" | "top_rated";
+export type ProductSortType =
+  | "price_asc"
+  | "price_desc"
+  | "newest"
+  | "top_rated";
 export type ProductTabType = "description" | "specifications" | "reviews";
 
+export interface ProperTyValues {
+  displayName: string;
+  id: string;
+  name: string;
+  propertyType: string;
+  value: string;
+}
 export interface Product {
   id: string;
   sku: string;
   name: string;
-  description: string;
+  description?: string;
   price: string;
-  salePrice?: string; // matches Rails sale_price
+  salePrice?: string;
   category: Category;
   vendor: User;
-  images: ProductImage[];
-  tags: string[];
-  isActive: boolean; // matches Rails is_active
-  isApproved: boolean; // matches Rails is_approved
-  inStock: boolean; // matches Rails in_stock
+  primaryImage: ProductImage;
+  images?: ProductImage[];
+  tags?: string[];
+  isActive?: boolean;
+  isApproved?: boolean;
+  inStock: boolean;
   inventory: number;
-  updatedAt: string; // matches Rails updated_at
-  createdAt: string; // matches Rails created_at
-  status: ProductStatus;
-  rejectionReason?: string; // matches Rails rejection_reason
+  updatedAt?: string;
+  createdAt?: string;
+  status?: ProductStatus;
+  rejectionReason?: string;
   reviewSummary: ReviewSummary;
-  salesAnalytics: SalesAnalytics;
+  salesAnalytics?: SalesAnalytics;
+  hasVariants?: boolean;
+  propertyValues: {
+    [key: string]: ProperTyValues;
+  };
+  variants: Variant[];
+  variantOptions: VariantOptions
 }
 
 export interface ProductImage {
-  id?: string;
-  productId?: string; // matches Rails product_id
-  imageUrl: string; // matches Rails image_url
-  isPrimary?: boolean; // matches Rails is_primary
-  createdAt?: string; // matches Rails created_at
-  updatedAt?: string; // matches Rails updated_at
+  id: string;
+  imageUrl: string;
+  productId?: string;
+  isPrimary?: boolean;
 }
 
 export interface ProductFilterParams {
-  categoryId?: string; // matches Rails category_id
-  vendorId?: string; // matches Rails vendor_id
-  minPrice?: number; // matches Rails min_price
-  maxPrice?: number; // matches Rails max_price
+  categoryId?: string;
+  vendorId?: string;
+  minPrice?: number;
+  maxPrice?: number;
   query?: string;
-  onSale?: boolean; // matches Rails on_sale
-  inStock?: boolean; // matches Rails in_stock
-  sortBy?: ProductSortType; // matches Rails sort_by
+  onSale?: boolean;
+  inStock?: boolean;
+  sortBy?: ProductSortType;
   page?: number;
-  perPage?: number; // matches Rails per_page
+  perPage?: number;
   [key: string]: unknown;
 }
 
@@ -57,11 +73,11 @@ export interface ProductCreateData {
   name: string;
   description: string;
   price: number;
-  salePrice?: number; // matches Rails sale_price
-  categoryId: number; // matches Rails category_id
+  salePrice?: number;
+  categoryId: number;
   tags?: string[];
   inventory: number;
-  isActive: boolean; // matches Rails is_active
+  isActive: boolean;
 }
 
 export interface PendingCountResponse {
@@ -71,4 +87,41 @@ export interface PendingCountResponse {
 export interface RejectProductParams {
   id: string;
   rejectionReason?: string;
+}
+
+export interface VariantProperty {
+  propertyId: string;
+  displayName: string;
+  propertyType: string;
+  values: string[];
+  config?: {
+    predefined?: string[];
+    allowCustom?: boolean;
+    options?: string[];
+    min?: number;
+    max?: number;
+    step?: number;
+    unit?: string;
+  };
+}
+
+export interface VariantOptions {
+  [key: string]: VariantProperty;
+}
+
+export interface Variant {
+  id: string;
+  sku: string;
+  price: string;
+  salePrice: string;
+  inventory: number;
+  isDefault: boolean;
+  isActive: boolean;
+  properties: {
+    [key: string]: string;
+  };
+  displayTitle: string;
+  currentPrice: string;
+  discountPercentage: number;
+  inStock: boolean;
 }

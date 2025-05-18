@@ -1,22 +1,31 @@
-import { Product } from "./product";
+import { Product, Variant } from "./product";
 
 export type CartTransferAction = "merge" | "replace" | "copy";
+
 // Objects
 export interface Cart {
   id: string;
   items: CartItem[];
   totalItems: number;
-  totalPrice: string; // Changed to string to match backend response
-  guestToken: string | null; // Added null to match backend response
-  userId: string | null; // Added to match backend response
+  totalPrice: string;
+  guestToken: string | null;
+  userId: string | null;
 }
 
 export interface CartItem {
   id: string;
-  productId: string;
   quantity: number;
   price: number;
   product: Product;
+  productVariant: Variant;
+}
+
+export interface CartCalculationResult {
+  subtotal: number;
+  shippingCost: number;
+  taxAmount: number;
+  total: number;
+  itemCount: number;
 }
 
 // Context
@@ -29,7 +38,11 @@ export interface CartContextType {
   sourceCart: string | null;
   targetCart: string | null;
   fetchCart: () => Promise<void>;
-  addToCart: (productId: string, quantity: number) => Promise<boolean>;
+  addToCart: (
+    productId: string,
+    quantity: number,
+    variantId?: string
+  ) => Promise<boolean>;
   updateCartItem: (itemId: string, quantity: number) => Promise<boolean>;
   removeFromCart: (itemId: string) => Promise<boolean>;
   clearCart: () => Promise<boolean>;
@@ -46,14 +59,14 @@ export interface CartContextType {
 export interface GuestCartCheck {
   hasGuestCart: boolean;
   itemCount: number;
-  total?: number; // Changed to string to match backend response
+  total?: number;
   cartId?: string;
 }
 
 export interface ExistingCartCheck {
   hasExistingCart: boolean;
   itemCount: number;
-  total?: number; // Changed to string to match backend response
+  total?: number;
   cartId?: string;
 }
 
@@ -69,6 +82,7 @@ export interface TransferCartResponse {
 export interface AddToCartParams {
   productId: string;
   quantity: number;
+  variantId?: string;
 }
 
 export interface UpdateCartItemParams {

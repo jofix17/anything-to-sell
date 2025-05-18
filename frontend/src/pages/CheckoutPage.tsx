@@ -10,12 +10,15 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import CheckoutForm from "../components/checkout/CheckoutForm";
 import { useCartContext } from "../context/CartContext";
+import { useAuthContext } from "../context/AuthContext";
 import { Address } from "../types/address";
 import FormSubmitButton from "../components/common/Formik/FormSubmitButton";
 import CheckoutSteps from "../components/checkout/CheckoutSteps";
-import CheckoutOrderSummary from "../components/checkout/CheckoutOrderSummary";
 import AddressForm from "../components/checkout/AddressForm";
 import AddressSelector from "../components/checkout/AddressSelector";
+import { calculateCartTotals } from "../utils/cartUtilities";
+import EmptyCart from "../components/cart/EmptyCart";
+import OrderSummary from "../components/cart/OrderSummary";
 
 // Initialize Stripe with environment variable or fallback
 const stripePromise = loadStripe(
@@ -25,7 +28,8 @@ const stripePromise = loadStripe(
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { cart, fetchCart } = useCartContext();
+  const { cart, fetchCart, isLoading: cartLoading } = useCartContext();
+  const { isAuthenticated } = useAuthContext();
 
   // State management
   const [selectedShippingAddress, setSelectedShippingAddress] = useState<
@@ -63,17 +67,32 @@ const CheckoutPage: React.FC = () => {
   const createOrderMutation = useCreateOrder();
   const createPaymentIntentMutation = useCreatePaymentIntent();
 
+  const cartCalculations = calculateCartTotals({
+    items: cart?.items || [],
+    options: {
+      includeShipping: true,
+      includeTax: true,
+      shippingRate: 10.0,
+      taxRate: 0.07,
+    },
+  });
+
   // Check if we've been redirected here from login
   useEffect(() => {
     // Check if redirected from login
     const fromLogin = location.state?.fromLogin === true;
-    if (fromLogin) {
+    const redirectAfterLogin = sessionStorage.getItem("redirectAfterLogin");
+
+    if (fromLogin || (redirectAfterLogin === "/checkout" && isAuthenticated)) {
       console.log("CheckoutPage: Redirected from login");
+
+      // Clear the redirect info
+      sessionStorage.removeItem("redirectAfterLogin");
 
       // Refresh cart data to ensure it's synced with the authenticated user
       fetchCart();
     }
-  }, [location, fetchCart]);
+  }, [location, fetchCart, isAuthenticated]);
 
   // Set default address if available
   useEffect(() => {
@@ -184,34 +203,48 @@ const CheckoutPage: React.FC = () => {
   };
 
   // Check if cart is empty
-  if (!cart || cart.items.length === 0) {
+  if (cartLoading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="flex justify-center items-center h-64">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if user is authenticated
+  if (!isAuthenticated) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="text-center py-16">
-          <h1 className="text-2xl font-bold mb-4">Your cart is empty</h1>
+          <h1 className="text-2xl font-bold mb-4">Please login to checkout</h1>
           <p className="text-gray-600 mb-8">
-            Add some products to your cart before checking out.
+            You need to be logged in to complete your purchase.
           </p>
           <button
-            onClick={() => navigate("/products")}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition duration-200"
+            onClick={() => navigate("/login?returnUrl=/checkout")}
+            className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition duration-200"
           >
-            Browse Products
+            Login to Continue
           </button>
         </div>
       </div>
     );
   }
 
-  // Calculate totals
-  const subtotal = cart.items.reduce((total, item) => {
-    const itemPrice = item.product.salePrice || item.product.price;
-    return total + Number(itemPrice) * Number(item.quantity);
-  }, 0);
-
-  const shippingCost = 0;
-  const taxAmount = 10;
-  const total = subtotal + shippingCost + taxAmount;
+  // Check if cart is empty
+  if (!cart || cart.items.length === 0) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <EmptyCart
+          message="Your cart is empty"
+          linkText="Browse Products"
+          linkUrl="/products"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -230,12 +263,14 @@ const CheckoutPage: React.FC = () => {
       <div className="lg:grid lg:grid-cols-3 lg:gap-8">
         {/* Order Summary */}
         <div className="lg:col-span-1 mb-8 lg:mb-0">
-          <CheckoutOrderSummary
-            items={cart.items}
-            subtotal={subtotal}
-            shippingCost={shippingCost}
-            taxAmount={taxAmount}
-            total={total}
+          <OrderSummary
+            items={cart?.items}
+            showItems={true}
+            subtotal={cartCalculations.subtotal}
+            shippingCost={cartCalculations.shippingCost}
+            taxAmount={cartCalculations.taxAmount}
+            showCheckoutButton={false}
+            className="sticky top-6"
           />
         </div>
 

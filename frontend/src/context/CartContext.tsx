@@ -57,6 +57,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   const transferInProgressRef = useRef(false);
   const autoTransferAttemptedRef = useRef(false);
   const transferModalShownRef = useRef(false);
+  const redirectProcessedRef = useRef(false); // Track if redirects were processed
 
   // Keep track of last auth state to detect changes
   const prevAuthStateRef = useRef({
@@ -116,35 +117,35 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   // Helper function to handle guest cart auto transfer
-  const handleGuestCartAutoTransfer = useCallback(async (userId: string, sourceCartId: string) => {
-    try {
-      await transferCartMutation.mutateAsync({
-        sourceCartId: sourceCartId,
-        targetUserId: userId,
-        actionType: "replace",
-      });
+  const handleGuestCartAutoTransfer = useCallback(
+    async (userId: string, sourceCartId: string) => {
+      try {
+        await transferCartMutation.mutateAsync({
+          sourceCartId: sourceCartId,
+          targetUserId: userId,
+          actionType: "replace",
+        });
 
-      // Reset guest cart state after successful transfer
-      setHasGuestCart(false);
-      setGuestCartItemCount(0);
-      setSourceCart(null);
+        // Reset guest cart state after successful transfer
+        setHasGuestCart(false);
+        setGuestCartItemCount(0);
+        setSourceCart(null);
 
-      await fetchCart(true);
+        await fetchCart(true);
 
-      showNotification(
-        "Guest cart items have been added to your account", 
-        {
+        showNotification("Guest cart items have been added to your account", {
           type: "success",
           dismissible: true,
-        }
-      );
-      
-      return true;
-    } catch (error) {
-      console.error("Auto cart transfer failed:", error);
-      return false;
-    }
-  }, [transferCartMutation, fetchCart, showNotification]);
+        });
+
+        return true;
+      } catch (error) {
+        console.error("Auto cart transfer failed:", error);
+        return false;
+      }
+    },
+    [transferCartMutation, fetchCart, showNotification]
+  );
 
   // Method to check for cart conflicts with better duplicate prevention
   const checkCartConflicts = useCallback(
@@ -154,7 +155,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         (checkingCartsRef.current || transferInProgressRef.current) &&
         !force
       ) {
-        console.log("Skipping duplicate cart conflict check - already in progress");
+        console.log(
+          "Skipping duplicate cart conflict check - already in progress"
+        );
         return;
       }
 
@@ -199,17 +202,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           if (isAuthenticated && user) {
             const userCartResult = await refetchUserCart();
             const userCartInfo = userCartResult.data;
-            
+
             if (!userCartInfo) {
               console.log("No user cart info received");
               setHasUserCart(false);
               setUserCartItemCount(0);
-              
+
               // Auto transfer guest cart (no user cart exists)
               if (user && guestCartInfo.cartId) {
-                await handleGuestCartAutoTransfer(user.id, guestCartInfo.cartId);
+                await handleGuestCartAutoTransfer(
+                  user.id,
+                  guestCartInfo.cartId
+                );
               }
-              
+
               setIsInitialized(true);
               cartInitializedRef.current = true;
               checkingCartsRef.current = false;
@@ -241,9 +247,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
               console.log(
                 "Auto transferring guest cart to user (no user cart or empty cart)"
               );
-              
+
               if (user && guestCartInfo.cartId) {
-                await handleGuestCartAutoTransfer(user.id, guestCartInfo.cartId);
+                await handleGuestCartAutoTransfer(
+                  user.id,
+                  guestCartInfo.cartId
+                );
               }
             }
           }
@@ -277,11 +286,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     ]
   );
 
-  // Method to add an item to the cart
+  // Updated method to add an item to the cart with variant support
   const addToCart = useCallback(
-    async (productId: string, quantity: number): Promise<boolean> => {
+    async (
+      productId: string,
+      quantity: number,
+      variantId?: string
+    ): Promise<boolean> => {
       try {
-        await addItemMutation.mutateAsync({ productId, quantity });
+        // Create payload with optional variantId
+        const payload = {
+          productId,
+          quantity,
+          ...(variantId && { variantId }),
+        };
+
+        await addItemMutation.mutateAsync(payload);
         queryClient.invalidateQueries({ queryKey: ["cart"] });
         // Update lastFetchTime as the cart data has changed
         lastFetchTimeRef.current = 0; // Reset to force a refresh on next fetch
@@ -402,6 +422,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
           setHasGuestCart(false);
           setGuestCartItemCount(0);
           setSourceCart(null);
+          
+          // Clear guest cart token from session if it was a replace action
+          if (action === "replace") {
+            const guestToken = sessionStorage.getItem("guest_cart_token");
+            if (guestToken) {
+              sessionStorage.removeItem("guest_cart_token");
+              console.log("Removed guest cart token after successful transfer");
+            }
+          }
         }
 
         // Update lastFetchTime as the cart data has changed
@@ -439,13 +468,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         transferInProgressRef.current = false;
       }
     },
-    [
-      sourceCart,
-      user,
-      transferCartMutation,
-      showNotification,
-      fetchCart,
-    ]
+    [sourceCart, user, transferCartMutation, showNotification, fetchCart]
   );
 
   // Reset transfer modal flags when modal is closed
@@ -454,6 +477,37 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       transferModalShownRef.current = false;
     }
   }, [showTransferModal]);
+
+  // Enhanced effect to handle login redirects
+  useEffect(() => {
+    // Skip if auth is loading or redirects are already processed
+    if (authLoading || redirectProcessedRef.current) {
+      return;
+    }
+
+    // Check if we need to redirect after login
+    const redirectAfterLogin = sessionStorage.getItem("redirectAfterLogin");
+    
+    // Only process redirects if user is authenticated, cart is initialized,
+    // and there's a redirect URL
+    if (redirectAfterLogin && isAuthenticated && cartInitializedRef.current) {
+      // Mark redirects as processed to prevent multiple redirects
+      redirectProcessedRef.current = true;
+      
+      // Clear the redirect URL from session storage
+      sessionStorage.removeItem("redirectAfterLogin");
+      
+      // Use setTimeout to ensure all React state updates have completed
+      setTimeout(() => {
+        console.log(`Redirecting to ${redirectAfterLogin} after login`);
+        
+        // Use router's navigate or window.location based on what's available
+        if (window.location.pathname !== redirectAfterLogin) {
+          window.location.href = redirectAfterLogin;
+        }
+      }, 100);
+    }
+  }, [isAuthenticated, authLoading]);
 
   // Effect to handle cart checks after authentication
   useEffect(() => {
@@ -486,6 +540,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         transferModalShownRef.current = false;
         // Reset cart initialized flag to force a fresh check
         cartInitializedRef.current = false;
+        // Reset redirects processed flag
+        redirectProcessedRef.current = false;
         // Force cart conflict check
         checkCartConflicts(true);
       }, 100);
@@ -496,7 +552,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     // Create a debounced function for cart checking
     let timeoutId: NodeJS.Timeout | null = null;
-    
+
     // If loginJustCompleted flag is true, perform cart check
     if (
       loginJustCompleted &&
@@ -521,7 +577,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }, 500); // Increased to 500ms to better group updates
     }
-    
+
     // Clean up timeout on unmount
     return () => {
       if (timeoutId) {
@@ -529,20 +585,24 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     };
   }, [loginJustCompleted, isAuthenticated, checkCartConflicts]);
-  
+
   // Initial cart check on component mount - with better duplicate prevention
   useEffect(() => {
     const initializeCartOnce = () => {
       // Only run if not already initialized and not already checking
-      if (!cartInitializedRef.current && !isInitialized && !checkingCartsRef.current) {
+      if (
+        !cartInitializedRef.current &&
+        !isInitialized &&
+        !checkingCartsRef.current
+      ) {
         console.log("Initial cart check on component mount");
         checkCartConflicts();
       }
     };
-    
+
     // Slight delay to avoid race conditions with other initialization
     const timeoutId = setTimeout(initializeCartOnce, 100) as NodeJS.Timeout;
-    
+
     return () => clearTimeout(timeoutId);
   }, [checkCartConflicts, isInitialized]);
 
