@@ -31,21 +31,22 @@ seed_files = [
   'categories',
   'property_definitions',
   'category_properties',
-  'products', 
+  'products',
   'product_variants',
   'collections',
   'addresses',
   'orders',
   'reviews',
   'discount_codes',
-  'wishlists'
+  'wishlists',
+  'payment_methods'
 ]
 
 # Execute each seed file
 seed_files.each_with_index do |seed_file, index|
   puts "\n[#{index+1}/#{seed_files.size}] RUNNING #{seed_file.upcase} SEEDS"
   puts "-------------------------------------------"
-  
+
   # Load and execute the seed file
   load(File.join(Rails.root, "db", "seeds", "#{seed_file}.seeds.rb"))
 end
@@ -78,7 +79,9 @@ puts "- #{Review.count} reviews"
 puts "- #{DiscountCode.count} discount codes"
 puts "- #{DiscountCodeUsage.count} discount code usages"
 puts "- #{WishlistItem.count} wishlist items"
-
+puts "- #{PaymentMethod.count} payment methods"
+puts "- #{Store.joins(:store_payment_methods).distinct.count} stores with payment methods"
+puts "  ✅ Payment methods setup completed!\n"
 end_time = Time.now
 duration = (end_time - start_time).round(2)
 puts "\nSeeding completed in #{duration} seconds!"

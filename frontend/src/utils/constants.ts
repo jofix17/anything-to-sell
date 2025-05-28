@@ -49,6 +49,16 @@ export const PRODUCT_ENDPOINTS = {
   NEW_ARRIVALS: "/products/new-arrivals",
 };
 
+export const ORDER_ENDPOINTS = {
+  ORDERS: "/orders",
+  ORDER: (id: string) => `/orders/${id}`,
+}
+
+export const PAYMENT_ENDPOINTS = {
+  CREATE: "/payments",
+  CONFIRM: "/payments/confirm"
+}
+
 export const REVIEW_ENDPOINTS = {
   REVIEWS: (productId: string) => `/products/${productId}/reviews`,
   REVIEW: (productId: string, reviewId: string) =>

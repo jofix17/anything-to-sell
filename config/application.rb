@@ -42,11 +42,18 @@ module AnythingToSell
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
 
-    config.time_zone = "Asia/Manila"
+    config.autoload_paths += %W[
+      #{config.root}/app/forms
+      #{config.root}/app/services
+      #{config.root}/app/queries
+      #{config.root}/app/policies
+      #{config.root}/app/validators
+      #{config.root}/app/serializers
+      #{config.root}/app/middleware
+      #{config.root}/lib
+    ]
 
-    config.eager_load_paths << Rails.root.join("app/services")
-    config.autoload_paths << Rails.root.join("app", "middleware")
-    config.autoload_paths += %W[#{Rails.root}/app/queries]
+    config.time_zone = "Asia/Manila"
 
     config.middleware.use CaseTransformMiddleware
     config.generators do |g|
@@ -59,5 +66,12 @@ module AnythingToSell
                           secure: Rails.env.production?,
                           httponly: true
     config.middleware.insert_after ActionDispatch::Cookies, ActionDispatch::Session::CookieStore
+
+    config.cache_store = :redis_cache_store, {
+      url: ENV.fetch("REDIS_URL", "redis://localhost:6379/1"),
+      expires_in: 1.hour
+    } if Rails.env.production?
+
+    config.active_job.queue_adapter = Rails.env.production? ? :good_job : :async
   end
 end

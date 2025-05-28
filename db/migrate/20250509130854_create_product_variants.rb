@@ -14,5 +14,7 @@ class CreateProductVariants < ActiveRecord::Migration[7.2]
       t.index :sku, unique: true
       t.index [ :product_id, :is_default ], unique: true, where: "(is_default = true)"
     end
+
+    add_index :product_variants, [ :product_id, :is_active, :inventory ]
   end
 end

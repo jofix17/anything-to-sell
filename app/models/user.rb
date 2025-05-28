@@ -5,6 +5,8 @@ class User < ApplicationRecord
   has_many :addresses, dependent: :destroy
   has_many :wishlist_items, dependent: :destroy
   has_many :reviews, dependent: :destroy
+  has_many :orders, dependent: :destroy
+  has_one :store, dependent: :destroy
 
   enum :role, { buyer: 0, vendor: 1, admin: 99 }
   enum :status, { inactive: 0, suspended: 1, active: 2 }

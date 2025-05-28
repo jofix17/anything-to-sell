@@ -7,5 +7,7 @@ class CreateCarts < ActiveRecord::Migration[7.2]
     end
 
     add_index :carts, :guest_token, unique: true
+    add_index :carts, [ :user_id, :updated_at ]
+    add_index :carts, [ :guest_token, :updated_at ]
   end
 end

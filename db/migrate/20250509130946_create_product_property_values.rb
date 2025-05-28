@@ -8,8 +8,9 @@ class CreateProductPropertyValues < ActiveRecord::Migration[7.2]
       t.boolean :value_boolean
       t.jsonb :value_json
       t.timestamps
-
-      t.index [ :product_id, :property_definition_id ], unique: true
     end
+
+    add_index :product_property_values, [ :product_id, :property_definition_id ],
+              name: 'idx_product_properties'
   end
 end

@@ -50,7 +50,7 @@ class Cart < ApplicationRecord
         product: item.product,
         quantity: item.quantity,
         price: item.product.current_price,
-        user_id: item.product.user_id # Vendor ID
+        total: item.product.current_price * item.quantity
       )
     end
 

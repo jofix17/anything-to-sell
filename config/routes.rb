@@ -131,7 +131,11 @@ Rails.application.routes.draw do
         get "check-guest-cart", to: "carts#check_guest_cart"
       end
 
-      resources :orders, only: [ :index, :show, :create ]
+      resources :orders, only: [ :index, :show, :create ] do
+        member do
+          patch :cancel
+        end
+      end
 
       resources :addresses
 

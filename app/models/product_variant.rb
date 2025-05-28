@@ -2,6 +2,7 @@ class ProductVariant < ApplicationRecord
   belongs_to :product
 
   has_many :cart_items, dependent: :destroy
+  has_many :order_items, dependent: :destroy
 
   validates :sku, presence: true, uniqueness: { case_sensitive: false }
   validates :price, numericality: { greater_than: 0 }, allow_nil: true

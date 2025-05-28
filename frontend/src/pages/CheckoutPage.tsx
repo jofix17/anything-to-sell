@@ -1,11 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  useAddresses,
-  useCreateAddress,
-  useCreateOrder,
-  useCreatePaymentIntent,
-} from "../services/cartService";
+import { useAddresses, useCreateAddress } from "../services/cartService";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import CheckoutForm from "../components/checkout/CheckoutForm";
@@ -19,6 +14,9 @@ import AddressSelector from "../components/checkout/AddressSelector";
 import { calculateCartTotals } from "../utils/cartUtilities";
 import EmptyCart from "../components/cart/EmptyCart";
 import OrderSummary from "../components/cart/OrderSummary";
+import { CreateOrderParams } from "../types/order";
+import { useCreateOrder } from "../hooks/api/useOrderApi";
+import { useCreatePaymentIntent } from "../hooks/api/usePaymentApi";
 
 // Initialize Stripe with environment variable or fallback
 const stripePromise = loadStripe(
@@ -61,7 +59,10 @@ const CheckoutPage: React.FC = () => {
 
   // Use React Query hooks
   const addressesQuery = useAddresses();
-  const addresses = addressesQuery.data || [];
+  const addresses = useMemo(
+    () => addressesQuery.data || [],
+    [addressesQuery.data]
+  );
 
   const createAddressMutation = useCreateAddress();
   const createOrderMutation = useCreateOrder();
@@ -171,20 +172,23 @@ const CheckoutPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Create the order
-      const orderResponse = await createOrderMutation.mutateAsync({
+      // Create the order with correct parameter names
+      const orderParams: CreateOrderParams = {
         shipping_address_id: selectedShippingAddress,
         billing_address_id: selectedBillingAddress,
-        payment_method_id: "card",
-      });
+        payment_method: "credit_card",
+        cart_id: cart?.id || "",
+      };
 
+      const orderResponse = await createOrderMutation.mutateAsync(orderParams);
       const newOrderId = orderResponse.data.id;
       setOrderId(newOrderId);
 
       // Get payment intent client secret
-      const paymentResponse = await createPaymentIntentMutation.mutateAsync(
-        newOrderId
-      );
+      const paymentResponse = await createPaymentIntentMutation.mutateAsync({
+        orderId: newOrderId,
+      });
+
       setClientSecret(paymentResponse.data.clientSecret);
 
       // Move to payment step

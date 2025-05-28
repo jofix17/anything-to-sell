@@ -9,39 +9,45 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 export type OrderPaymentStatus = "pending" | "paid" | "failed";
+export type OrderPaymentMethod =
+  | "cash"
+  | "credit_card"
+  | "paypal"
+  | "bank_transfer"
+  | "stripe";
 
 export interface Order {
   id: string;
-  orderNumber: string; // matches Rails order_number
-  userId: string; // matches Rails user_id
+  orderNumber: string;
   user?: User;
-  items: OrderItem[];
+  orderItems: OrderItem[];
   status: OrderStatus;
-  shippingAddress: Address; // matches Rails shipping_address
-  billingAddress: Address; // matches Rails billing_address
-  paymentMethod: string; // matches Rails payment_method
-  paymentDate: string; // matches Rails payment_date
-  paymentStatus: OrderPaymentStatus; // matches Rails payment_status
-  totalAmount: number; // matches Rails total_amount
-  createdAt: string; // matches Rails created_at
-  updatedAt: string; // matches Rails updated_at
-  subtotalAmount: number; // matches Rails subtotal_amount
-  shippingCost: number; // matches Rails shipping_cost
-  taxAmount: number; // matches Rails tax_amount
-  vendorId: string; // matches Rails vendor_id
+  shippingAddress: Address;
+  billingAddress: Address;
+  paymentMethod: string;
+  paymentDate: string;
+  paymentStatus: OrderPaymentStatus;
+  totalAmount: number;
+  createdAt: string;
+  updatedAt: string;
+  subtotalAmount: number;
+  shippingCost: number;
+  taxAmount: number;
   notes?: string;
-  trackingNumber?: string; // matches Rails tracking_number
-  trackingUrl?: string; // matches Rails tracking_url
+  trackingNumber?: string;
+  trackingUrl?: string;
 }
 
 export interface OrderItem {
   id: string;
-  orderId: string; // matches Rails order_id
-  productId: string; // matches Rails product_id
+  orderId: string;
+  productId: string;
+  productVariantId: string;
+  productName: string;
   product?: Product;
   quantity: number;
-  price: number;
-  vendorId: string; // matches Rails vendor_id
+  price: string;
+  subtotal: string;
 }
 
 // Order filter parameters interface
@@ -63,4 +69,12 @@ export interface UpdateOrderStatusParams {
   id: string;
   status: OrderStatus;
   comment?: string;
+}
+
+export interface CreateOrderParams {
+  shipping_address_id: string;
+  billing_address_id: string;
+  payment_method: OrderPaymentMethod;
+  notes?: string;
+  cart_id: string;
 }

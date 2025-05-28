@@ -1,4 +1,4 @@
-# Create categories and subcategories
+puts "Creating categories and subcategories..."
 
 # Define categories
 categories = [
@@ -10,16 +10,28 @@ categories = [
   { name: 'Beauty & Personal Care', description: 'Beauty products and personal care items' }
 ]
 
-# Create main categories
+# Create main categories (explicitly set parent_id to nil)
 created_categories = []
-categories.each_with_index do |category_data, index|
-  category = Category.find_or_create_by!(name: category_data[:name]) do |c|
-    c.description = category_data[:description]
-    c.slug = category_data[:name].parameterize
-  end
+puts "Creating main categories..."
 
-  created_categories << category
-  puts "  Category created: #{category.name}"
+ActiveRecord::Base.transaction do
+  categories.each do |category_data|
+    category = Category.find_by(name: category_data[:name])
+
+    if category
+      puts "  ✓ Found existing category: #{category.name}"
+      created_categories << category
+    else
+      category = Category.create!(
+        name: category_data[:name],
+        description: category_data[:description],
+        slug: category_data[:name].parameterize,
+        parent_id: nil  # Explicitly set to nil for root categories
+      )
+      puts "  ✓ Created category: #{category.name}"
+      created_categories << category
+    end
+  end
 end
 
 # Define subcategories
@@ -30,9 +42,9 @@ subcategories = {
     { name: 'Headphones', description: 'Audio devices for personal listening' }
   ],
   'Clothing' => [
-    { name: "Men's", description: 'Clothing for men' },
-    { name: "Women's", description: 'Clothing for women' },
-    { name: "Children's", description: 'Clothing for children' }
+    { name: "Men's Clothing", description: 'Clothing for men' },
+    { name: "Women's Clothing", description: 'Clothing for women' },
+    { name: "Children's Clothing", description: 'Clothing for children' }
   ],
   'Home & Kitchen' => [
     { name: 'Cookware', description: 'Pots, pans, and cooking utensils' },
@@ -54,28 +66,44 @@ subcategories = {
 
 # Create subcategories
 created_subcategories = []
-parent_category_map = {}
+puts "Creating subcategories..."
 
-created_categories.each do |category|
-  parent_category_map[category.name] = category
-end
+ActiveRecord::Base.transaction do
+  subcategories.each do |parent_name, subcats|
+    parent = created_categories.find { |cat| cat.name == parent_name }
 
-subcategories.each do |parent_name, subcats|
-  parent = parent_category_map[parent_name]
-
-  next unless parent # Skip if parent not found
-
-  subcats.each do |subcat_data|
-    subcat = Category.find_or_create_by!(name: subcat_data[:name]) do |c|
-      c.description = subcat_data[:description]
-      c.slug = subcat_data[:name].parameterize
-      c.parent = parent
+    unless parent
+      puts "  ⚠️ Parent category '#{parent_name}' not found, skipping subcategories"
+      next
     end
-    puts "  Subcategory created: #{subcat.name} (under #{parent_name})"
-    created_subcategories << subcat
+
+    subcats.each do |subcat_data|
+      # Check if subcategory already exists
+      existing_subcat = Category.find_by(name: subcat_data[:name], parent_id: parent.id)
+
+      if existing_subcat
+        puts "  ✓ Found existing subcategory: #{existing_subcat.name} (under #{parent_name})"
+        created_subcategories << existing_subcat
+      else
+        subcat = Category.create!(
+          name: subcat_data[:name],
+          description: subcat_data[:description],
+          slug: subcat_data[:name].parameterize,
+          parent_id: parent.id  # Explicitly set parent_id
+        )
+        puts "  ✓ Created subcategory: #{subcat.name} (under #{parent_name})"
+        created_subcategories << subcat
+      end
+    end
   end
 end
 
-# Get all subcategories
-all_subcategories = Category.where.not(parent_id: nil).to_a
-puts "  Categories creation completed: #{created_categories.size} main categories and #{all_subcategories.size} subcategories"
+# Summary
+main_categories_count = Category.where(parent_id: nil).count
+subcategories_count = Category.where.not(parent_id: nil).count
+
+puts "\n📊 Categories Summary:"
+puts "  Main categories: #{main_categories_count}"
+puts "  Subcategories: #{subcategories_count}"
+puts "  Total categories: #{Category.count}"
+puts "  ✅ Categories creation completed!\n"

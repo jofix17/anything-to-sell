@@ -1,193 +1,246 @@
-# Create orders and order items
+buyers = User.where(role: 'buyer').includes(:addresses).to_a
+vendors = User.where(role: 'vendor').to_a
+active_products = Product.where(status: 'active', is_active: true).includes(:user, :product_variants).to_a
 
-# Get required data
-created_buyers = users_by_role('buyer')
-active_products = Product.where(status: 'active', is_active: true).to_a
+if buyers.empty?
+  puts "  ⚠️ No buyers found. Creating sample buyers first..."
 
-# Order statuses with weighted probabilities
-statuses = {
-  pending: 0.1,    # 10% pending
-  processing: 0.1, # 10% processing
-  shipped: 0.15,   # 15% shipped
-  delivered: 0.55, # 55% delivered
-  cancelled: 0.1   # 10% cancelled
-}
-
-payment_methods = [ :credit_card, :paypal, :bank_transfer, :stripe ]
-
-puts "  Creating orders..."
-created_orders = []
-
-SEED_CONFIG[:num_orders].times do |i|
-  report_progress("Orders", i+1, SEED_CONFIG[:num_orders])
-
-  # Skip if no buyers or active products
-  next if created_buyers.empty? || active_products.empty?
-
-  # Select a random buyer
-  buyer = created_buyers.sample
-
-  # Determine order status based on weighted probabilities
-  status = nil
-  random_value = rand
-  cumulative_prob = 0
-
-  statuses.each do |stat, prob|
-    cumulative_prob += prob
-    if random_value <= cumulative_prob
-      status = stat
-      break
-    end
-  end
-
-  # Assign proper dates based on status
-  order_date = random_date(6.months.ago, Time.now)
-
-  # Get shipping address for this buyer
-  shipping_address = buyer.addresses.first
-
-  next unless shipping_address # Skip if no address
-
-  # Create the order
-  begin
-    order = Order.create!(
-      user: buyer,
-      status: status,
-      total_amount: 0, # Will be calculated after adding items
-      shipping_address_id: shipping_address.id,
-      billing_address_id: shipping_address.id,
-      payment_method: payment_methods.sample,
-      tracking_number: status == :pending ? nil : "TRK#{SecureRandom.hex(6).upcase}",
-      created_at: order_date,
-      updated_at: order_date
+  # Create sample buyers with addresses
+  3.times do |i|
+    buyer = User.create!(
+      first_name: "Buyer#{i+1}",
+      last_name: "Test",
+      email: "buyer#{i+1}@example.com",
+      password: "password123",
+      role: 'buyer',
+      status: 'active'
     )
 
-    # Create order items (1-5 items per order)
-    num_items = rand(1..SEED_CONFIG[:num_order_items_max])
-    order_products = active_products.sample(num_items)
+    # Create address for buyer
+    Address.create!(
+      user: buyer,
+      address_line1: "#{100 + i} Test Street",
+      city: "Cebu City",
+      state: "Cebu",
+      zipcode: "6000",
+      country: "Philippines",
+      address_type: 'home',
+      is_default: true
+    )
 
-    total_amount = 0
-    order_products.each do |product|
-      # For products with variants, select a random variant
-      if product.has_variants? && product.product_variants.exists?
-        variant = product.product_variants.where(is_active: true).sample
+    buyers << buyer
+  end
+  puts "  ✓ Created #{buyers.count} sample buyers with addresses"
+end
 
-        if variant
-          quantity = rand(1..3)
-          price = variant.sale_price || variant.price
-          item_total = price * quantity
-          total_amount += item_total
+if active_products.empty?
+  puts "  ⚠️ No active products found. Creating sample products first..."
 
-          # If the OrderItem model has variant columns, use them
-          if OrderItem.column_names.include?('variant_id') || OrderItem.column_names.include?('variant_properties')
-            OrderItem.create!(
-              order: order,
-              product: product,
-              quantity: quantity,
-              price: price,
-              total: item_total,
-              variant_id: variant.id,
-              variant_properties: variant.properties
-            )
-          else
-            # Fallback if variant columns don't exist
-            OrderItem.create!(
-              order: order,
-              product: product,
-              quantity: quantity,
-              price: price,
-              total: item_total
-            )
-          end
+  # Ensure we have categories and vendors
+  electronics = Category.find_or_create_by!(name: 'Electronics') do |c|
+    c.description = 'Electronic devices'
+    c.slug = 'electronics'
+  end
+
+  if vendors.empty?
+    vendor = User.create!(
+      first_name: "Vendor",
+      last_name: "Test",
+      email: "vendor@example.com",
+      password: "password123",
+      role: 'vendor',
+      status: 'active'
+    )
+    vendors << vendor
+  end
+
+  # Create sample products
+  5.times do |i|
+    product = Product.create!(
+      name: "Sample Product #{i+1}",
+      description: "A test product for orders",
+      price: (50 + (i * 10)),
+      category: electronics,
+      user: vendors.first,
+      inventory: 100,
+      status: 'active',
+      is_active: true,
+      sku: "PROD-#{i+1}-#{SecureRandom.hex(3)}"
+    )
+    active_products << product
+  end
+  puts "  ✓ Created #{active_products.count} sample products"
+end
+
+# Order configuration
+num_orders = 20
+max_items_per_order = 3
+
+# Order statuses with probabilities
+status_weights = {
+  'pending' => 10,
+  'processing' => 10,
+  'shipped' => 15,
+  'delivered' => 55,
+  'cancelled' => 10
+}
+
+# Payment methods (matching your schema enum values)
+payment_methods = %w[credit_card paypal bank_transfer cash_on_delivery gcash paymaya]
+
+puts "  Creating #{num_orders} orders..."
+created_orders = []
+created_order_items = 0
+created_histories = 0
+
+ActiveRecord::Base.transaction do
+  num_orders.times do |i|
+    print "  Processing order #{i+1}/#{num_orders}...\r"
+
+    # Select random buyer with address
+    buyer = buyers.select { |b| b.addresses.any? }.sample
+    next unless buyer
+
+    shipping_address = buyer.addresses.first
+
+    # Select weighted random status
+    total_weight = status_weights.values.sum
+    random_weight = rand(total_weight)
+    cumulative_weight = 0
+
+    selected_status = nil
+    status_weights.each do |status, weight|
+      cumulative_weight += weight
+      if random_weight < cumulative_weight
+        selected_status = status
+        break
+      end
+    end
+
+    # Generate order date (last 6 months)
+    order_date = rand(6.months.ago..Time.current)
+
+    begin
+      # Create order
+      order = Order.new(
+        user: buyer,
+        shipping_address: shipping_address,
+        billing_address: shipping_address,
+        status: selected_status,
+        payment_method: payment_methods.sample,
+        payment_status: selected_status == 'pending' ? 'unpaid' : 'paid',
+        shipping_cost: rand(50.0..200.0).round(2),
+        tax_amount: 0, # Will calculate after items
+        subtotal_amount: 0, # Will calculate after items
+        total_amount: 0, # Will calculate after items
+        created_at: order_date,
+        updated_at: order_date
+      )
+
+      # Skip automatic callbacks for seeding
+      order.save!(validate: false)
+
+      # Generate order number manually since we skipped callbacks
+      if order.order_number.blank?
+        date_prefix = order_date.strftime("%Y%m%d")
+        random_suffix = SecureRandom.random_number(100000).to_s.rjust(5, "0")
+        order.update_column(:order_number, "ORD-#{date_prefix}-#{random_suffix}")
+      end
+
+      # Add tracking number for shipped/delivered orders
+      if %w[shipped delivered].include?(selected_status)
+        order.update_column(:tracking_number, "TRK#{SecureRandom.hex(6).upcase}")
+      end
+
+      # Create order items (1-3 items per order)
+      num_items = rand(1..max_items_per_order)
+      selected_products = active_products.sample(num_items)
+
+      items_total = 0
+
+      selected_products.each do |product|
+        quantity = rand(1..3)
+
+        # Use variant if available, otherwise use product
+        if product.has_variants? && product.product_variants.where(is_active: true).exists?
+          variant = product.product_variants.where(is_active: true).sample
+          price = variant.current_price
+
+          OrderItem.create!(
+            order: order,
+            product: product,
+            product_variant: variant,
+            quantity: quantity,
+            price: price,
+            total: price * quantity
+          )
         else
-          # Fallback to regular product
-          quantity = rand(1..3)
           price = product.sale_price || product.price
-          item_total = price * quantity
-          total_amount += item_total
 
           OrderItem.create!(
             order: order,
             product: product,
             quantity: quantity,
             price: price,
-            total: item_total
+            total: price * quantity
           )
         end
-      else
-        quantity = rand(1..3)
-        price = product.sale_price || product.price
-        item_total = price * quantity
-        total_amount += item_total
 
-        OrderItem.create!(
-          order: order,
-          product: product,
-          quantity: quantity,
-          price: price,
-          total: item_total
-        )
+        items_total += price * quantity
+        created_order_items += 1
       end
-    end
 
-    # Update order total
-    order.update!(total_amount: total_amount)
+      # Calculate totals
+      tax_amount = (items_total * 0.12).round(2) # 12% VAT
+      total_amount = items_total + order.shipping_cost + tax_amount
 
-    # Add order history entries based on status
-    OrderHistory.create!(
-      order: order,
-      status: :pending,
-      note: 'Order placed',
-      created_at: order_date,
-      updated_at: order_date
-    )
-
-    if status != :pending
-      OrderHistory.create!(
-        order: order,
-        status: :processing,
-        note: 'Payment confirmed, processing order',
-        created_at: order_date + 1.hour,
-        updated_at: order_date + 1.hour
+      order.update_columns(
+        subtotal_amount: items_total,
+        tax_amount: tax_amount,
+        total_amount: total_amount
       )
-    end
 
-    if [ :shipped, :delivered, :cancelled ].include?(status)
-      if status == :cancelled
+      # Create order history based on status
+      case selected_status
+      when 'pending'
         OrderHistory.create!(
           order: order,
-          status: :cancelled,
-          note: 'Customer requested cancellation',
-          created_at: order_date + 1.day,
-          updated_at: order_date + 1.day
+          status: 'pending',
+          note: 'Order placed',
+          created_at: order_date,
+          updated_at: order_date
         )
-      else
-        OrderHistory.create!(
-          order: order,
-          status: :shipped,
-          note: "Order shipped via UPS",
-          created_at: order_date + 2.days,
-          updated_at: order_date + 2.days
-        )
+        created_histories += 1
+
+      when 'processing'
+        OrderHistory.create!(order: order, status: 'pending', note: 'Order placed', created_at: order_date)
+        OrderHistory.create!(order: order, status: 'processing', note: 'Payment confirmed', created_at: order_date + 1.hour)
+        created_histories += 2
+
+      when 'shipped'
+        OrderHistory.create!(order: order, status: 'pending', note: 'Order placed', created_at: order_date)
+        OrderHistory.create!(order: order, status: 'processing', note: 'Payment confirmed', created_at: order_date + 1.hour)
+        OrderHistory.create!(order: order, status: 'shipped', note: 'Order shipped', created_at: order_date + 1.day)
+        created_histories += 3
+
+      when 'delivered'
+        OrderHistory.create!(order: order, status: 'pending', note: 'Order placed', created_at: order_date)
+        OrderHistory.create!(order: order, status: 'processing', note: 'Payment confirmed', created_at: order_date + 1.hour)
+        OrderHistory.create!(order: order, status: 'shipped', note: 'Order shipped', created_at: order_date + 1.day)
+        OrderHistory.create!(order: order, status: 'delivered', note: 'Package delivered', created_at: order_date + 3.days)
+        created_histories += 4
+
+      when 'cancelled'
+        OrderHistory.create!(order: order, status: 'pending', note: 'Order placed', created_at: order_date)
+        OrderHistory.create!(order: order, status: 'cancelled', note: 'Order cancelled', created_at: order_date + 2.hours)
+        created_histories += 2
       end
-    end
 
-    if status == :delivered
-      OrderHistory.create!(
-        order: order,
-        status: :delivered,
-        note: 'Package delivered',
-        created_at: order_date + 5.days,
-        updated_at: order_date + 5.days
-      )
-    end
+      created_orders << order
 
-    created_orders << order
-  rescue => e
-    puts "  Error creating order: #{e.message}"
+    rescue => e
+      puts "\n  ❌ Error creating order #{i+1}: #{e.message}"
+      puts "     #{e.backtrace.first}"
+    end
   end
 end
-
-puts "  Order creation completed: #{created_orders.size} orders created"
-puts "  Order items created: #{OrderItem.count}"
-puts "  Order histories created: #{OrderHistory.count}"

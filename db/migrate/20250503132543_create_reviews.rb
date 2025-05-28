@@ -11,10 +11,10 @@ class CreateReviews < ActiveRecord::Migration[7.2]
       t.timestamps
     end
 
-       # Add index for faster queries when sorting by top_rated
-       add_index :reviews, [ :product_id, :status, :rating ]
-
-       # Add unique index to prevent duplicate reviews by the same user
-       add_index :reviews, [ :user_id, :product_id ], unique: true
+      add_index :reviews, [ :product_id, :status, :rating ]
+      add_index :reviews, [ :user_id, :product_id ], unique: true
+      add_index :reviews, [ :product_id, :status, :created_at ]
+      add_index :reviews, [ :user_id, :status ]
+      add_index :reviews, [ :status, :rating ]
   end
 end

@@ -1,5 +1,6 @@
 class Address < ApplicationRecord
   belongs_to :user
+  has_many :orders
 
   validates :address_line1, :city, :state, :zipcode, :country, presence: true
 

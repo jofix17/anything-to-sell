@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useOrders, useCancelOrder } from "../services/cartService";
 import { format } from "date-fns";
+import { useCancelOrder, useOrders } from "../hooks/api/useOrderApi";
+import { Order } from "../types/order";
 
 const OrdersPage: React.FC = () => {
   const [filter, setFilter] = useState<string>("all");
@@ -15,15 +16,10 @@ const OrdersPage: React.FC = () => {
   const { data: ordersResponse, isLoading, error: ordersError } = useOrders();
 
   // Get orders from response
-  const orders = ordersResponse || [];
+  const orders = ordersResponse?.data || ([] as Order[]);
 
   // Use mutation hook for cancelling orders
-  const cancelOrderMutation = useCancelOrder({
-    onSuccess: () => {
-      // The useOrders hook will automatically refetch since we've set up
-      // the invalidation in useQueryHooks.ts and the service file
-    },
-  });
+  const cancelOrderMutation = useCancelOrder();
 
   const handleCancelOrder = async (orderId: string) => {
     if (window.confirm("Are you sure you want to cancel this order?")) {
@@ -195,7 +191,7 @@ const OrdersPage: React.FC = () => {
                     </span>
                   </div>
                   <h3 className="text-lg font-semibold mt-1">
-                    ${order.totalAmount.toFixed(2)}
+                    ${Number(order.totalAmount)}
                   </h3>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -231,12 +227,12 @@ const OrdersPage: React.FC = () => {
               <div className="p-6">
                 <h4 className="font-medium mb-3">Items</h4>
                 <div className="space-y-4">
-                  {order.items.map((item) => (
+                  {order.orderItems.map((item) => (
                     <div key={item.id} className="flex items-center">
                       <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
                         <img
                           src={
-                            item.product?.images[0]?.imageUrl ||
+                            item.product?.primaryImage.imageUrl ||
                             "/api/placeholder/80/80"
                           }
                           alt={item.product?.name}
@@ -253,7 +249,7 @@ const OrdersPage: React.FC = () => {
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium text-gray-900">
-                          ${(item.price * item.quantity).toFixed(2)}
+                          {Number(item.product?.price) * item.quantity}
                         </p>
                       </div>
                     </div>
@@ -285,26 +281,22 @@ const OrdersPage: React.FC = () => {
                       <div className="flex justify-between mb-1">
                         <span className="text-gray-600">Subtotal</span>
                         <span className="font-medium">
-                          ${order.subtotalAmount.toFixed(2)}
+                          ${order.subtotalAmount}
                         </span>
                       </div>
                       <div className="flex justify-between mb-1">
                         <span className="text-gray-600">Shipping</span>
                         <span className="font-medium">
-                          ${order.shippingCost.toFixed(2)}
+                          ${order.shippingCost}
                         </span>
                       </div>
                       <div className="flex justify-between mb-1">
                         <span className="text-gray-600">Tax</span>
-                        <span className="font-medium">
-                          ${order.taxAmount.toFixed(2)}
-                        </span>
+                        <span className="font-medium">${order.taxAmount}</span>
                       </div>
                       <div className="flex justify-between pt-2 border-t border-gray-200 mt-2">
                         <span className="font-bold">Total</span>
-                        <span className="font-bold">
-                          ${order.totalAmount.toFixed(2)}
-                        </span>
+                        <span className="font-bold">${order.totalAmount}</span>
                       </div>
                     </div>
                   </div>
