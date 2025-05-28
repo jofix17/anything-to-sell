@@ -20,7 +20,7 @@ class CreateStores < ActiveRecord::Migration[7.2]
       t.string :return_policy
       t.string :privacy_policy
       t.string :terms_of_service
-      t.integer :status, default: 1 # 0: inactive, 1: active, 2: suspended
+      t.integer :status, default: 1
       t.references :vendor, type: :uuid, foreign_key: { to_table: :users }, null: false
       t.timestamps
 

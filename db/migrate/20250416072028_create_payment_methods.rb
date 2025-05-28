@@ -3,8 +3,7 @@ class CreatePaymentMethods < ActiveRecord::Migration[7.2]
     create_table :payment_methods, id: :uuid do |t|
       t.string :name, null: false
       t.string :provider, null: false
-      t.references :store, type: :uuid, foreign_key: { to_table: :stores }, null: false
-      t.string :status, default: "active"
+      t.integer :status, default: 1
       t.string :currency, default: "PHP"
       t.string :payment_type, null: false
       t.string :description

@@ -55,16 +55,17 @@ class PaymentMethod < ApplicationRecord
     active?
   end
 
+  # Fixed: Use symbol/enum comparisons instead of strings
   def processing_fee_percentage
-    case payment_type
-    when "cash_on_delivery" then 0.0
-    when "bank_transfer" then 0.5
-    when "credit_card", "debit_card" then 3.5
-    when "paypal" then 3.0
-    when "gcash", "paymaya" then 2.5
-    when "digital_wallet" then 2.5
-    when "cryptocurrency" then 1.0
-    when "installment" then 5.0
+    case payment_type.to_sym
+    when :cash_on_delivery then 0.0
+    when :bank_transfer then 0.5
+    when :credit_card, :debit_card then 3.5
+    when :paypal then 3.0
+    when :gcash, :paymaya then 2.5
+    when :digital_wallet then 2.5
+    when :cryptocurrency then 1.0
+    when :installment then 5.0
     else 2.0
     end
   end
@@ -98,14 +99,14 @@ class PaymentMethod < ApplicationRecord
   end
 
   def default_icon_url
-    case payment_type
-    when "cash_on_delivery" then "/assets/icons/cod.png"
-    when "credit_card" then "/assets/icons/credit-card.png"
-    when "debit_card" then "/assets/icons/debit-card.png"
-    when "bank_transfer" then "/assets/icons/bank.png"
-    when "paypal" then "/assets/icons/paypal.png"
-    when "gcash" then "/assets/icons/gcash.png"
-    when "paymaya" then "/assets/icons/paymaya.png"
+    case payment_type.to_sym
+    when :cash_on_delivery then "/assets/icons/cod.png"
+    when :credit_card then "/assets/icons/credit-card.png"
+    when :debit_card then "/assets/icons/debit-card.png"
+    when :bank_transfer then "/assets/icons/bank.png"
+    when :paypal then "/assets/icons/paypal.png"
+    when :gcash then "/assets/icons/gcash.png"
+    when :paymaya then "/assets/icons/paymaya.png"
     else "/assets/icons/payment.png"
     end
   end

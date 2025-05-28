@@ -33,6 +33,7 @@ payment_methods_data = [
     payment_type: 'gcash',
     description: 'Pay using GCash digital wallet.',
     currency: 'PHP',
+    account_id: 'gcash_account_123',
     status: 'active'
   },
   {
@@ -41,6 +42,7 @@ payment_methods_data = [
     payment_type: 'paymaya',
     description: 'Pay using PayMaya digital wallet.',
     currency: 'PHP',
+    account_id: 'paymaya_account_123',
     status: 'active'
   },
   {

@@ -6,7 +6,8 @@ class User < ApplicationRecord
   has_many :wishlist_items, dependent: :destroy
   has_many :reviews, dependent: :destroy
   has_many :orders, dependent: :destroy
-  has_one :store, dependent: :destroy
+  # Fix: Specify the correct foreign key for the store association
+  has_one :store, foreign_key: "vendor_id", dependent: :destroy
 
   enum :role, { buyer: 0, vendor: 1, admin: 99 }
   enum :status, { inactive: 0, suspended: 1, active: 2 }
@@ -18,6 +19,10 @@ class User < ApplicationRecord
   validates :status, inclusion: { in: statuses.keys }
 
   def name
+    "#{first_name} #{last_name}"
+  end
+
+  def full_name
     "#{first_name} #{last_name}"
   end
 

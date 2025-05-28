@@ -80,8 +80,8 @@ puts "- #{DiscountCode.count} discount codes"
 puts "- #{DiscountCodeUsage.count} discount code usages"
 puts "- #{WishlistItem.count} wishlist items"
 puts "- #{PaymentMethod.count} payment methods"
-puts "- #{Store.joins(:store_payment_methods).distinct.count} stores with payment methods"
-puts "  ✅ Payment methods setup completed!\n"
+puts "- #{Store.count} stores"
+puts "- #{StorePaymentMethod.count} store payment method associations"
 end_time = Time.now
 duration = (end_time - start_time).round(2)
 puts "\nSeeding completed in #{duration} seconds!"
