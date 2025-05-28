@@ -65,6 +65,21 @@ class Category < ApplicationRecord
     end
   end
 
+  # Get property definitions that are used for variants in this category
+  def variant_properties
+    @variant_properties ||= property_definitions.where(is_variant: true).order(:display_order, :name)
+  end
+
+  # Get all property definitions for this category (variant and non-variant)
+  def all_properties
+    @all_properties ||= property_definitions.order(:display_order, :name)
+  end
+
+  # Get non-variant property definitions for this category
+  def regular_properties
+    @regular_properties ||= property_definitions.where(is_variant: false).order(:display_order, :name)
+  end
+
   # Class methods
   def self.build_tree
     includes(:subcategories).where(parent_id: nil).order(:name).map do |category|
