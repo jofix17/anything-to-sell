@@ -503,40 +503,6 @@ export const useOrders = (options: { enabled?: boolean } = {}) => {
 };
 
 /**
- * Hook for fetching order details
- */
-export const useOrderDetail = (
-  id: string,
-  options: { enabled?: boolean } = {}
-) => {
-  return useApiQuery(
-    QueryKeys.orders.detail(id),
-    () => cartService.getOrderById(id),
-    {
-      ...options,
-      enabled: !!id && options.enabled !== false,
-    }
-  );
-};
-
-/**
- * Hook for creating order
- */
-export const useCreateOrder = (options = {}) => {
-  return useApiMutation(
-    (data: CreateOrderData) => cartService.createOrder(data),
-    options
-  );
-};
-
-/**
- * Hook for canceling order
- */
-export const useCancelOrder = (options = {}) => {
-  return useApiMutation((id: string) => cartService.cancelOrder(id), options);
-};
-
-/**
  * Hook for creating payment intent
  */
 export const useCreatePaymentIntent = (options = {}) => {

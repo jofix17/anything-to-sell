@@ -16,6 +16,7 @@ export interface OrderSummaryBaseProps {
   isAuthenticated?: boolean;
   onCheckout?: () => void;
   className?: string;
+  processingFee?: number;
 }
 
 const OrderSummary: React.FC<OrderSummaryBaseProps> = ({

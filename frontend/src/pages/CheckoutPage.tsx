@@ -14,7 +14,7 @@ import AddressSelector from "../components/checkout/AddressSelector";
 import { calculateCartTotals } from "../utils/cartUtilities";
 import EmptyCart from "../components/cart/EmptyCart";
 import OrderSummary from "../components/cart/OrderSummary";
-import { CreateOrderParams } from "../types/order";
+import { CreateOrderParams, OrderPaymentMethod } from "../types/order";
 import { useCreateOrder } from "../hooks/api/useOrderApi";
 import { useCreatePaymentIntent } from "../hooks/api/usePaymentApi";
 
@@ -22,6 +22,58 @@ import { useCreatePaymentIntent } from "../hooks/api/usePaymentApi";
 const stripePromise = loadStripe(
   import.meta.env.REACT_APP_STRIPE_PUBLIC_KEY || ""
 );
+
+// Define available payment methods
+const PAYMENT_METHODS = [
+  {
+    id: "cash_on_delivery" as OrderPaymentMethod,
+    name: "Cash on Delivery",
+    description: "Pay when you receive your order",
+    icon: "💵",
+    requiresOnlinePayment: false,
+    processingFee: 0,
+  },
+  {
+    id: "credit_card" as OrderPaymentMethod,
+    name: "Credit Card",
+    description: "Pay securely with your credit card",
+    icon: "💳",
+    requiresOnlinePayment: true,
+    processingFee: 3.5,
+  },
+  {
+    id: "debit_card" as OrderPaymentMethod,
+    name: "Debit Card",
+    description: "Pay with your debit card",
+    icon: "💳",
+    requiresOnlinePayment: true,
+    processingFee: 3.5,
+  },
+  {
+    id: "gcash" as OrderPaymentMethod,
+    name: "GCash",
+    description: "Pay using your GCash wallet",
+    icon: "📱",
+    requiresOnlinePayment: true,
+    processingFee: 2.5,
+  },
+  {
+    id: "paymaya" as OrderPaymentMethod,
+    name: "PayMaya",
+    description: "Pay using your PayMaya account",
+    icon: "📱",
+    requiresOnlinePayment: true,
+    processingFee: 2.5,
+  },
+  {
+    id: "bank_transfer" as OrderPaymentMethod,
+    name: "Bank Transfer",
+    description: "Direct bank transfer",
+    icon: "🏦",
+    requiresOnlinePayment: false,
+    processingFee: 0.5,
+  },
+];
 
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -37,6 +89,8 @@ const CheckoutPage: React.FC = () => {
     string | null
   >(null);
   const [sameAsShipping, setSameAsShipping] = useState(true);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<OrderPaymentMethod>("cash_on_delivery");
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +122,24 @@ const CheckoutPage: React.FC = () => {
   const createOrderMutation = useCreateOrder();
   const createPaymentIntentMutation = useCreatePaymentIntent();
 
+  // Get selected payment method details
+  const selectedMethodDetails = PAYMENT_METHODS.find(
+    (m) => m.id === selectedPaymentMethod
+  );
+
+  // Calculate processing fee
+  const subtotal =
+    cart?.items.reduce(
+      (sum, item) =>
+        sum +
+        (Number(item.product.salePrice) || Number(item.product.price)) *
+          item.quantity,
+      0
+    ) || 0;
+  const processingFee = selectedMethodDetails
+    ? (subtotal * selectedMethodDetails.processingFee) / 100
+    : 0;
+
   const cartCalculations = calculateCartTotals({
     items: cart?.items || [],
     options: {
@@ -75,6 +147,7 @@ const CheckoutPage: React.FC = () => {
       includeTax: true,
       shippingRate: 10.0,
       taxRate: 0.07,
+      processingFee: processingFee, // Add processing fee to calculations
     },
   });
 
@@ -172,11 +245,11 @@ const CheckoutPage: React.FC = () => {
       setIsLoading(true);
       setError(null);
 
-      // Create the order with correct parameter names
+      // Create the order with selected payment method
       const orderParams: CreateOrderParams = {
         shipping_address_id: selectedShippingAddress,
         billing_address_id: selectedBillingAddress,
-        payment_method: "credit_card",
+        payment_method: selectedPaymentMethod,
         cart_id: cart?.id || "",
       };
 
@@ -184,15 +257,24 @@ const CheckoutPage: React.FC = () => {
       const newOrderId = orderResponse.data.id;
       setOrderId(newOrderId);
 
-      // Get payment intent client secret
-      const paymentResponse = await createPaymentIntentMutation.mutateAsync({
-        orderId: newOrderId,
-      });
+      // Check if payment method requires online payment
+      const selectedMethod = PAYMENT_METHODS.find(
+        (m) => m.id === selectedPaymentMethod
+      );
 
-      setClientSecret(paymentResponse.data.clientSecret);
+      if (selectedMethod?.requiresOnlinePayment) {
+        // Get payment intent client secret for online payment methods
+        const paymentResponse = await createPaymentIntentMutation.mutateAsync({
+          orderId: newOrderId,
+        });
 
-      // Move to payment step
-      setStep(2);
+        setClientSecret(paymentResponse.data.clientSecret);
+        // Move to payment step
+        setStep(2);
+      } else {
+        // For cash on delivery or bank transfer, complete the order immediately
+        handlePaymentSuccess();
+      }
     } catch (error) {
       setError("Failed to create order");
       console.error("Error creating order:", error);
@@ -203,7 +285,15 @@ const CheckoutPage: React.FC = () => {
 
   const handlePaymentSuccess = () => {
     fetchCart();
-    navigate("/orders", { state: { success: true, orderId } });
+    // Navigate to orders page with success state and payment method info
+    navigate("/orders", {
+      state: {
+        success: true,
+        orderId,
+        paymentMethod: selectedPaymentMethod,
+        total: cartCalculations.total + processingFee,
+      },
+    });
   };
 
   // Check if cart is empty
@@ -250,6 +340,10 @@ const CheckoutPage: React.FC = () => {
     );
   }
 
+  const selectedMethod = PAYMENT_METHODS.find(
+    (m) => m.id === selectedPaymentMethod
+  );
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8 text-gray-800">Checkout</h1>
@@ -273,6 +367,7 @@ const CheckoutPage: React.FC = () => {
             subtotal={cartCalculations.subtotal}
             shippingCost={cartCalculations.shippingCost}
             taxAmount={cartCalculations.taxAmount}
+            processingFee={processingFee}
             showCheckoutButton={false}
             className="sticky top-6"
           />
@@ -351,6 +446,65 @@ const CheckoutPage: React.FC = () => {
                 )}
               </div>
 
+              {/* Payment Method Selection */}
+              <div className="mb-8">
+                <h3 className="text-lg font-medium mb-4">Payment Method</h3>
+                <div className="space-y-3">
+                  {PAYMENT_METHODS.map((method) => (
+                    <label
+                      key={method.id}
+                      className={`flex items-start p-4 border rounded-lg cursor-pointer transition-all ${
+                        selectedPaymentMethod === method.id
+                          ? "border-indigo-600 bg-indigo-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value={method.id}
+                        checked={selectedPaymentMethod === method.id}
+                        onChange={(e) =>
+                          setSelectedPaymentMethod(
+                            e.target.value as OrderPaymentMethod
+                          )
+                        }
+                        className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                      />
+                      <div className="ml-3 flex-1">
+                        <div className="flex items-center">
+                          <span className="text-lg mr-2">{method.icon}</span>
+                          <span className="font-medium text-gray-900">
+                            {method.name}
+                          </span>
+                          {method.id === "cash_on_delivery" && (
+                            <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                              No payment required now
+                            </span>
+                          )}
+                          {method.processingFee > 0 && (
+                            <span className="ml-2 text-xs text-gray-500">
+                              +{method.processingFee}% fee
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {method.description}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                {processingFee > 0 && (
+                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <p className="text-sm text-yellow-800">
+                      Processing fee of ${processingFee.toFixed(2)} will be
+                      added to your order total.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end">
                 <FormSubmitButton
                   loading={isLoading}
@@ -361,7 +515,9 @@ const CheckoutPage: React.FC = () => {
                   }
                   onClick={createOrder}
                 >
-                  Continue to Payment
+                  {selectedMethod?.requiresOnlinePayment
+                    ? "Continue to Payment"
+                    : "Place Order"}
                 </FormSubmitButton>
               </div>
             </div>
@@ -369,14 +525,29 @@ const CheckoutPage: React.FC = () => {
 
           {step === 2 && clientSecret && orderId && (
             <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <h2 className="text-xl font-bold mb-6">Payment</h2>
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <CheckoutForm
-                  clientSecret={clientSecret}
-                  orderId={orderId}
-                  onSuccess={handlePaymentSuccess}
-                />
-              </Elements>
+              <h2 className="text-xl font-bold mb-6">
+                Payment - {selectedMethod?.name}
+              </h2>
+
+              {/* Show payment method specific instructions */}
+              {selectedPaymentMethod === "gcash" ||
+              selectedPaymentMethod === "paymaya" ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <p className="text-blue-800">
+                    Please complete your payment using {selectedMethod?.name}.
+                    You will receive instructions on your registered mobile
+                    number.
+                  </p>
+                </div>
+              ) : (
+                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                  <CheckoutForm
+                    clientSecret={clientSecret}
+                    orderId={orderId}
+                    onSuccess={handlePaymentSuccess}
+                  />
+                </Elements>
+              )}
             </div>
           )}
         </div>

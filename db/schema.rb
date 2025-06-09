@@ -177,6 +177,7 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_09_130946) do
     t.decimal "tax_amount", precision: 10, scale: 2, default: "0.0"
     t.decimal "subtotal_amount", precision: 10, scale: 2, default: "0.0"
     t.decimal "total_amount", precision: 10, scale: 2, default: "0.0"
+    t.decimal "processing_fee", precision: 10, scale: 2, default: "0.0"
     t.text "notes"
     t.string "tracking_number"
     t.string "tracking_url"
@@ -187,6 +188,7 @@ ActiveRecord::Schema[7.2].define(version: 2025_05_09_130946) do
     t.index ["order_number"], name: "index_orders_on_order_number", unique: true
     t.index ["payment_method_id"], name: "index_orders_on_payment_method_id"
     t.index ["payment_status"], name: "index_orders_on_payment_status"
+    t.index ["processing_fee"], name: "index_orders_on_processing_fee", where: "(processing_fee > (0)::numeric)"
     t.index ["shipping_address_id"], name: "index_orders_on_shipping_address_id"
     t.index ["status", "payment_status"], name: "index_orders_on_status_and_payment_status"
     t.index ["status"], name: "index_orders_on_status"

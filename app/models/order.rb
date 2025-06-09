@@ -27,7 +27,7 @@ class Order < ApplicationRecord
 
   # Callbacks
   before_validation :generate_order_number, on: :create
-  before_save :calculate_totals, unless: :skip_calculate_totals
+  before_save :calculate_totals, unless: :skip_calculate_totals_callback?
   after_create :create_initial_history
   after_update :create_status_history, if: :saved_change_to_status?
 
@@ -207,6 +207,21 @@ class Order < ApplicationRecord
     true
   end
 
+  def calculate_totals
+    return if order_items.empty?
+
+    self.subtotal_amount = order_items.sum { |item| item.quantity * item.price }
+
+    # Calculate and set processing fee based on payment method
+    self.processing_fee = calculate_processing_fee
+    self.total_amount = subtotal_amount + shipping_cost + tax_amount + processing_fee
+  end
+
+  def calculate_processing_fee
+    return 0.0 unless payment_method
+    (subtotal_amount * payment_method.processing_fee_percentage / 100).round(2)
+  end
+
   # Allow skipping totals calculation for seeding
   attr_accessor :skip_calculate_totals
 
@@ -223,18 +238,12 @@ class Order < ApplicationRecord
     end
   end
 
-  def calculate_totals
-    return if order_items.empty?
-
-    self.subtotal_amount = order_items.sum { |item| item.quantity * item.price }
-
-    # Include processing fee in total calculation
-    calculated_processing_fee = processing_fee
-    self.total_amount = subtotal_amount + shipping_cost + tax_amount + calculated_processing_fee
+  def skip_calculate_totals_callback?
+    skip_calculate_totals || (new_record? && order_items.none?(&:persisted?))
   end
 
   def payment_method_available_for_vendors
-    return unless payment_method && order_items.any?
+    return true #unless payment_method && order_items.any?
 
     # Check if all vendor stores accept this payment method
     vendor_stores.each do |store|

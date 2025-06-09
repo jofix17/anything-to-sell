@@ -49,7 +49,7 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: CACHE_CONFIG.RETRY.NORMAL,
+      retry: CACHE_CONFIG.RETRY.FALSE,
       staleTime: CACHE_CONFIG.STALE_TIMES.STANDARD,
       gcTime: CACHE_CONFIG.STALE_TIMES.LONG,
       refetchOnMount: true,

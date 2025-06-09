@@ -1,6 +1,6 @@
 import React from "react";
 import { useParams, Link } from "react-router-dom";
-import { useOrderDetail, useCancelOrder } from "../services/cartService";
+import { useCancelOrder, useOrderDetail } from "../hooks/api/useOrderApi";
 
 const OrderDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -8,9 +8,10 @@ const OrderDetailPage: React.FC = () => {
   // Use React Query hooks
   const { data: orderResponse, isLoading, error } = useOrderDetail(id || "");
 
+  console.log({ orderResponse, isLoading, error, id });
   const cancelOrderMutation = useCancelOrder();
 
-  const order = orderResponse || null;
+  const order = orderResponse;
 
   const formatDate = (dateString: string) => {
     const options: Intl.DateTimeFormatOptions = {
@@ -152,7 +153,7 @@ const OrderDetailPage: React.FC = () => {
             <h4 className="text-base font-medium text-gray-900 mb-4">Items</h4>
             <div className="flow-root">
               <ul className="-my-6 divide-y divide-gray-200">
-                {order.items.map((item) => (
+                {order.orderItems.map((item) => (
                   <li key={item.id} className="py-6 flex">
                     <div className="flex-shrink-0 w-24 h-24 border border-gray-200 rounded-md overflow-hidden">
                       {item.product &&
@@ -183,7 +184,7 @@ const OrderDetailPage: React.FC = () => {
                               <span>Product no longer available</span>
                             )}
                           </h3>
-                          <p className="ml-4">${item.price.toFixed(2)}</p>
+                          <p className="ml-4">${item.price}</p>
                         </div>
                         <p className="mt-1 text-sm text-gray-500">
                           {item.product?.vendor?.name || "Unknown Vendor"}
@@ -256,7 +257,7 @@ const OrderDetailPage: React.FC = () => {
                   <span className="font-medium text-gray-700">
                     Payment Method:{" "}
                   </span>
-                  {order.paymentMethod || "Credit Card"}
+                  {/* {order.paymentMethod || "Credit Card"} */}
                 </p>
                 <p>
                   <span className="font-medium text-gray-700">
@@ -283,27 +284,19 @@ const OrderDetailPage: React.FC = () => {
               <div className="text-sm">
                 <div className="flex justify-between py-1">
                   <dt className="text-gray-500">Subtotal</dt>
-                  <dd className="text-gray-900">
-                    ${order.subtotalAmount.toFixed(2)}
-                  </dd>
+                  <dd className="text-gray-900">${order.subtotalAmount}</dd>
                 </div>
                 <div className="flex justify-between py-1">
                   <dt className="text-gray-500">Shipping</dt>
-                  <dd className="text-gray-900">
-                    ${(order.shippingCost || 0).toFixed(2)}
-                  </dd>
+                  <dd className="text-gray-900">${order.shippingCost || 0}</dd>
                 </div>
                 <div className="flex justify-between py-1">
                   <dt className="text-gray-500">Tax</dt>
-                  <dd className="text-gray-900">
-                    ${(order.taxAmount || 0).toFixed(2)}
-                  </dd>
+                  <dd className="text-gray-900">${order.taxAmount || 0}</dd>
                 </div>
                 <div className="flex justify-between py-1 font-medium">
                   <dt className="text-gray-900">Total</dt>
-                  <dd className="text-gray-900">
-                    ${order.totalAmount.toFixed(2)}
-                  </dd>
+                  <dd className="text-gray-900">${order.totalAmount}</dd>
                 </div>
               </div>
             </div>

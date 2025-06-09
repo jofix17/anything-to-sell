@@ -135,6 +135,8 @@ Rails.application.routes.draw do
         member do
           patch :cancel
         end
+
+        resources :payments, only: [ :create ]
       end
 
       resources :addresses

@@ -8,12 +8,22 @@ export type OrderStatus =
   | "shipped"
   | "delivered"
   | "cancelled";
-export type OrderPaymentStatus = "pending" | "paid" | "failed";
+
+export type OrderPaymentStatus = 
+  | "pending" 
+  | "paid" 
+  | "failed"
+  | "refunded"
+  | "partially_refunded";
+
 export type OrderPaymentMethod =
-  | "cash"
+  | "cash_on_delivery"
   | "credit_card"
-  | "paypal"
+  | "debit_card"
   | "bank_transfer"
+  | "paypal"
+  | "gcash"
+  | "paymaya"
   | "stripe";
 
 export interface Order {
@@ -25,6 +35,7 @@ export interface Order {
   shippingAddress: Address;
   billingAddress: Address;
   paymentMethod: string;
+  paymentMethodType?: OrderPaymentMethod;
   paymentDate: string;
   paymentStatus: OrderPaymentStatus;
   totalAmount: number;
@@ -33,6 +44,7 @@ export interface Order {
   subtotalAmount: number;
   shippingCost: number;
   taxAmount: number;
+  processingFee?: number;
   notes?: string;
   trackingNumber?: string;
   trackingUrl?: string;

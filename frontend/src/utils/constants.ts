@@ -124,6 +124,7 @@ export const CACHE_CONFIG = {
 
   // Retry configuration
   RETRY: {
+    FALSE: false,
     AUTH: 1,
     CART: 2,
     NORMAL: 3,

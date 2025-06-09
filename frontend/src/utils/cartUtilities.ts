@@ -8,6 +8,7 @@ interface CalculateCartTotalsProps {
     shippingRate?: number;
     taxRate?: number;
     minFreeShipping?: number;
+    processingFee?: number;
   };
 }
 

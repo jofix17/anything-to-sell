@@ -55,23 +55,28 @@ class PaymentMethod < ApplicationRecord
     active?
   end
 
-  # Fixed: Use symbol/enum comparisons instead of strings
   def processing_fee_percentage
-    case payment_type.to_sym
-    when :cash_on_delivery then 0.0
-    when :bank_transfer then 0.5
-    when :credit_card, :debit_card then 3.5
-    when :paypal then 3.0
-    when :gcash, :paymaya then 2.5
-    when :digital_wallet then 2.5
-    when :cryptocurrency then 1.0
-    when :installment then 5.0
+    return 0.0 unless payment_type.present?
+
+    # Enums already return strings, not symbols, so we don't need to_sym
+    case payment_type
+    when "cash_on_delivery" then 0.0
+    when "bank_transfer" then 0.5
+    when "credit_card", "debit_card" then 3.5
+    when "paypal" then 3.0
+    when "gcash", "paymaya" then 2.5
+    when "digital_wallet" then 2.5
+    when "cryptocurrency" then 1.0
+    when "installment" then 5.0
     else 2.0
     end
   end
 
   def requires_online_processing?
-    !cash_on_delivery?
+    return true unless payment_type.present?
+
+    # For Rails enums, we can use the predicate methods
+    !cash_on_delivery? && payment_type != "bank_transfer"
   end
 
   def icon_url

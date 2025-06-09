@@ -14,6 +14,7 @@ class CreateOrders < ActiveRecord::Migration[7.2]
       t.decimal :tax_amount, precision: 10, scale: 2, default: 0
       t.decimal :subtotal_amount, precision: 10, scale: 2, default: 0
       t.decimal :total_amount, precision: 10, scale: 2, default: 0
+      t.decimal :processing_fee, precision: 10, scale: 2, default: 0
       t.text :notes
       t.string :tracking_number
       t.string :tracking_url
@@ -27,5 +28,6 @@ class CreateOrders < ActiveRecord::Migration[7.2]
     add_index :orders, [ :user_id, :status, :created_at ]
     add_index :orders, [ :status, :payment_status ]
     add_index :orders, :created_at
+    add_index :orders, :processing_fee, where: "processing_fee > 0"
   end
 end
